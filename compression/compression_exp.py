@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import os
-from scene import GaussianModel
+from gaussiansplatting.scene import GaussianModel
 import yaml
 import pandas as pd
 

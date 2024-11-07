@@ -1,6 +1,6 @@
 import copy
 
-from splatviz_utils.dict_utils import equal_dicts
+from lumina3D_utils.dict_utils import equal_dicts
 
 
 class RendererWrapper:

@@ -6,12 +6,12 @@ import numpy as np
 import torch
 import torch.nn
 from tqdm import tqdm
-from gaussian_renderer import render_simple
-from scene import GaussianModel
-from scene.cameras import CustomCam
+from gaussiansplatting.gaussian_renderer import render_simple
+from gaussiansplatting.scene import GaussianModel
+from gaussiansplatting.scene.cameras import CustomCam
 from renderer.base_renderer import Renderer
-from splatviz_utils.cam_utils import fov_to_intrinsics
-from splatviz_utils.dict_utils import EasyDict
+from lumina3D_utils.cam_utils import fov_to_intrinsics
+from lumina3D_utils.dict_utils import EasyDict
 
 
 class GaussianDecoderRenderer(Renderer):

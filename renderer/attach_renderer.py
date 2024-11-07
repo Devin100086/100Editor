@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn
 
-from scene.cameras import CustomCam
+from gaussiansplatting.scene.cameras import CustomCam
 from renderer.base_renderer import Renderer
 
 

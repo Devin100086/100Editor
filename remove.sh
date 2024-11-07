@@ -1,0 +1,1 @@
+rm -rf data/input/*.jpg data/*.sh data/stereo data/images data/distorted data/sparse
