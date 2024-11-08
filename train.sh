@@ -1,0 +1,1 @@
+python train3DGS.py -s "data/" --gpu "1"

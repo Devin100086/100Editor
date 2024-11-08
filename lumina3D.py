@@ -17,22 +17,26 @@ from lumina3D_utils.gui_utils import gl_utils
 from lumina3D_utils.gui_utils import text_utils
 from lumina3D_utils.gui_utils.constants import *
 from lumina3D_utils.dict_utils import EasyDict
+from widgets.common import (
+    cam_widget,
+    edit_widget,
+    performance_widget,
+    render_widget,
+    video_widget
+)
 from widgets.init import (
     processing_widget,
     style_widget,
     convert_widget
 )
-from widgets.train import (
-    edit_widget,
-    eval_widget,
-    performance_widget,
-    load_widget_pkl,
-    load_widget_ply,
-    video_widget,
-    cam_widget,
+from widgets.load import (
     capture_widget,
+    eval_widget,
+    load_widget_pkl,
+    load_widget_ply
+)
+from widgets.train import (
     latent_widget,
-    render_widget,
     training_widget,
 )
 
@@ -59,15 +63,15 @@ class Lumina3D(imgui_window.ImguiWindow):
         self._last_error_print = None
 
         self.process_widgets = []
+        self.load_widgets = []
         self.train_widgets = []
-        update_all_the_time = False
+        
         self.init_widgets = [
             style_widget.StyleWidget(self),
             processing_widget.ProcessingWidget(self),
             convert_widget.ConverWidget(self),
         ]
-        if mode == "default":
-            self.train_widgets = [
+        self.load_widgets = [
                 load_widget_ply.LoadWidget(self, data_path),
                 cam_widget.CamWidget(self),
                 performance_widget.PerformanceWidget(self),
@@ -76,21 +80,18 @@ class Lumina3D(imgui_window.ImguiWindow):
                 render_widget.RenderWidget(self),
                 edit_widget.EditWidget(self),
                 eval_widget.EvalWidget(self),
-            ]
-            renderer = GaussianRenderer()
-        elif mode == "attach":
-            self.train_widgets = [
+        ]
+        self.train_widgets = [
                 cam_widget.CamWidget(self),
                 performance_widget.PerformanceWidget(self),
                 video_widget.VideoWidget(self),
                 render_widget.RenderWidget(self),
                 edit_widget.EditWidget(self),
                 training_widget.TrainingWidget(self),
-            ]
-            renderer = AttachRenderer(host=host, port=port)
-            update_all_the_time = True
-        else:
-            raise NotImplementedError(f"Mode '{mode}' not recognized.")
+        ]
+
+        renderer = {"load":GaussianRenderer(),"train":AttachRenderer(host=host, port=port)}
+        update_all_the_time = {"load":False,"train":True}
 
         self.renderer = RendererWrapper(renderer, update_all_the_time)
         self._tex_img = None
@@ -151,6 +152,23 @@ class Lumina3D(imgui_window.ImguiWindow):
                     widget(expanded)
                     imgui.unindent()
                 imgui.end_tab_item()
+            
+            if imgui.begin_tab_item("load")[0]:
+                for widget in self.load_widgets:
+                    expanded, _visible = imgui_utils.collapsing_header(widget.name, default=False)
+                    imgui.indent()
+                    widget(expanded)
+                    imgui.unindent()
+                imgui.end_tab_item()
+
+                # Render
+                if self.is_skipping_frames():
+                    pass
+                else:
+                    self.renderer.set_args(type="load",**self.args)
+                    result = self.renderer.result
+                    if result is not None:
+                        self.result = result
                 
             if imgui.begin_tab_item("train")[0]:
                 # Widgets
@@ -161,12 +179,11 @@ class Lumina3D(imgui_window.ImguiWindow):
                     imgui.unindent()
                 imgui.end_tab_item()
 
-                
                 # Render
                 if self.is_skipping_frames():
                     pass
                 else:
-                    self.renderer.set_args(**self.args)
+                    self.renderer.set_args(type="train",**self.args)
                     result = self.renderer.result
                     if result is not None:
                         self.result = result

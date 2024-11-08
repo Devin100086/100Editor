@@ -10,9 +10,9 @@ class RendererWrapper:
         self.result = None
         self.update_all_the_time = update_all_the_time
 
-    def set_args(self, **args):
+    def set_args(self, type, **args):
         something_changed = not equal_dicts(args, self._cur_args)
-        if something_changed or self.update_all_the_time:
-            self.result = self.renderer.render(**args)
+        if something_changed or self.update_all_the_time[type]:
+            self.result = self.renderer[type].render(**args)
             self._cur_args = copy.deepcopy(args)
 

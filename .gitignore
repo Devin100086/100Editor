@@ -3,3 +3,4 @@ data/
 gaussiansplatting/submodules
 __pycache__
 extern/
+output/
