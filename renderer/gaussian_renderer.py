@@ -134,3 +134,7 @@ class GaussianRenderer(Renderer):
         save_path = os.path.join(save_ply_path, f"model_{len(os.listdir(save_ply_path))}.ply")
         print("Model saved in", save_path)
         gaussian.save_ply(save_path)
+    
+    @staticmethod
+    def close():
+        pass

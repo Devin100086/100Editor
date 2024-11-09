@@ -68,7 +68,7 @@ class TrainingWidget(Widget):
                 plot_size = imgui.ImVec2(viz.pane_w - 150, 200)
                 implot.set_next_axes_to_fit()
                 if implot.begin_plot(plot_name, plot_size):
-                    implot.plot_line(
+                    implot.plot_line( 
                         plot_name,
                         ys=np.array(plot_values["values"], dtype=plot_values["dtype"]),
                         xs=np.array(self.iterations, dtype=plot_values["dtype"]),

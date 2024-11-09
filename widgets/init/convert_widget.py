@@ -54,7 +54,8 @@ class ConverWidget(Widget):
             if imgui_utils.button(f"Source", width=viz.button_w):
                 self.colmap_status = "waiting..."
                 self.progress = 0.0
-                self.source_path = self._select_folder()
+                source_path = self._select_folder()
+                self.source_path = self.source_path if isinstance(source_path, tuple) else source_path
                 self.frame_number = 0
             imgui.same_line()
             imgui.text(f"Source Path: {self.source_path}")
@@ -77,8 +78,6 @@ class ConverWidget(Widget):
                 self.use_gpu,
                 self.gpu_items
             )
-            imgui.same_line()
-            imgui.text(f"gpu: {self.gpu_items[self.use_gpu]}")
             if imgui_utils.button("colmap", width=viz.button_w):
                 self.colmap_progress = 0.0
                 self.colmap_process()

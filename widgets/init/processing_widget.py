@@ -21,12 +21,14 @@ class ProcessingWidget(Widget):
         if show:
             if imgui_utils.button(f"Video Path", width=viz.button_w):
                 self.progress = 0.0
-                self.video_path = self._select_video()
+                video_path = self._select_video()
+                self.video_path = video_path if isinstance(video_path, tuple) else self.video_path
                 self.frame_number = 0
             imgui.same_line()
             imgui.text(f"Selected Video: {self.video_path}")
             if imgui_utils.button(f"output Path", width=viz.button_w):
-                self.output_path = self._select_folder()
+                output_path = self._select_folder()
+                self.output_path = self.output_path if isinstance(output_path, tuple) else output_path
             imgui.same_line()
             imgui.text(f"Output Path: {self.output_path}")
             if imgui_utils.button(f"Processing", width=viz.button_w):

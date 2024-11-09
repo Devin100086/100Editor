@@ -23,7 +23,8 @@ class LoadWidget(Widget):
 
             for i, ply in enumerate(self.plys):
                 if imgui_utils.button(f"Browse {i + 1}", width=viz.button_w):
-                    self.plys[i] = self._select_ply()
+                    ply_file = self._select_ply() 
+                    self.plys[i] = ply if isinstance(ply_file, tuple) else ply_file
                 imgui.same_line()
                 if i > 0:
                     if imgui_utils.button(f"Remove {i + 1}", width=viz.button_w):

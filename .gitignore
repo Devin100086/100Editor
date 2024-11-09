@@ -1,6 +1,6 @@
 data/
 *.jpg
-gaussiansplatting/submodules
+submodules
 __pycache__
 extern/
 output/

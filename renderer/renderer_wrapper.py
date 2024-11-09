@@ -15,4 +15,8 @@ class RendererWrapper:
         if something_changed or self.update_all_the_time[type]:
             self.result = self.renderer[type].render(**args)
             self._cur_args = copy.deepcopy(args)
+    
+    def close(self):
+        for render in self.renderer.values():
+            render.close()
 

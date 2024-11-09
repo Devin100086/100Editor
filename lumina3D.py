@@ -37,7 +37,7 @@ from widgets.load import (
 )
 from widgets.train import (
     latent_widget,
-    training_widget,
+    train_widget,
 )
 
 
@@ -82,17 +82,19 @@ class Lumina3D(imgui_window.ImguiWindow):
                 eval_widget.EvalWidget(self),
         ]
         self.train_widgets = [
+                train_widget.TrainingWidget(self),
                 cam_widget.CamWidget(self),
                 performance_widget.PerformanceWidget(self),
                 video_widget.VideoWidget(self),
                 render_widget.RenderWidget(self),
                 edit_widget.EditWidget(self),
-                training_widget.TrainingWidget(self),
         ]
+
+        # renderer = GaussianRenderer()
+        # update_all_the_time = True
 
         renderer = {"load":GaussianRenderer(),"train":AttachRenderer(host=host, port=port)}
         update_all_the_time = {"load":False,"train":True}
-
         self.renderer = RendererWrapper(renderer, update_all_the_time)
         self._tex_img = None
         self._tex_obj = None
@@ -110,8 +112,11 @@ class Lumina3D(imgui_window.ImguiWindow):
     def close(self):
         for widget in self.init_widgets:
             widget.close()
+        for widget in self.load_widgets:
+            widget.close()
         for widget in self.train_widgets:
             widget.close()
+        self.renderer.close()
         super().close()
 
     def print_error(self, error):
@@ -155,7 +160,7 @@ class Lumina3D(imgui_window.ImguiWindow):
             
             if imgui.begin_tab_item("load")[0]:
                 for widget in self.load_widgets:
-                    expanded, _visible = imgui_utils.collapsing_header(widget.name, default=False)
+                    expanded, _visible = imgui_utils.collapsing_header(widget.name, default=widget.name == "Load")
                     imgui.indent()
                     widget(expanded)
                     imgui.unindent()
@@ -173,7 +178,7 @@ class Lumina3D(imgui_window.ImguiWindow):
             if imgui.begin_tab_item("train")[0]:
                 # Widgets
                 for widget in self.train_widgets:
-                    expanded, _visible = imgui_utils.collapsing_header(widget.name, default=widget.name == "Load")
+                    expanded, _visible = imgui_utils.collapsing_header(widget.name, default=False)
                     imgui.indent()
                     widget(expanded)
                     imgui.unindent()

@@ -20,10 +20,11 @@ class AsyncConnector(Thread):
         self._socket = None
         self.socket = None
         self.finished = False
+        self.running = True
         self.start()
 
     def run(self):
-        while self.socket is None:
+        while self.socket is None and self.running:
             try:
                 self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self._socket.connect((self.host, self.port))
@@ -145,7 +146,7 @@ class AttachRenderer(Renderer):
             "edit_text": self.sanitize_command(edit_text),
             "slider": slider,
             "single_training_step": single_training_step,
-            "stop_at_value": stop_at_value,
+            "stop_at_value": stop_at_value, 
         }
         self.send(message)
         image, stats = self.read(resolution)
@@ -157,3 +158,6 @@ class AttachRenderer(Renderer):
             res,
             normalize=img_normalize,
         )
+    
+    def close(self):
+        self.connector.running = False
