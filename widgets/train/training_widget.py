@@ -1,11 +1,22 @@
+from argparse import ArgumentParser
+import threading
 from imgui_bundle import imgui, ImVec2
 from imgui_bundle import implot
 import numpy as np
+import os
+import multiprocessing
 
+from arguments import ModelParams, OptimizationParams, PipelineParams
+from gaussian_renderer import network_gui
 from lumina3D_utils.gui_utils import imgui_utils
+import tkinter as tk
+import torch
+from gaussiansplatting.utils.general_utils import safe_state
 from lumina3D_utils.gui_utils.easy_imgui import label
+import subprocess
 from lumina3D_utils.dict_utils import EasyDict
 from widgets.widget import Widget
+from tkinter import filedialog
 
 
 class TrainingWidget(Widget):
@@ -21,22 +32,59 @@ class TrainingWidget(Widget):
             sh_degree=dict(values=[], dtype=int),
         )
         self.stop_at_value = -1
-        self.stop_training = False
+        self.stop_training = True
         self.stop_from_renderer = False
+        self.training_path = os.getcwd()
+        self.use_gpu = 0
+        self.gpu_items = [str(i) for i in range(torch.cuda.device_count())]
+        self.quiet = False
+        self.detect_anomaly = False
+        self.selected_option = 0
+
 
     @imgui_utils.scoped_by_object_id
     def __call__(self, show=True):
         viz = self.viz
 
         if show:
-            if self.stop_training or self.stop_from_renderer:
-                if imgui.button("Resume Training", ImVec2(viz.label_w_large, 0)):
-                    self.stop_training = False
-                    if self.stop_from_renderer:
-                        self.stop_at_value = -1
-            else:
-                if imgui.button("Pause Training", ImVec2(viz.label_w_large, 0)):
-                    self.stop_training = True
+            imgui.text("Choose your model")
+            if imgui.radio_button("Origin", self.selected_option == 0):
+                self.selected_option = 0 
+            imgui.same_line(viz.label_w)
+            if imgui.radio_button("gsplat", self.selected_option == 1):
+                self.selected_option = 1 
+            # imgui.text("Training Parameter")
+            if self.selected_option == 0:
+                if imgui_utils.button("Choose", width=viz.button_w):
+                    trainning_folder = self._select_folder()
+                    self.training_path = self.training_path if isinstance(trainning_folder, tuple) else trainning_folder
+
+                imgui.same_line()
+                imgui.text(f"Training Path: {self.training_path}")
+                
+                imgui.set_next_item_width(viz.button_w)
+                changed, self.use_gpu = imgui.combo(
+                    "choose gpu",
+                    self.use_gpu,
+                    self.gpu_items
+                )
+
+                clicked, self.quiet = imgui.checkbox("Quiet",self.quiet)
+
+                clicked, self.detect_anomaly = imgui.checkbox("Detect Anomaly",self.detect_anomaly)
+
+                imgui.new_line()
+                if self.stop_training or self.stop_from_renderer:
+                    if imgui.button("Start Training", ImVec2(viz.label_w_large, 0)):
+                        self.stop_training = False
+                        subprocess.Popen(["python", "trainer/origin/train.py", "-s", self.training_path, "--gpu", self.gpu_items[self.use_gpu]])
+                        if self.stop_from_renderer:
+                            self.stop_at_value = -1
+                else:
+                    if imgui.button("Pause Training", ImVec2(viz.label_w_large, 0)):
+                        self.stop_training = True
+            elif self.selected_option == 1:
+                imgui.text("waiting for build.....")
 
         viz.args.do_training = not self.stop_training
 
@@ -44,7 +92,7 @@ class TrainingWidget(Widget):
             stats = viz.result["training_stats"]
         else:
             if show:
-                label("No training stats send by the renderer.")
+                imgui.text("No training stats send by the renderer.")
             return
 
         self.iterations.append(stats["iteration"])
@@ -83,3 +131,9 @@ class TrainingWidget(Widget):
                     imgui.new_line()
 
         viz.args.stop_at_value = self.stop_at_value
+    
+    def _select_folder(self):
+        root = tk.Tk()
+        root.withdraw()
+        folder_path = filedialog.askdirectory()
+        return folder_path
