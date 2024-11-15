@@ -40,6 +40,12 @@ class TrainingWidget(Widget):
         self.quiet = False
         self.detect_anomaly = False
         self.selected_option = 0
+        self.gsplat_training_dir = os.getcwd()
+        self.gsplat_output_dir = os.getcwd()
+        self.gsplat_mode = 0
+        self.MODE = ["default","mcmc"]
+        self.origin_trainer = None
+        self.gsplat_trainer = None
 
 
     @imgui_utils.scoped_by_object_id
@@ -77,14 +83,54 @@ class TrainingWidget(Widget):
                 if self.stop_training or self.stop_from_renderer:
                     if imgui.button("Start Training", ImVec2(viz.label_w_large, 0)):
                         self.stop_training = False
-                        subprocess.Popen(["python", "trainer/origin/train.py", "-s", self.training_path, "--gpu", self.gpu_items[self.use_gpu]])
+                        self.origin_trainer =subprocess.Popen([
+                            "python",
+                            "trainer/origin/train.py",
+                            "-s", self.training_path,
+                            "--gpu", self.gpu_items[self.use_gpu]
+                        ])
                         if self.stop_from_renderer:
                             self.stop_at_value = -1
                 else:
                     if imgui.button("Pause Training", ImVec2(viz.label_w_large, 0)):
+                        self.origin_trainer.terminate()
+                        self.origin_trainer.wait()
                         self.stop_training = True
             elif self.selected_option == 1:
-                imgui.text("waiting for build.....")
+                imgui.set_next_item_width(viz.button_w)
+                changedm, self.gsplat_mode = imgui.combo(
+                                            "Mode",
+                                            self.gsplat_mode,
+                                            self.MODE
+                                            )
+                if imgui_utils.button("Data dir", width=viz.button_w):
+                    gsplat_trainning_folder = self._select_folder()
+                    self.gsplat_training_dir = self.gsplat_training_dir if isinstance(gsplat_trainning_folder, tuple) else gsplat_trainning_folder
+                imgui.same_line()
+                imgui.text(f"Training Path: {self.gsplat_training_dir}")
+                
+                if imgui_utils.button("Output dir", width=viz.button_w):
+                    gsplat_output_dir = self._select_folder() 
+                    self.gsplat_output_dir = self.gsplat_training_dir if isinstance(gsplat_output_dir, tuple) else os.path.join(gsplat_output_dir,"result")
+                imgui.same_line()
+                imgui.text(f"Output Path: {self.gsplat_output_dir}")
+                if self.stop_training or self.stop_from_renderer:
+                    if imgui.button("Start Training", ImVec2(viz.label_w_large, 0)):
+                        self.stop_training = False
+                        self.gsplat_trainer = subprocess.Popen([
+                            "python", 
+                            "trainer/gsplat/train.py", 
+                            "--data_dir", self.gsplat_training_dir, 
+                            "--data_factor", self.MODE[self.gsplat_mode],
+                            "--result_dir",self.gsplat_output_dir
+                        ])
+                        if self.stop_from_renderer:
+                            self.stop_at_value = -1
+                else:
+                    if imgui.button("Pause Training", ImVec2(viz.label_w_large, 0)):
+                        self.gsplat_trainer.terminate()
+                        self.gsplat_trainer.wait()
+                        self.stop_training = True
 
         viz.args.do_training = not self.stop_training
 
@@ -137,3 +183,13 @@ class TrainingWidget(Widget):
         root.withdraw()
         folder_path = filedialog.askdirectory()
         return folder_path
+    
+    def close(self):
+        if self.gsplat_trainer != None:
+            self.gsplat_trainer.terminate()
+            self.gsplat_trainer.wait()
+        if self.origin_trainer != None:
+            self.origin_trainer.terminate()
+            self.origin_trainer.wait()
+        super().close()
+    
