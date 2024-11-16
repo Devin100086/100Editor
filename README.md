@@ -10,8 +10,8 @@ It is a 3D editing software that hopes to allow everyone to experience 3D editin
 2. "Load" Feature
 - [x] [2024/11/10]🔥Complete "Loading ply file".
 3. "Train" Feature
-- [x] 🔥Add the visualization of training parameters.
-- [x] 🔥Add gsplat framework.
+- [x] [2024/11/15]🔥Add the visualization of training parameters.
+- [x] [2024/11/16]🔥Add gsplat framework.
 4. "Edit" Feature
 - [ ] 🧊Add Editing Feature.
 
