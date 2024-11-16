@@ -1,20 +1,14 @@
 import torch
 from config import Config
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple
 import yaml
-import nerfview
+import sys
+from gsplatNetwork import GsplatNetwork
 import time
-from collections import defaultdict
-from datasets.traj import (
-    generate_interpolated_path,
-    generate_ellipse_path_z,
-    generate_spiral_path,
-)
-import imageio
 import tqdm
 from datasets.colmap import Parser,Dataset
 from init import create_splats_with_optimizers
-from typing_extensions import Literal, assert_never
+from typing_extensions import assert_never
 from torch import Tensor
 import torch.nn.functional as F
 from fused_ssim import fused_ssim
@@ -34,10 +28,9 @@ from torchmetrics.image.lpip import LearnedPerceptualImagePatchSimilarity
 from lib_bilagrid import (
     BilateralGrid,
     slice,
-    color_correct,
     total_variation_loss,
 )
-
+from render import rasterize_splats
 
 
 class Runner:
@@ -58,8 +51,8 @@ class Runner:
         os.makedirs(cfg.result_dir, exist_ok=True)
 
         # Setup output directories.
-        self.ckpt_dir = f"{cfg.result_dir}/ckpts"
-        os.makedirs(self.ckpt_dir, exist_ok=True)
+        self.points_clouds_dir = f"{cfg.result_dir}/points_clouds"
+        os.makedirs(self.points_clouds_dir, exist_ok=True)
         self.stats_dir = f"{cfg.result_dir}/stats"
         os.makedirs(self.stats_dir, exist_ok=True)
         self.render_dir = f"{cfg.result_dir}/renders"
@@ -201,62 +194,6 @@ class Runner:
         else:
             raise ValueError(f"Unknown LPIPS network: {cfg.lpips_net}")
 
-    def rasterize_splats(
-        self,
-        camtoworlds: Tensor,
-        Ks: Tensor,
-        width: int,
-        height: int,
-        masks: Optional[Tensor] = None,
-        **kwargs,
-    ) -> Tuple[Tensor, Tensor, Dict]:
-        means = self.splats["means"]  # [N, 3]
-        # quats = F.normalize(self.splats["quats"], dim=-1)  # [N, 4]
-        # rasterization does normalization internally
-        quats = self.splats["quats"]  # [N, 4]
-        scales = torch.exp(self.splats["scales"])  # [N, 3]
-        opacities = torch.sigmoid(self.splats["opacities"])  # [N,]
-
-        image_ids = kwargs.pop("image_ids", None)
-        if self.cfg.app_opt:
-            colors = self.app_module(
-                features=self.splats["features"],
-                embed_ids=image_ids,
-                dirs=means[None, :, :] - camtoworlds[:, None, :3, 3],
-                sh_degree=kwargs.pop("sh_degree", self.cfg.sh_degree),
-            )
-            colors = colors + self.splats["colors"]
-            colors = torch.sigmoid(colors)
-        else:
-            colors = torch.cat([self.splats["sh0"], self.splats["shN"]], 1)  # [N, K, 3]
-
-        rasterize_mode = "antialiased" if self.cfg.antialiased else "classic"
-        render_colors, render_alphas, info = rasterization(
-            means=means,
-            quats=quats,
-            scales=scales,
-            opacities=opacities,
-            colors=colors,
-            viewmats=torch.linalg.inv(camtoworlds),  # [C, 4, 4]
-            Ks=Ks,  # [C, 3, 3]
-            width=width,
-            height=height,
-            packed=self.cfg.packed,
-            absgrad=(
-                self.cfg.strategy.absgrad
-                if isinstance(self.cfg.strategy, DefaultStrategy)
-                else False
-            ),
-            sparse_grad=self.cfg.sparse_grad,
-            rasterize_mode=rasterize_mode,
-            distributed=self.world_size > 1,
-            camera_model=self.cfg.camera_model,
-            **kwargs,
-        )
-        if masks is not None:
-            render_colors[~masks] = 0
-        return render_colors, render_alphas, info
-
     def train(self):
         cfg = self.cfg
         device = self.device
@@ -314,8 +251,10 @@ class Runner:
         # Training loop.
         global_tic = time.time()
         pbar = tqdm.tqdm(range(init_step, max_steps))
-        for step in pbar:
+        loss = torch.tensor(0)
+        gsplatNetwork = GsplatNetwork(host="127.0.0.1",port=6009)
 
+        for step in pbar:
             try:
                 data = next(trainloader_iter)
             except StopIteration:
@@ -346,7 +285,10 @@ class Runner:
             sh_degree_to_use = min(step // cfg.sh_degree_interval, cfg.sh_degree)
 
             # forward
-            renders, alphas, info = self.rasterize_splats(
+            renders, alphas, info = rasterize_splats(
+                splats=self.splats,
+                cfg=self.cfg,
+                world_size=world_size,
                 camtoworlds=camtoworlds,
                 Ks=Ks,
                 width=width,
@@ -354,7 +296,7 @@ class Runner:
                 sh_degree=sh_degree_to_use,
                 near_plane=cfg.near_plane,
                 far_plane=cfg.far_plane,
-                image_ids=image_ids,
+                # image_ids=image_ids,
                 render_mode="RGB+ED" if cfg.depth_loss else "RGB",
                 masks=masks,
             )
@@ -363,6 +305,10 @@ class Runner:
             else:
                 colors, depths = renders, None
 
+            # gsplat network
+            gsplatNetwork.render(sh_degree=sh_degree_to_use,gsplat=self.splats, world_size=world_size,
+                                 loss = loss.item(), iteration=step, device=self.device, opt=cfg)
+            
             if cfg.use_bilateral_grid:
                 grid_y, grid_x = torch.meshgrid(
                     (torch.arange(height, device=self.device) + 0.5) / height,
@@ -460,21 +406,7 @@ class Runner:
                     "w",
                 ) as f:
                     json.dump(stats, f)
-                data = {"step": step, "splats": self.splats.state_dict()}
-                if cfg.pose_opt:
-                    if world_size > 1:
-                        data["pose_adjust"] = self.pose_adjust.module.state_dict()
-                    else:
-                        data["pose_adjust"] = self.pose_adjust.state_dict()
-                if cfg.app_opt:
-                    if world_size > 1:
-                        data["app_module"] = self.app_module.module.state_dict()
-                    else:
-                        data["app_module"] = self.app_module.state_dict()
-                torch.save(
-                    data, f"{self.ckpt_dir}/ckpt_{step}_rank{self.world_rank}.pt"
-                )
-                self.save_ply(f"{self.ckpt_dir}/point_cloud_{step}.ply")
+                self.save_ply(f"{self.points_clouds_dir}/point_cloud_{step}.ply")
 
             # Turn Gradients into Sparse Tensor before running optimizer
             if cfg.sparse_grad:
@@ -545,6 +477,7 @@ class Runner:
             # run compression
             if cfg.compression is not None and step in [i - 1 for i in cfg.eval_steps]:
                 self.run_compression(step=step)
+                
     # Experimental
     def construct_list_of_attributes(self):
         l = ['x', 'y', 'z', 'nx', 'ny', 'nz']
