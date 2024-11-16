@@ -76,7 +76,6 @@ class AttachRenderer(Renderer):
                 verify_dict = json.loads(verify_data)
             except Exception:
                 verify_dict = {}
-
             image = np.frombuffer(message, dtype=np.uint8).reshape(resolution, resolution, 3)
             image = torch.from_numpy(np.array(image)) / 255.0
             image = image.permute(2, 0, 1)

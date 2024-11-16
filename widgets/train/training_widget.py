@@ -4,6 +4,7 @@ from imgui_bundle import imgui, ImVec2
 from imgui_bundle import implot
 import numpy as np
 import os
+import time
 import multiprocessing
 
 from arguments import ModelParams, OptimizationParams, PipelineParams
@@ -106,12 +107,15 @@ class TrainingWidget(Widget):
                 if imgui_utils.button("Data dir", width=viz.button_w):
                     gsplat_trainning_folder = self._select_folder()
                     self.gsplat_training_dir = self.gsplat_training_dir if isinstance(gsplat_trainning_folder, tuple) else gsplat_trainning_folder
+                    target_name = os.path.basename(self.gsplat_training_dir)
+                    self.gsplat_output_dir = os.path.join(self.gsplat_output_dir,"results",target_name)
                 imgui.same_line()
                 imgui.text(f"Training Path: {self.gsplat_training_dir}")
                 
                 if imgui_utils.button("Output dir", width=viz.button_w):
                     gsplat_output_dir = self._select_folder() 
-                    self.gsplat_output_dir = self.gsplat_training_dir if isinstance(gsplat_output_dir, tuple) else os.path.join(gsplat_output_dir,"result")
+                    target_name = os.path.basename(self.gsplat_training_dir)
+                    self.gsplat_output_dir = self.gsplat_training_dir if isinstance(gsplat_output_dir, tuple) else os.path.join(gsplat_output_dir,"results",target_name)
                 imgui.same_line()
                 imgui.text(f"Output Path: {self.gsplat_output_dir}")
                 if self.stop_training or self.stop_from_renderer:
@@ -120,8 +124,9 @@ class TrainingWidget(Widget):
                         self.gsplat_trainer = subprocess.Popen([
                             "python", 
                             "trainer/gsplat/train.py", 
+                            self.MODE[self.gsplat_mode],
                             "--data_dir", self.gsplat_training_dir, 
-                            "--data_factor", self.MODE[self.gsplat_mode],
+                            "--data_factor", "1",
                             "--result_dir",self.gsplat_output_dir
                         ])
                         if self.stop_from_renderer:
