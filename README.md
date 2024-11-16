@@ -3,6 +3,12 @@
 ## 💁Introduction
 It is a 3D editing software that hopes to allow everyone to experience 3D editing. The software is currently under intensive development.
 
+## ⭐Running
+To start the software, simply use
+```
+python run_main.py
+```
+
 ## 📃Progress
 1. "Init" Feature
 - [x] [2024/11/7]🔥Build the preliminary framework. 
