@@ -95,7 +95,6 @@ class GsplatNetwork:
             try:
                 net_image_bytes = None
                 self.receive()
-                print("camera:",self.custom_cam.view_inv)
                 if self.custom_cam != None:
                     with torch.no_grad():
                         renders_network, _, _ = rasterize_splats(

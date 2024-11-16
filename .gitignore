@@ -4,3 +4,4 @@ submodules
 __pycache__
 extern/
 output/
+results/
