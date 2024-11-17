@@ -18,6 +18,7 @@ python run_main.py
 3. "Train" Feature
 - [x] [2024/11/15]🔥Add the visualization of training parameters.
 - [x] [2024/11/16]🔥Add gsplat framework.
+- [ ] 🧊Add 2DGS Feature by gsplat.
 4. "Edit" Feature
 - [ ] 🧊Add Editing Feature.
 
