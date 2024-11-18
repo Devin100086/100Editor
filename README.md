@@ -21,5 +21,8 @@ python run_main.py
 - [ ] 🧊Add 2DGS Feature by gsplat.
 4. "Edit" Feature
 - [ ] 🧊Add Editing Feature.
+5. "Other" Feature
+- [x] [2024/11/18]🔥Add fitting one single image.
+
 
 
