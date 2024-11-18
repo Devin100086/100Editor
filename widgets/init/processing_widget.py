@@ -22,7 +22,7 @@ class ProcessingWidget(Widget):
             if imgui_utils.button(f"Video Path", width=viz.button_w):
                 self.progress = 0.0
                 video_path = self._select_video()
-                self.video_path = video_path if isinstance(video_path, tuple) else self.video_path
+                self.video_path = self.video_path if isinstance(video_path, tuple) else video_path
                 self.frame_number = 0
             imgui.same_line()
             imgui.text(f"Selected Video: {self.video_path}")

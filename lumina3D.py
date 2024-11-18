@@ -10,6 +10,7 @@ np.set_printoptions(precision=2)
 from renderer.renderer_wrapper import RendererWrapper
 from renderer.gaussian_renderer import GaussianRenderer
 from renderer.gaussian_decoder_renderer import GaussianDecoderRenderer
+from renderer.fitting_render import FittingRenderer
 from renderer.attach_renderer import AttachRenderer
 from lumina3D_utils.gui_utils import imgui_window
 from lumina3D_utils.gui_utils import imgui_utils
@@ -39,11 +40,13 @@ from widgets.train import (
     latent_widget,
     training_widget,
 )
-
+from widgets.other import (
+    fitting_widget
+)
 
 class Lumina3D(imgui_window.ImguiWindow):
     def __init__(self, args):
-        data_path, mode, host, port = args.data_path, args.mode, args.host, args.port
+        data_path, mode, host, port = args.port, args.mode, args.host, args.port
         self.code_font_path = "resources/fonts/jetbrainsmono/JetBrainsMono-Regular.ttf"
         self.regular_font_path = "resources/fonts/source_sans_pro/SourceSansPro-Regular.otf"
 
@@ -89,12 +92,24 @@ class Lumina3D(imgui_window.ImguiWindow):
                 render_widget.RenderWidget(self),
                 edit_widget.EditWidget(self),
         ]
-
+        self.other_widgets = [
+            fitting_widget.FittingWidget(self)
+        ]
         # renderer = GaussianRenderer()
         # update_all_the_time = True
 
-        renderer = {"load":GaussianRenderer(),"train":AttachRenderer(host=host, port=port)}
-        update_all_the_time = {"load":False,"train":True}
+        renderer = {
+                    "load":GaussianRenderer(),
+                    "train":AttachRenderer(host=host, port=port),
+                    "fitting":FittingRenderer(host="127.0.0.1", port=7090)
+                   }
+        
+        update_all_the_time = {
+                               "load":False,
+                               "train":True,
+                               "fitting":True
+                              }
+        
         self.renderer = RendererWrapper(renderer, update_all_the_time)
         self._tex_img = None
         self._tex_obj = None
@@ -196,7 +211,27 @@ class Lumina3D(imgui_window.ImguiWindow):
             if imgui.begin_tab_item("edit")[0]:
                 imgui.text("This is edit")
                 imgui.end_tab_item()
+            
+            if imgui.begin_tab_item("other")[0]:
+                for widget in self.other_widgets:
+                    expanded, _visible = imgui_utils.collapsing_header(widget.name, default=False)
+                    imgui.indent()
+                    widget(expanded)
+                    imgui.unindent()
+                imgui.end_tab_item()
+
+                # Render
+                if self.is_skipping_frames():
+                    pass
+                else:
+                    self.renderer.set_args(type="fitting",**self.args)
+                    result = self.renderer.result
+                    if result is not None:
+                        self.result = result
+
+
             imgui.end_tab_bar()
+
 
         # Display
         max_w = self.content_width - self.pane_w

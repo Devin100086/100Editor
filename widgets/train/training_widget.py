@@ -7,8 +7,8 @@ import os
 import time
 import multiprocessing
 
-from arguments import ModelParams, OptimizationParams, PipelineParams
-from gaussian_renderer import network_gui
+# from arguments import ModelParams, OptimizationParams, PipelineParams
+# from gaussian_renderer import network_gui
 from lumina3D_utils.gui_utils import imgui_utils
 import tkinter as tk
 import torch
