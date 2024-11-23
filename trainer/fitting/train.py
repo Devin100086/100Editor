@@ -22,6 +22,7 @@ def main(
     img_path: Optional[Path] = None,
     iterations: int = 2000,
     lr: float = 0.01,
+    alpha: float = 0.99,
     model_type: Literal["3dgs", "2dgs"] = "3dgs",
 ) -> None:
     if img_path:
@@ -36,6 +37,7 @@ def main(
     trainer.train(
         iterations=iterations,
         lr=lr,
+        alpha=alpha,
         save_imgs=save_imgs,
         model_type=model_type,
     )

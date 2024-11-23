@@ -251,7 +251,7 @@ class Runner:
         # Training loop.
         global_tic = time.time()
         pbar = tqdm.tqdm(range(init_step, max_steps))
-        loss = torch.tensor(0)
+        ema_loss = 0.0
         gsplatNetwork = GsplatNetwork(host="127.0.0.1",port=6009)
 
         for step in pbar:
@@ -307,7 +307,7 @@ class Runner:
 
             # gsplat network
             gsplatNetwork.render(sh_degree=sh_degree_to_use,gsplat=self.splats, world_size=world_size,
-                                 loss = loss.item(), iteration=step, device=self.device, opt=cfg)
+                                 loss = ema_loss, iteration=step, device=self.device, opt=cfg)
             
             if cfg.use_bilateral_grid:
                 grid_y, grid_x = torch.meshgrid(
@@ -336,6 +336,7 @@ class Runner:
                 colors.permute(0, 3, 1, 2), pixels.permute(0, 3, 1, 2), padding="valid"
             )
             loss = l1loss * (1.0 - cfg.ssim_lambda) + ssimloss * cfg.ssim_lambda
+            
             if cfg.depth_loss:
                 # query depths from depth map
                 points = torch.stack(
@@ -451,7 +452,7 @@ class Runner:
                 optimizer.zero_grad(set_to_none=True)
             for scheduler in schedulers:
                 scheduler.step()
-
+            
             # Run post-backward steps after backward and optimizer
             if isinstance(self.cfg.strategy, DefaultStrategy):
                 self.cfg.strategy.step_post_backward(
@@ -473,7 +474,7 @@ class Runner:
                 )
             else:
                 assert_never(self.cfg.strategy)
-
+            ema_loss = cfg.alpha * ema_loss + (1-cfg.alpha) * loss.item()
             # run compression
             if cfg.compression is not None and step in [i - 1 for i in cfg.eval_steps]:
                 self.run_compression(step=step)

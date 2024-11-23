@@ -76,6 +76,7 @@ class SimpleTrainer:
         self,
         iterations: int = 1000,
         lr: float = 0.01,
+        alpha: float = 0.99,
         save_imgs: bool = False,
         model_type: Literal["3dgs", "2dgs"] = "3dgs",
     ):
@@ -100,10 +101,10 @@ class SimpleTrainer:
             rasterize_fnc = rasterization_2dgs
             
         fittingNetwork = FittingNetwork(host="127.0.0.1",port=7090)
-        loss = torch.tensor(0)
+        ema_loss = 0
         for iter in range(iterations):
             start = time.time()
-            fittingNetwork.render(self,iter,loss.item(),iterations,model_type)
+            fittingNetwork.render(self,iter,ema_loss,iterations,model_type)
             renders = rasterize_fnc(
                 self.means,
                 self.quats / self.quats.norm(dim=-1, keepdim=True),
@@ -126,7 +127,8 @@ class SimpleTrainer:
             torch.cuda.synchronize()
             times[1] += time.time() - start
             optimizer.step()
-            print(f"Iteration {iter + 1}/{iterations}, Loss: {loss.item()}")
+            ema_loss = alpha * ema_loss + (1 - alpha) * loss.item()
+            print(f"Iteration {iter + 1}/{iterations}, Loss: {loss.item()}, ema_loss: {ema_loss}")
 
             if save_imgs and iter % 5 == 0:
                 frames.append((out_img.detach().cpu().numpy() * 255).astype(np.uint8))

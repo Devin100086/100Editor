@@ -62,6 +62,8 @@ class Config:
     init_scale: float = 1.0
     # Weight for SSIM loss
     ssim_lambda: float = 0.2
+    # ema_alpha
+    alpha: float = 0.99
 
     # Near plane clipping distance
     near_plane: float = 0.01
