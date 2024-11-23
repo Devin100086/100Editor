@@ -15,9 +15,11 @@ python run_main.py
 - [x] [2024/11/10]🔥Complete "Theme Setting", "Video Processing", "Colmap". 
 2. "Load" Feature
 - [x] [2024/11/10]🔥Complete "Loading ply file".
+- [x] [2024/11/23]🔥Complete "Adding Camera options and Generating video".
 3. "Train" Feature
 - [x] [2024/11/15]🔥Add the visualization of training parameters.
 - [x] [2024/11/16]🔥Add gsplat framework.
+- [x] [2024/11/23]🔥Add ema loss option.
 - [ ] 🧊Add 2DGS Feature by gsplat.
 4. "Edit" Feature
 - [ ] 🧊Add Editing Feature.
