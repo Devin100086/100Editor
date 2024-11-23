@@ -34,7 +34,8 @@ from widgets.load import (
     capture_widget,
     eval_widget,
     load_widget_pkl,
-    load_widget_ply
+    load_widget_ply,
+    camvideo_widget
 )
 from widgets.train import (
     latent_widget,
@@ -46,7 +47,7 @@ from widgets.other import (
 
 class Lumina3D(imgui_window.ImguiWindow):
     def __init__(self, args):
-        data_path, mode, host, port = args.port, args.mode, args.host, args.port
+        data_path, mode, host, port = args.data_path, args.mode, args.host, args.port
         self.code_font_path = "resources/fonts/jetbrainsmono/JetBrainsMono-Regular.ttf"
         self.regular_font_path = "resources/fonts/source_sans_pro/SourceSansPro-Regular.otf"
 
@@ -74,6 +75,7 @@ class Lumina3D(imgui_window.ImguiWindow):
             processing_widget.ProcessingWidget(self),
             convert_widget.ConverWidget(self),
         ]
+
         self.load_widgets = [
                 load_widget_ply.LoadWidget(self, data_path),
                 cam_widget.CamWidget(self),
@@ -83,6 +85,7 @@ class Lumina3D(imgui_window.ImguiWindow):
                 render_widget.RenderWidget(self),
                 edit_widget.EditWidget(self),
                 eval_widget.EvalWidget(self),
+                camvideo_widget.CamvideoWidget(self)
         ]
         self.train_widgets = [
                 training_widget.TrainingWidget(self),
@@ -180,7 +183,7 @@ class Lumina3D(imgui_window.ImguiWindow):
                     widget(expanded)
                     imgui.unindent()
                 imgui.end_tab_item()
-
+                
                 # Render
                 if self.is_skipping_frames():
                     pass

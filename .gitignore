@@ -6,3 +6,4 @@ extern/
 output/
 results/
 .vscode
+*.mp4

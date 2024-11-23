@@ -111,7 +111,6 @@ class CamWidget(Widget):
     def handle_dragging_in_window(self, x, y, width, height):
         x_dir = -1 if self.invert_x else 1
         y_dir = -1 if self.invert_y else 1
-
         if imgui.is_mouse_dragging(0):  # left mouse button
             new_delta = imgui.get_mouse_drag_delta(0)
             if imgui_utils.did_drag_start_in_window(x, y, width, height, new_delta):

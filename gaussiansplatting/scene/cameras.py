@@ -95,6 +95,7 @@ class CustomCam:
         self.FoVx = fovx
         self.znear = znear
         self.zfar = zfar
+        self.extr = extr.cpu()
 
         self.world_view_transform = extr.T.inverse()
         self.projection_matrix = (
