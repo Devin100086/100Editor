@@ -20,6 +20,7 @@ class FittingWidget(Widget):
         self.num_points = 2000
         # self.save_image = True
         self.max_step = 1000
+        self.alpha = 0.99
         self.iterations = []
         self.stop_at_value = -1
         self.model_types = ["3dgs","2dgs"]
@@ -61,7 +62,8 @@ class FittingWidget(Widget):
             imgui.same_line()
             if imgui.radio_button("2DGS", self.model_item == 1):
                 self.model_item = 1
-
+            label("Ema alpha", viz.label_w)
+            _change, self.alpha = imgui.slider_float(label="##Ema alpha", v=self.alpha,v_min=0.00,v_max=1.00,format="%.2f")
             if self.stop_training or self.stop_from_renderer:
                 if imgui.button("Start Training", ImVec2(viz.label_w_large, 0)):
                     self.stop_training = False
@@ -81,7 +83,8 @@ class FittingWidget(Widget):
                         "--num_points", str(self.num_points),
                         "--img_path",self.image_path,
                         "--model-type", self.model_types[self.model_item],
-                        "--iterations", str(self.max_step)
+                        "--iterations", str(self.max_step),
+                        "--alpha", str(self.alpha)
                     ])
                     if self.stop_from_renderer:
                         self.stop_at_value = -1

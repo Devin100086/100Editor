@@ -47,6 +47,7 @@ class TrainingWidget(Widget):
         self.MODE = ["default","mcmc"]
         self.origin_trainer = None
         self.gsplat_trainer = None
+        self.alpha = 0.99
 
 
     @imgui_utils.scoped_by_object_id
@@ -79,7 +80,8 @@ class TrainingWidget(Widget):
                 clicked, self.quiet = imgui.checkbox("Quiet",self.quiet)
 
                 clicked, self.detect_anomaly = imgui.checkbox("Detect Anomaly",self.detect_anomaly)
-
+                label("Ema alpha", viz.label_w)
+                _change, self.alpha = imgui.slider_float(label="##Ema alpha", v=self.alpha,v_min=0.00,v_max=1.00,format="%.2f")
                 imgui.new_line()
                 if self.stop_training or self.stop_from_renderer:
                     if imgui.button("Start Training", ImVec2(viz.label_w_large, 0)):
@@ -88,7 +90,8 @@ class TrainingWidget(Widget):
                             "python",
                             "trainer/origin/train.py",
                             "-s", self.training_path,
-                            "--gpu", self.gpu_items[self.use_gpu]
+                            "--gpu", self.gpu_items[self.use_gpu],
+                            "--alpha", str(self.alpha)
                         ])
                         if self.stop_from_renderer:
                             self.stop_at_value = -1
@@ -118,6 +121,8 @@ class TrainingWidget(Widget):
                     self.gsplat_output_dir = self.gsplat_training_dir if isinstance(gsplat_output_dir, tuple) else os.path.join(gsplat_output_dir,"results",target_name)
                 imgui.same_line()
                 imgui.text(f"Output Path: {self.gsplat_output_dir}")
+                label("Ema alpha", viz.label_w)
+                _change, self.alpha = imgui.slider_float(label="##Ema alpha", v=self.alpha,v_min=0.00,v_max=1.00,format="%.2f")
                 if self.stop_training or self.stop_from_renderer:
                     if imgui.button("Start Training", ImVec2(viz.label_w_large, 0)):
                         self.stop_training = False
@@ -127,7 +132,8 @@ class TrainingWidget(Widget):
                             self.MODE[self.gsplat_mode],
                             "--data_dir", self.gsplat_training_dir, 
                             "--data_factor", "1",
-                            "--result_dir",self.gsplat_output_dir
+                            "--result_dir",self.gsplat_output_dir,
+                            "--alpha", str(self.alpha)
                         ])
                         if self.stop_from_renderer:
                             self.stop_at_value = -1
