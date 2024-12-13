@@ -9,6 +9,8 @@
 # its affiliates is strictly prohibited.
 
 import functools
+from OpenGL.GL import *
+from PIL import Image
 import contextlib
 import numpy as np
 import OpenGL.GL as gl
@@ -200,3 +202,31 @@ def _setup_rect(rx, ry):
     y = [s * ry, c * ry, 1 - s * ry, 1 - c * ry]
     v = np.stack([x, y], axis=-1).reshape(-1, 2)
     return v.astype("float32")
+
+
+def sketch(max_w, max_h, points, current_color, line_width):
+    gl.glMatrixMode(gl.GL_PROJECTION)
+    gl.glLoadIdentity()
+    gl.glOrtho(0, max_w, max_h, 0, -1, 1)
+    gl.glMatrixMode(gl.GL_MODELVIEW)
+
+    gl.glEnable(gl.GL_LINE_SMOOTH)
+    gl.glLineWidth(line_width)
+    gl.glColor4f(*current_color)
+    
+    gl.glBegin(gl.GL_LINE_STRIP)
+    for point in points:
+        if point is None:
+            gl.glEnd()
+            gl.glBegin(gl.GL_LINE_STRIP)
+        else:
+            
+            gl.glVertex2f(*point)
+    gl.glEnd()
+
+def get_image(left_x, left_h, width, height):
+    glPixelStorei(GL_PACK_ALIGNMENT, 1)
+    pixels = glReadPixels(left_x, left_h, width, height, GL_RGB, GL_UNSIGNED_BYTE)
+    image = Image.frombytes("RGB", (width, height), pixels)
+    image = image.transpose(Image.FLIP_TOP_BOTTOM) 
+    return image 
