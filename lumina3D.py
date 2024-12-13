@@ -1,4 +1,6 @@
 from imgui_bundle import imgui
+from OpenGL.GL import *
+from PIL import Image
 import numpy as np
 import torch
 import sys
@@ -9,7 +11,6 @@ np.set_printoptions(precision=2)
 
 from renderer.renderer_wrapper import RendererWrapper
 from renderer.gaussian_renderer import GaussianRenderer
-from renderer.gaussian_decoder_renderer import GaussianDecoderRenderer
 from renderer.fitting_render import FittingRenderer
 from renderer.attach_renderer import AttachRenderer
 from lumina3D_utils.gui_utils import imgui_window
@@ -21,6 +22,9 @@ from lumina3D_utils.dict_utils import EasyDict
 from widgets.common import (
     cam_widget,
     edit_widget,
+    eval_widget,
+    load_widget_pkl,
+    load_widget_ply,
     performance_widget,
     render_widget,
     video_widget
@@ -32,14 +36,15 @@ from widgets.init import (
 )
 from widgets.load import (
     capture_widget,
-    eval_widget,
-    load_widget_pkl,
-    load_widget_ply,
     camvideo_widget
 )
 from widgets.train import (
     latent_widget,
     training_widget,
+)
+from widgets.edit import (
+    editcam_widget,
+    editor_widget
 )
 from widgets.other import (
     fitting_widget
@@ -69,6 +74,7 @@ class Lumina3D(imgui_window.ImguiWindow):
         self.process_widgets = []
         self.load_widgets = []
         self.train_widgets = []
+        self.edit_widgets = []
         
         self.init_widgets = [
             style_widget.StyleWidget(self),
@@ -94,6 +100,14 @@ class Lumina3D(imgui_window.ImguiWindow):
                 video_widget.VideoWidget(self),
                 render_widget.RenderWidget(self),
                 edit_widget.EditWidget(self),
+        ]
+        self.edit_widgets = [
+                load_widget_ply.LoadWidget(self, data_path),
+                editor_widget.EditorWidget(self),
+                editcam_widget.EditcamWidget(self),
+                render_widget.RenderWidget(self),
+                edit_widget.EditWidget(self),
+                eval_widget.EvalWidget(self),
         ]
         self.other_widgets = [
             fitting_widget.FittingWidget(self)
@@ -121,6 +135,7 @@ class Lumina3D(imgui_window.ImguiWindow):
         # Widget interface.
         self.args = EasyDict()
         self.result = EasyDict()
+        self.edit_image = None
 
         # Initialize window.
         self.set_position(0, 0)
@@ -133,6 +148,8 @@ class Lumina3D(imgui_window.ImguiWindow):
         for widget in self.load_widgets:
             widget.close()
         for widget in self.train_widgets:
+            widget.close()
+        for widget in self.edit_widgets:
             widget.close()
         self.renderer.close()
         super().close()
@@ -212,8 +229,21 @@ class Lumina3D(imgui_window.ImguiWindow):
                         self.result = result
 
             if imgui.begin_tab_item("edit")[0]:
-                imgui.text("This is edit")
+                for widget in self.edit_widgets:
+                    expanded, _visible = imgui_utils.collapsing_header(widget.name, default=(widget.name == "Load" or widget.name == "Editor"))
+                    imgui.indent()
+                    widget(expanded)
+                    imgui.unindent()
                 imgui.end_tab_item()
+
+                # Render
+                if self.is_skipping_frames():
+                    pass
+                else:
+                    self.renderer.set_args(type="load",**self.args)
+                    result = self.renderer.result
+                    if result is not None:
+                        self.result = result
             
             if imgui.begin_tab_item("other")[0]:
                 for widget in self.other_widgets:
@@ -232,9 +262,7 @@ class Lumina3D(imgui_window.ImguiWindow):
                     if result is not None:
                         self.result = result
 
-
             imgui.end_tab_bar()
-
 
         # Display
         max_w = self.content_width - self.pane_w
@@ -249,6 +277,12 @@ class Lumina3D(imgui_window.ImguiWindow):
                     self._tex_obj.update(self._tex_img)
             zoom = min(max_w / self._tex_obj.width, max_h / self._tex_obj.height)
             self._tex_obj.draw(pos=pos, zoom=zoom, align=0.5, rint=True)
+            if hasattr(self.args, 'points'):
+                gl_utils.sketch(self.content_width, self.content_height, self.args.points, self.args.current_color, self.args.line_width)
+            # save the image
+            if hasattr(self.args, 'edit_image') and self.args.edit_image:
+                self.edit_image = gl_utils.get_image(self.pane_w, 0, max_w, max_h)
+
         if "error" in self.result:
             self.print_error(self.result.error)
             if "message" not in self.result:
