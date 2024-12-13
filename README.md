@@ -20,13 +20,13 @@ python run_main.py
 - [x] [2024/11/15]🔥Add the visualization of training parameters.
 - [x] [2024/11/16]🔥Add gsplat framework.
 - [x] [2024/11/23]🔥Add ema loss option.
-- [x] [2024/11/23]🔥Add ema loss option.
 4. "Edit" Feature
 - [ ] 🧊Add Text-driven 3D Editing.
 - [ ] 🧊Add Sketch-based 3D Editing.
 - [ ] 🧊Add Mask-based 3D Editing.
 5. "Other" Feature
 - [x] [2024/11/18]🔥Add fitting one single image.
+- [x] [2024/11/23]🔥Add ema loss option.
 
 
 
