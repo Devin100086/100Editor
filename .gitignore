@@ -1,4 +1,4 @@
-data/
+datasets/
 *.jpg
 submodules
 __pycache__
@@ -7,3 +7,8 @@ output/
 results/
 .vscode
 *.mp4
+.threestudio_cache
+wonder3D/ckpts
+threestudio/utils/wonder3D/instant-nsr-pl/exp
+edit_cache/
+*.pth

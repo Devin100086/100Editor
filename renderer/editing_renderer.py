@@ -1,16 +1,14 @@
+import json
 import socket
-from threading import Thread
 import time
-from typing import List
+from threading import Thread
+
 import numpy as np
 import torch
 import torch.nn
-import json
 
-from gaussiansplatting.scene import GaussianModel
+from gaussiansplatting.scene.cameras import CustomCam
 from renderer.base_renderer import Renderer
-from PIL import Image
-import torchvision.transforms as transforms
 
 
 class AsyncConnector(Thread):
@@ -44,19 +42,18 @@ class AsyncConnector(Thread):
         self.run()
 
 
-class FittingRenderer(Renderer):
-    def __init__(self,host,port):
+class EditingRenderer(Renderer):
+    def __init__(self, host, port):
         super().__init__()
-        self.connector = AsyncConnector(1, host, port)
         self.host = host
         self.port = port
+        self.connector = AsyncConnector(1, host, port)
         self.socket = self.connector.socket
         self.next_bytes = bytes()
-        self.transform = transforms.ToTensor()
 
     def restart_connector(self):
         self.connector = AsyncConnector(1, self.host, self.port)
-    
+
     def read(self, resolution):
         try:
             current_bytes = 0
@@ -100,46 +97,64 @@ class FittingRenderer(Renderer):
     def _render_impl(
         self,
         res,
-        fitting_path,
-        do_training,
-        img_size,
+        fov,
+        resolution,
+        cam_params,
+        edit3D,
         stop_at_value=-1,
         single_training_step=False,
-        img_normalize=False,
         slider={},
+        img_normalize=False,
+        save_ply_path=None,
         **other_args,
     ):
-        
+        cam_params = cam_params.to("cuda")
         self.socket = self.connector.socket
         if self.socket is None:
             if self.connector.finished:
                 self.restart_connector()
             res.message = f"Waiting for connection\n{self.host}:{self.port}"
             return
-        images = []
-        for image_path in fitting_path:
-            image = Image.open(image_path).convert('RGB') 
-            image = self.transform(image)
-            images.append(image)
+
+        # slider = EasyDict(slider)
+        fov_rad = fov / 360 * 2 * np.pi
+        render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, extr=cam_params)
+
+        # Invert all operations from network_gui.py
+        world_view_transform = render_cam.world_view_transform
+        world_view_transform[:, 1] = -world_view_transform[:, 1]
+        world_view_transform[:, 2] = -world_view_transform[:, 2]
+
+        full_proj_transform = render_cam.full_proj_transform
+        full_proj_transform[:, 1] = -full_proj_transform[:, 1]
         message = {
-            "train": do_training,
+            "resolution_x": resolution,
+            "resolution_y": resolution,
+            "train": edit3D,
+            "fov_y": fov_rad,
+            "fov_x": fov_rad,
+            "z_near": 0.01,
+            "z_far": 10.0,
+            "shs_python": False,
+            "rot_scale_python": False,
+            "keep_alive": True,
+            "scaling_modifier": 1,
+            "view_matrix": world_view_transform.cpu().numpy().flatten().tolist(),
+            "view_projection_matrix": full_proj_transform.cpu().numpy().flatten().tolist(),
             "slider": slider,
             "single_training_step": single_training_step,
             "stop_at_value": stop_at_value, 
         }
         self.send(message)
-        image, stats = self.read(img_size)
+        image, stats = self.read(resolution)
         if len(stats.keys()) > 0:
             res.training_stats = stats
             res.error = res.training_stats["error"]
-        
-        images.append(image)
-        if len(images) > 0:
-            self._return_image(
-                images,
-                res,
-                normalize=img_normalize,
-            )
-        
+        self._return_image(
+            image,
+            res,
+            normalize=img_normalize,
+        )
+    
     def close(self):
         self.connector.running = False

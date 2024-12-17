@@ -11,7 +11,8 @@ np.set_printoptions(precision=2)
 
 from renderer.renderer_wrapper import RendererWrapper
 from renderer.gaussian_renderer import GaussianRenderer
-from renderer.fitting_render import FittingRenderer
+from renderer.editing_renderer import EditingRenderer
+from renderer.fitting_renderer import FittingRenderer
 from renderer.attach_renderer import AttachRenderer
 from lumina3D_utils.gui_utils import imgui_window
 from lumina3D_utils.gui_utils import imgui_utils
@@ -44,6 +45,7 @@ from widgets.train import (
 )
 from widgets.edit import (
     editcam_widget,
+    editload_widget,
     editor_widget
 )
 from widgets.other import (
@@ -102,11 +104,10 @@ class Lumina3D(imgui_window.ImguiWindow):
                 edit_widget.EditWidget(self),
         ]
         self.edit_widgets = [
-                load_widget_ply.LoadWidget(self, data_path),
+                editload_widget.EditLoadWidget(self, data_path),
                 editor_widget.EditorWidget(self),
                 editcam_widget.EditcamWidget(self),
                 render_widget.RenderWidget(self),
-                edit_widget.EditWidget(self),
                 eval_widget.EvalWidget(self),
         ]
         self.other_widgets = [
@@ -118,13 +119,15 @@ class Lumina3D(imgui_window.ImguiWindow):
         renderer = {
                     "load":GaussianRenderer(),
                     "train":AttachRenderer(host=host, port=port),
-                    "fitting":FittingRenderer(host="127.0.0.1", port=7090)
+                    "fitting":FittingRenderer(host="127.0.0.1", port=7090),
+                    "editing":EditingRenderer(host="127.0.0.1", port=8084)
                    }
         
         update_all_the_time = {
                                "load":False,
                                "train":True,
-                               "fitting":True
+                               "fitting":True,
+                               "editing":True
                               }
         
         self.renderer = RendererWrapper(renderer, update_all_the_time)
@@ -135,7 +138,9 @@ class Lumina3D(imgui_window.ImguiWindow):
         # Widget interface.
         self.args = EasyDict()
         self.result = EasyDict()
+
         self.edit_image = None
+        self.origin_image = None
 
         # Initialize window.
         self.set_position(0, 0)
@@ -240,7 +245,10 @@ class Lumina3D(imgui_window.ImguiWindow):
                 if self.is_skipping_frames():
                     pass
                 else:
-                    self.renderer.set_args(type="load",**self.args)
+                    if not self.args.edit3D:
+                        self.renderer.set_args(type="load",**self.args)
+                    else:
+                        self.renderer.set_args(type="editing",**self.args)
                     result = self.renderer.result
                     if result is not None:
                         self.result = result
@@ -273,16 +281,21 @@ class Lumina3D(imgui_window.ImguiWindow):
                 self._tex_img = self.result.image
                 if self._tex_obj is None or not self._tex_obj.is_compatible(image=self._tex_img):
                     self._tex_obj = gl_utils.Texture(image=self._tex_img, bilinear=False, mipmap=False)
-                else:
+                else: 
                     self._tex_obj.update(self._tex_img)
             zoom = min(max_w / self._tex_obj.width, max_h / self._tex_obj.height)
             self._tex_obj.draw(pos=pos, zoom=zoom, align=0.5, rint=True)
-            if hasattr(self.args, 'points'):
+            if hasattr(self.args, 'current_color'):
                 gl_utils.sketch(self.content_width, self.content_height, self.args.points, self.args.current_color, self.args.line_width)
+            if hasattr(self.args, 'rec_start') and hasattr(self.args, 'rec_end') and self.args.rec_start and self.args.rec_end:
+               if self.args.rec_start[0] >= self.pane_w and self.args.rec_end[0] >= self.pane_w \
+                   and self.args.rec_start[1] >= 0 and self.args.rec_end[1] >= 0:
+                   gl_utils.draw_rect(pos=self.args.rec_start, pos2=self.args.rec_end, color=[0,0,0], alpha=1, rounding=0)
             # save the image
             if hasattr(self.args, 'edit_image') and self.args.edit_image:
-                self.edit_image = gl_utils.get_image(self.pane_w, 0, max_w, max_h)
-
+                self.edit_image = gl_utils.get_image(self.pane_w, 0, int(max_w/zoom), int(max_h/zoom))
+            if hasattr(self.args, 'draw_image') and not self.args.draw_image:
+                self.origin_image = gl_utils.get_image(self.pane_w, 0, int(max_w/zoom), int(max_h/zoom))
         if "error" in self.result:
             self.print_error(self.result.error)
             if "message" not in self.result:

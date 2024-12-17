@@ -22,7 +22,7 @@ class EditcamWidget(cam_widget.CamWidget):
     def __call__(self, show: bool):
         viz = self.viz
         active_region = EasyDict(x=viz.pane_w, y=0, width=viz.content_width - viz.pane_w, height=viz.content_height)
-        if not viz.args.turn_camera:
+        if not viz.args.turn_camera and not viz.args.mask:
             self.handle_dragging_in_window(**active_region)
             self.handle_mouse_wheel()
             if not viz.args.text_change:
