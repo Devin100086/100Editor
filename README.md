@@ -21,9 +21,15 @@ python run_main.py
 - [x] [2024/11/16]🔥Add gsplat framework.
 - [x] [2024/11/23]🔥Add ema loss option.
 4. "Edit" Feature
-- [ ] 🧊Add Text-driven 3D Editing.
-- [ ] 🧊Add Sketch-based 3D Editing.
-- [ ] 🧊Add Mask-based 3D Editing.
+- [x] 🔥Add Text-driven 3D Editing.
+  - [x] 🔥Add the GUI.
+  - [x] 🔥Add model inference.
+- [ ] ❄️Add Sketch-based 3D Editing.
+  - [x] 🔥Add the GUI.
+  - [ ] 🧊Add model inference.
+- [ ] ❄️Add Mask-based 3D Editing.
+  - [x] 🔥Add the GUI.
+  - [ ] 🧊Add model inference.
 5. "Other" Feature
 - [x] [2024/11/18]🔥Add fitting one single image.
 - [x] [2024/11/23]🔥Add ema loss option.
