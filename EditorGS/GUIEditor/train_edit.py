@@ -1,18 +1,34 @@
 from argparse import ArgumentParser
 from omegaconf import OmegaConf
 from tqdm import tqdm
+import torch
 import sys
 import os
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from EditorGS.GUIEditor.train_base import BaseTrainer
-from EditorGS.GUIEditor.EditGuidance import EditGuidance
+from EditorGS.GUIEditor.Guidance.EditGuidance import EditGuidance
+from torchvision.transforms.functional import to_pil_image, to_tensor
 from EditorGS.gaussiansplatting.gaussian_renderer import render
+from lang_sam import LangSAM
+from PIL import Image
 from EditorGS.GUIEditor.utils import *
 from EditorGS.GUIEditor.Network import EditorNetwork
 class EditTrainer(BaseTrainer):
     def __init__(self, cfg):
         super().__init__(cfg)
+        self.edit_cam_num = cfg.edit_cam_num
+        self.guidance_type = cfg.guidance_type
+        self.lambda_l1 = cfg.lambda_l1
+        self.lambda_p = cfg.lambda_p
+        self.lambda_anchor_color = cfg.lambda_anchor_color
+        self.lambda_anchor_geo = cfg.lambda_anchor_geo
+        self.lambda_anchor_scale = cfg.lambda_anchor_scale
+        self.lambda_anchor_opacity = cfg.lambda_anchor_opacity
+        self.per_editing_step = cfg.per_editing_step
+        self.lang_sam = LangSAM()
+        self.edit_begin_step = cfg.edit_begin_step
+        self.edit_until_step = cfg.edit_until_step
+
     def edit(self):
         edit_cameras = sample_train_camera(self.colmap_cameras,
                                            self.edit_cam_num,
@@ -43,6 +59,7 @@ class EditTrainer(BaseTrainer):
             print("using ControlNet-InstructPix2Pix!")
         
         origin_frames = self.render_cameras_list(edit_cameras)
+
         self.guidance = EditGuidance(
             guidance=cur_2D_guidance,
             gaussian=self.gaussian,
@@ -83,6 +100,9 @@ class EditTrainer(BaseTrainer):
                 return
             
             ema_loss_for_log = self.alpha * ema_loss_for_log + (1-self.alpha) * loss.item()
+        
+        os.makedirs("save", exist_ok=True)
+        self.gaussian.save_ply("save/result1.ply")
 
 if __name__ == "__main__":
     parser = ArgumentParser()

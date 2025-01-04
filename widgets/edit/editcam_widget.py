@@ -86,8 +86,10 @@ class EditcamWidget(cam_widget.CamWidget):
         viz.args.yaw = self.pose.yaw
         viz.args.pitch = self.pose.pitch
         viz.args.fov = self.fov
+        viz.fov = self.fov
         viz.args.cam_params = self.cam_params
-
+        viz.extr = self.cam_params
+        
         # params for the video widget
         viz.args.lookat_point = self.lookat_point
         viz.args.up_vector = self.up_vector

@@ -86,7 +86,7 @@ class EditorNetwork:
                 traceback.print_exc()
                 raise e
 
-    def render(self, pipe, gaussians, loss, render, background, iteration, opt):
+    def render(self, pipe, gaussians, loss, render, background, iteration, opt, show = False):
         if self.conn == None:
             self.try_connect()
         while self.conn != None:
@@ -113,6 +113,8 @@ class EditorNetwork:
                     "paused": self.stop_at_value == iteration
                 })
                 self.send(net_image_bytes, training_stats)
+                if show:
+                    continue
                 if self.do_training and ((iteration < int(opt.iterations)) or not self.keep_alive) and self.stop_at_value != iteration:
                     break
                 if self.single_training_step:

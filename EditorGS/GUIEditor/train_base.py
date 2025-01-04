@@ -1,7 +1,11 @@
+import math
 import random
 from omegaconf import OmegaConf
 import torch
+import numpy as np
 import os
+
+from EditorGS.gaussiansplatting.scene.cameras import Simple_Camera
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import sys
 
@@ -23,6 +27,12 @@ from threestudio.utils.misc import (
     erode_mask,
     fill_closed_areas,
 )
+from threestudio.utils.transform import (
+    rotate_gaussians,
+    translate_gaussians,
+    scale_gaussians,
+    default_model_mtx,
+)
 from threestudio.utils.sam import LangSAMTextSegmentor
 from threestudio.utils.camera import camera_ray_sample_points, project, unproject
 
@@ -34,20 +44,10 @@ class BaseTrainer:
     def __init__(self,cfg):
         self.gs_source = cfg.gs_source
         self.colmap_dir = cfg.colmap_dir
-        self.edit_cam_num = cfg.edit_cam_num
-        self.guidance_type = cfg.guidance_type
-        self.edit_text = cfg.text_prompt
-        self.edit_train_steps = cfg.edit_train_steps
-        self.per_editing_step = cfg.per_editing_step
-        self.edit_begin_step = cfg.edit_begin_step
-        self.edit_until_step = cfg.edit_until_step
-        self.lambda_l1 = cfg.lambda_l1
-        self.lambda_p = cfg.lambda_p
-        self.lambda_anchor_color = cfg.lambda_anchor_color
-        self.lambda_anchor_geo = cfg.lambda_anchor_geo
-        self.lambda_anchor_scale = cfg.lambda_anchor_scale
-        self.lambda_anchor_opacity = cfg.lambda_anchor_opacity
+        self.edit_text = None if cfg.text_prompt=="" else cfg.text_prompt
+        self.edit_train_steps = None if cfg.edit_train_steps==-1 else cfg.edit_train_steps
 
+        # Camera
         self.gs_lr_scaler = 3.0
         self.lr_final_scaler = 2.0
         self.color_lr_scaler = 3.0
@@ -56,7 +56,7 @@ class BaseTrainer:
         self.rotation_lr_scaler = 2.0
         self.gs_lr_end_scaler = 2.0
         self.densify_until_step = 1300
-        self.densification_interval = 100
+        self.densification_interval = 50
         self.max_densify_percent = 0.01
         self.min_opacity = 0.005
         self.alpha = 0.99
@@ -78,6 +78,14 @@ class BaseTrainer:
             anchor_weight_init=0.1,
             anchor_weight_multiplier=2,
         )
+
+        self.gaussian2 = GaussianModel(
+            sh_degree=0,
+            anchor_weight_init_g0=1.0,
+            anchor_weight_init=0.1,
+            anchor_weight_multiplier=2,
+        )
+        self.gaussian2.load_ply("tmp_add/merge.ply")
         # load
         self.gaussian.load_ply(self.gs_source)
         self.gaussian.max_radii2D = torch.zeros(
@@ -139,10 +147,13 @@ class BaseTrainer:
         local=False,
         sam=False,
         train=False,
+        mask = False
     ) -> Dict[str, Any]:
         self.gaussian.localize = local
-
-        render_pkg = render(cam, self.gaussian, self.pipe, self.background_tensor)
+        if mask:
+            render_pkg = render(cam, self.gaussian2, self.pipe, self.background_tensor)
+        else:
+            render_pkg = render(cam, self.gaussian, self.pipe, self.background_tensor)
         image, viewspace_point_tensor, _, radii = (
             render_pkg["render"],
             render_pkg["viewspace_points"],
@@ -195,26 +206,78 @@ class BaseTrainer:
         return {
             **render_pkg,
         }
-
-    def densify_and_prune(self, step):
-        if step <= self.densify_until_step.value:
-            self.gaussian.max_radii2D[self.visibility_filter] = torch.max(
-                self.gaussian.max_radii2D[self.visibility_filter],
-                self.radii[self.visibility_filter],
-            )
-            self.gaussian.add_densification_stats(
-                self.viewspace_point_tensor.grad, self.visibility_filter
-            )
-
-            if step > 0 and step % self.densification_interval.value == 0:
-                self.gaussian.densify_and_prune(
-                    max_grad=1e-7,
-                    max_densify_percent=self.max_densify_percent.value,
-                    min_opacity=self.min_opacity.value,
-                    extent=self.cameras_extent,
-                    max_screen_size=5,
-                )
     
+    def render_DGE(self, batch: Dict[str, Any], renderbackground=None, local=False) -> Dict[str, Any]:
+        if renderbackground is None:
+            renderbackground = self.background_tensor
+        images = []
+        depths = []
+        semantics = []
+        masks = []
+        self.viewspace_point_list = []
+        self.gaussian.localize = local
+        for id, cam in enumerate(batch["camera"]):
+
+            render_pkg = render(cam, self.gaussian, self.pipe, renderbackground)
+            image, viewspace_point_tensor, _, radii = (
+                render_pkg["render"],
+                render_pkg["viewspace_points"],
+                render_pkg["visibility_filter"],
+                render_pkg["radii"],
+            )
+            self.viewspace_point_list.append(viewspace_point_tensor)
+
+            if id == 0:
+                self.radii = radii
+            else:
+                self.radii = torch.max(radii, self.radii)
+
+            depth = render_pkg["depth_3dgs"]
+            depth = depth.permute(1, 2, 0)
+
+            semantic_map = render(
+                cam,
+                self.gaussian,
+                self.pipe,
+                renderbackground,
+                override_color=self.gaussian.mask[..., None].float().repeat(1, 3),
+            )["render"]
+            semantic_map = torch.norm(semantic_map, dim=0)
+            semantic_map = semantic_map > 0.8
+            semantic_map_viz = image.detach().clone()
+            semantic_map_viz = semantic_map_viz.permute(
+                1, 2, 0
+            )  # 3 512 512 to 512 512 3
+            semantic_map_viz[semantic_map] = 0.40 * semantic_map_viz[
+                semantic_map
+            ] + 0.60 * torch.tensor([1.0, 0.0, 0.0], device="cuda")
+            semantic_map_viz = semantic_map_viz.permute(
+                2, 0, 1
+            )  # 512 512 3 to 3 512 512
+
+            semantics.append(semantic_map_viz)
+            masks.append(semantic_map)
+            image = image.permute(1, 2, 0)
+            images.append(image)
+            depths.append(depth)
+
+        self.gaussian.localize = False  # reverse
+
+        images = torch.stack(images, 0)
+        depths = torch.stack(depths, 0)
+        semantics = torch.stack(semantics, dim=0)
+        masks = torch.stack(masks, dim=0)
+
+        render_pkg["semantic"] = semantics
+        render_pkg["masks"] = masks
+        self.visibility_filter = self.radii > 0.0
+        render_pkg["comp_rgb"] = images
+        render_pkg["depth"] = depths
+        render_pkg["opacity"] = depths / (depths.max() + 1e-5)
+        return {
+            **render_pkg,
+        }
+
     def configure_optimizers(self):
         opt = OptimizationParams(
             parser = ArgumentParser(description="Training script parameters"),

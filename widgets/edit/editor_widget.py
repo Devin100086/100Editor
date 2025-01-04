@@ -1,14 +1,103 @@
+import os
 import subprocess
+import pickle
 from imgui_bundle import imgui
-import tkinter as tk
-from tkinter import filedialog
+from EditorGS.gaussiansplatting.scene.cameras import CustomCam             
+from EditorGS.GUIEditor.train_coarse_add import TrainCoarseAdd                                        
 from lumina3D_utils.gui_utils import imgui_utils
 from lumina3D_utils.gui_utils.easy_imgui import label
+
+from diffusers import StableDiffusionBrushNetPipeline, BrushNetModel, UniPCMultistepScheduler
+from diffusers.image_processor  import VaeImageProcessor
+import torch
+import cv2
+import sys
+
+from shap_e.diffusion.sample import sample_latents
+from shap_e.diffusion.gaussian_diffusion import diffusion_from_config
+from shap_e.models.download import load_model, load_config
+from shap_e.util.notebooks import create_pan_cameras, decode_latent_images, gif_widget
+from shap_e.util.notebooks import decode_latent_mesh
+
 from widgets.widget import Widget
 import glfw
 from PIL import Image
 import numpy as np
 from OpenGL.GL import *
+
+def BrushEdit_Pipeline(pipe, 
+                    prompts,
+                    mask_np,
+                    original_image, 
+                    generator,
+                    num_inference_steps,
+                    guidance_scale,
+                    control_strength,
+                    negative_prompt,
+                    blending):
+    if mask_np.ndim != 3:
+        mask_np = mask_np[:, :, np.newaxis]
+
+    mask_np = mask_np / 255
+    height, width = mask_np.shape[0], mask_np.shape[1]
+    ## resize the mask and original image to the same size which is divisible by vae_scale_factor
+    image_processor = VaeImageProcessor(vae_scale_factor=pipe.vae_scale_factor, do_convert_rgb=True)
+    height_new, width_new = image_processor.get_default_height_width(original_image, height, width)
+    mask_np = cv2.resize(mask_np, (width_new, height_new))[:,:,np.newaxis]
+    mask_blurred = cv2.GaussianBlur(mask_np*255, (21, 21), 0)/255
+    mask_blurred = mask_blurred[:, :, np.newaxis]
+
+    original_image = cv2.resize(original_image, (width_new, height_new))
+
+    init_image = original_image * (1 - mask_np)
+    init_image = Image.fromarray(init_image.astype(np.uint8)).convert("RGB")
+    mask_image = Image.fromarray((mask_np.repeat(3, -1) * 255).astype(np.uint8)).convert("RGB")
+
+    brushnet_conditioning_scale = float(control_strength)
+    
+    images = pipe(
+        prompts, 
+        init_image, 
+        mask_image, 
+        num_inference_steps=num_inference_steps, 
+        guidance_scale=guidance_scale,
+        generator=generator,
+        brushnet_conditioning_scale=brushnet_conditioning_scale,
+        negative_prompt=negative_prompt,
+        height=height_new,
+        width=width_new,
+    ).images
+
+    ## convert to vae shape format, must be divisible by 8
+    original_image_pil = Image.fromarray(original_image).convert("RGB")
+    init_image_np = np.array(image_processor.preprocess(original_image_pil, height=height_new, width=width_new).squeeze())
+    init_image_np = ((init_image_np.transpose(1,2,0) + 1.) / 2.) * 255
+    init_image_np = init_image_np.astype(np.uint8)
+    if blending:
+        mask_blurred = mask_blurred * 0.5 + 0.5
+        image_all = []
+        for image_i in images:
+            image_np = np.array(image_i)
+            ## blending
+            image_pasted = init_image_np * (1 - mask_blurred) + mask_blurred * image_np
+            image_pasted = image_pasted.astype(np.uint8)
+            image = Image.fromarray(image_pasted)
+            image_all.append(image)
+    else:
+        image_all = images
+
+
+    return image_all, mask_image, mask_np, init_image_np
+
+class Config:
+    def __init__(self, ply_file_path, data_source, mask_prompt, edit_train_steps, left_up, right_down, zoom):
+        self.gs_source = ply_file_path
+        self.colmap_dir = data_source
+        self.text_prompt = mask_prompt
+        self.edit_train_steps = edit_train_steps
+        self.left_up = [-1,-1] if left_up == None else (int(left_up[0]), int(left_up[1]))
+        self.right_down = [-1,-1] if right_down == None else (int(right_down[0]), int(right_down[1]))
+        self.zoom = -1 if zoom == None else zoom
 
  
 class EditorWidget(Widget):
@@ -34,21 +123,31 @@ class EditorWidget(Widget):
         self.text_edit_trainer = None
 
         # mask-edit
-        self.mask_prompt = "turn him a clown"
+        self.mask_prompt = "add a red hat"
         self.mask = False
         self.start_rec_pos = None
         self.end_rec_pos = None
         self.rec_start = None 
         self.rec_end = None
         self.drawing_rect = False
+        self.mask_edit_trainer = None
+        self.traincoarseadd = None
+        self.depth = 1
 
         # sketch-edit
         self.points = []
         self.current_color = [1.0, 1.0, 1.0, 1.0]
         self.line_width = 2.0
-        self.sketch_prompt = "turn him a clown"
+        self.sketch_prompt = "a man wear a wreath on head"
+        self.negative_prompt = "ugly, low quality"
+        self.generate_3D_prompt = "a red hat"
         self.is_drawing = False
         self.turn_camera = False
+        self.sketch_edit_trainer = None
+        self.seed = 1
+        self.single_image = None
+        self.edit_single = False
+        self.segmentation_prompt = "hat"
         
 
         self.draw_image = False
@@ -133,7 +232,7 @@ class EditorWidget(Widget):
                     label("Paint Mask", viz.label_w)
                     changed, self.mask = imgui.checkbox("##Mask", self.mask)
                     label("prompt", viz.label_w)
-                    changed, self.sketch_prompt = imgui.input_text("##Prompt", self.sketch_prompt, 256)
+                    changed, self.mask_prompt = imgui.input_text("##Prompt", self.mask_prompt, 256)
                     self.text_change = True if imgui.is_item_active() else False
                     if not self.mask and not self.text_change and self.judge_move():  
                         self.draw_image = False
@@ -142,17 +241,78 @@ class EditorWidget(Widget):
                         self.draw_mask()
                         self.draw_image = True
                         imgui.begin_disabled()
-                        if imgui_utils.button("Edit", width=viz.button_w):
+                        if imgui_utils.button("Add", width=viz.button_w):
                             pass
                         imgui.end_disabled()    
                     else:
                         edit_image = True
-                        if imgui_utils.button("Edit", width=viz.button_w):
-                            self.edit3D = False
+                        if imgui_utils.button("Add", width=viz.button_w):
+                            cache_dir = "tmp_edit"
+                            os.makedirs("tmp_edit", exist_ok=True)
                             mask = self.get_mask(viz.origin_image, viz.edit_image)
-                            mask.save("mask.png")
-                            viz.origin_image.save("origin.png")
+                            mask.save(f"{cache_dir}/mask.png")
+                            origin = Image.fromarray(viz.result.image).convert("RGB")
+                            origin.save(f"{cache_dir}/origin.png")
+                            left_up = [self.rec_start[0]-viz.pane_w, self.rec_start[1]]
+                            right_down = [self.rec_end[0]-viz.pane_w, self.rec_end[1]]
+                            zoom = min((viz.content_width - viz.pane_w) / viz._tex_obj.width, viz.content_height / viz._tex_obj.height)
+                            R = viz.extr.inverse()[:3, :3].T.numpy()
+                            T = viz.extr.inverse()[:3, 3].numpy()
+                            fov_rad = viz.fov / 360 * 2 * np.pi
+                            cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
+                            with open(f'{cache_dir}/camera.pkl', 'wb') as f:
+                                pickle.dump(cam, f)     
                             
+                            cfg = Config(
+                                ply_file_path=viz.args.ply_file_paths[0],
+                                data_source=viz.args.data_source,
+                                mask_prompt=self.mask_prompt,
+                                edit_train_steps=self.edit_train_steps,
+                                left_up=left_up,
+                                right_down=right_down,
+                                zoom=zoom,
+                            )
+                            self.traincoarseadd = TrainCoarseAdd(cfg=cfg)  
+                            self.traincoarseadd.add(cam)
+                            self.rec_start, self.rec_end = None, None
+
+                    imgui.separator()
+                    label("Depth", viz.label_w)
+                    _, self.depth = imgui.slider_float("##Depth", self.depth, 0, 10, format="%.1f")
+                    if os.path.exists("tmp_add/inpaint_gs.obj"):
+                        if imgui_utils.button("Show", width=viz.button_w): 
+                            self.edit3D = True 
+                            origin = Image.fromarray(viz.result.image).convert("RGB")
+                            R = viz.extr.inverse()[:3, :3].T.numpy()
+                            T = viz.extr.inverse()[:3, 3].numpy()
+                            fov_rad = viz.fov / 360 * 2 * np.pi
+                            cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
+                            with open(f'tmp_edit/camera.pkl', 'wb') as f:
+                                pickle.dump(cam, f)    
+
+                            if self.mask_edit_trainer != None:
+                                self.mask_edit_trainer.terminate()
+                                self.mask_edit_trainer.wait()   
+        
+                            self.mask_edit_trainer = subprocess.Popen([
+                                "python", 
+                                "EditorGS/GUIEditor/train_coarse_add.py", 
+                                "--gs_source",str(viz.args.ply_file_paths[0]),
+                                "--colmap_dir",str(viz.args.data_source),
+                                "--depth", str(self.depth),
+                                "--text_prompt", "",
+                                "--edit_train_steps", "-1",
+                                "--left_up", "-1","-1",
+                                "--right_down", "-1","-1",
+                                "--zoom", "-1",
+                                "--cam_dir",str(f"tmp_edit/camera.pkl"),
+                            ])
+                    else:
+                        imgui.begin_disabled()
+                        if imgui_utils.button("Show", width=viz.button_w):
+                            pass
+                        imgui.end_disabled()
+
                     imgui.end_tab_item()
                 
                 if imgui.begin_tab_item("sketch")[0]:
@@ -167,25 +327,186 @@ class EditorWidget(Widget):
 
                     label("prompt", viz.label_w)
                     changed, self.sketch_prompt = imgui.input_text("##Prompt", self.sketch_prompt, 256)
+                    label("Negative Prompt", viz.label_w)
+                    changed, self.negative_prompt = imgui.input_text("##Negative Prompt", self.negative_prompt, 256)
                     self.text_change = True if imgui.is_item_active() else False
                     if not self.turn_camera and not self.text_change and self.judge_move():  
                         self.draw_image = False
                         self.points = []
-                    if self.turn_camera:
-                        self.handle_mouse_input()
-                        self.draw_image = True
+
+                    label("Generate 3D Prompt", viz.label_w)
+                    changed, self.generate_3D_prompt = imgui.input_text("##3D Prompt", self.generate_3D_prompt, 256)
+                    if imgui_utils.button("Generate", width=viz.button_w):
+                        self.generate3D()
+
+                    if not self.turn_camera:
                         imgui.begin_disabled()
                         if imgui_utils.button("Edit", width=viz.button_w):
                             pass
                         imgui.end_disabled()    
+                        
+                        label("Depth", viz.label_w)
+                        _, self.depth = imgui.slider_float("##Depth", self.depth, 0, 10, format="%.2f")
+                        if os.path.exists("tmp_add/inpaint_gs.obj"):
+                            if imgui_utils.button("Show", width=viz.button_w): 
+                                self.edit_single = False
+                                self.edit3D = True 
+                                origin = Image.fromarray(viz.result.image).convert("RGB")
+                                R = viz.extr.inverse()[:3, :3].T.numpy()
+                                T = viz.extr.inverse()[:3, 3].numpy()
+                                fov_rad = viz.fov / 360 * 2 * np.pi
+                                cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
+                                with open(f'tmp_edit/camera.pkl', 'wb') as f:
+                                    pickle.dump(cam, f)    
+
+                                if self.mask_edit_trainer != None:
+                                    self.mask_edit_trainer.terminate()
+                                    self.mask_edit_trainer.wait()   
+            
+                                self.mask_edit_trainer = subprocess.Popen([
+                                    "python", 
+                                    "EditorGS/GUIEditor/train_coarse_add.py", 
+                                    "--gs_source",str(viz.args.ply_file_paths[0]),
+                                    "--colmap_dir",str(viz.args.data_source),
+                                    "--depth", str(self.depth),
+                                    "--text_prompt", "",
+                                    "--edit_train_steps", "-1",
+                                    "--left_up", "-1","-1",
+                                    "--right_down", "-1","-1",
+                                    "--zoom", "-1",
+                                    "--cam_dir",str(f"tmp_edit/camera.pkl"),
+                                ])
+                        else:
+                            imgui.begin_disabled()
+                            if imgui_utils.button("Show", width=viz.button_w):
+                                pass
+                            imgui.end_disabled()
+
+
                     else:
+                        self.handle_mouse_input()
+                        self.draw_image = True
                         edit_image = True
+                        label("Seed", viz.label_w)
+                        _, self.seed = imgui.slider_int("##Seed", self.seed, 0, 10, format="%d")
                         if imgui_utils.button("Edit", width=viz.button_w):
                             self.edit3D = False
+                            self.edit_single = True
                             mask = self.get_mask(viz.origin_image, viz.edit_image)
-                            mask.save("mask.png")
-                            viz.edit_image.save("edit.png")
-                            viz.origin_image.save("origin.png")
+                            cache_dir = "tmp_edit"
+                            os.makedirs("tmp_edit", exist_ok=True)
+                            mask = self.get_mask(viz.origin_image, viz.edit_image)
+                            mask.save(f"{cache_dir}/mask.png")
+                            origin = Image.fromarray(viz.result.image).convert("RGB")
+                            origin.save(f"{cache_dir}/origin.png")
+
+                            self.single_image = self.edit_single_image(
+                                                      prompts = self.sketch_prompt,
+                                                      negative_prompt = self.negative_prompt,
+                                                      seed = self.seed,
+                                                      image_path = f"{cache_dir}/origin.png",
+                                                      mask_path = f"{cache_dir}/mask.png")
+                            self.points = []
+
+                        imgui.separator()
+
+                        label("Segmentation", viz.label_w)
+                        changed, self.segmentation_prompt = imgui.input_text("##Segmentation", self.segmentation_prompt, 256)
+                        if imgui_utils.button("Mesh", width=viz.button_w):
+                            cache_dir = "tmp_edit"
+                            os.makedirs("tmp_edit", exist_ok=True)
+                            origin = Image.fromarray(viz.result.image).convert("RGB")
+                            origin.save(f"{cache_dir}/origin.png")
+                            cfg = Config(
+                                ply_file_path=viz.args.ply_file_paths[0],
+                                data_source=viz.args.data_source,
+                                mask_prompt=self.mask_prompt,
+                                edit_train_steps=self.edit_train_steps,
+                                left_up=None,
+                                right_down=None,
+                                zoom=None,
+                            )
+                            self.traincoarseadd = TrainCoarseAdd(cfg=cfg)  
+                            self.traincoarseadd.add_sketch(origin, self.segmentation_prompt)                                
+
+                        imgui.separator()
+                        
+                        label("Depth", viz.label_w)
+                        _, self.depth = imgui.slider_float("##Depth", self.depth, 0, 10, format="%.2f")
+                        if os.path.exists("tmp_add/inpaint_gs.obj"):
+                            if imgui_utils.button("Show", width=viz.button_w): 
+                                self.edit_single = False
+                                self.edit3D = True 
+                                origin = Image.fromarray(viz.result.image).convert("RGB")
+                                R = viz.extr.inverse()[:3, :3].T.numpy()
+                                T = viz.extr.inverse()[:3, 3].numpy()
+                                fov_rad = viz.fov / 360 * 2 * np.pi
+                                cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
+                                with open(f'tmp_edit/camera.pkl', 'wb') as f:
+                                    pickle.dump(cam, f)    
+
+                                if self.mask_edit_trainer != None:
+                                    self.mask_edit_trainer.terminate()
+                                    self.mask_edit_trainer.wait()   
+            
+                                self.mask_edit_trainer = subprocess.Popen([
+                                    "python", 
+                                    "EditorGS/GUIEditor/train_coarse_add.py", 
+                                    "--gs_source",str(viz.args.ply_file_paths[0]),
+                                    "--colmap_dir",str(viz.args.data_source),
+                                    "--depth", str(self.depth),
+                                    "--text_prompt", "",
+                                    "--edit_train_steps", "-1",
+                                    "--left_up", "-1","-1",
+                                    "--right_down", "-1","-1",
+                                    "--zoom", "-1",
+                                    "--cam_dir",str(f"tmp_edit/camera.pkl"),
+                                ])
+                        else:
+                            imgui.begin_disabled()
+                            if imgui_utils.button("Show", width=viz.button_w):
+                                pass
+                            imgui.end_disabled()
+                        
+                        imgui.separator()
+
+                        if imgui_utils.button("Edit3D", width=viz.button_w):
+                            if self.mask_edit_trainer != None:
+                                    self.mask_edit_trainer.terminate()
+                                    self.mask_edit_trainer.wait()   
+                            self.edit3D = True
+                            origin = Image.fromarray(viz.result.image).convert("RGB")
+                            cache_dir = "tmp_edit"
+                            R = viz.extr.inverse()[:3, :3].T.numpy()
+                            T = viz.extr.inverse()[:3, 3].numpy()
+                            fov_rad = viz.fov / 360 * 2 * np.pi
+                            cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
+                            with open(f'{cache_dir}/camera.pkl', 'wb') as f:
+                                pickle.dump(cam, f)     
+                            self.mask_edit_trainer = subprocess.Popen([
+                                "python", 
+                                "EditorGS/GUIEditor/train_fine_add.py", 
+                                "--gs_source",str(viz.args.ply_file_paths[0]),
+                                "--colmap_dir",str(viz.args.data_source),
+                                "--text_prompt", str(self.sketch_prompt),
+                                "--negative_prompt", str(self.negative_prompt),
+                                "--edit_train_steps", str(self.edit_train_steps),
+                                "--mask_dir", str(f"{cache_dir}/mask.png"),
+                                "--cam_dir",str(f"{cache_dir}/camera.pkl"),
+
+                                "--edit_cam_num", str(self.edit_cam_num),
+                                "--guidance_type", str(self.guidance_type[self.guidance_item]),
+                                "--per_editing_step", str(self.per_editing_step),
+                                "--edit_begin_step", str(self.edit_begin_step),
+                                "--edit_until_step", str(self.edit_until_step),
+                                "--lambda_l1", str(self.lambda_l1),
+                                "--lambda_p", str(self.lambda_p),
+                                "--lambda_anchor_color", str(self.lambda_anchor_color),
+                                "--lambda_anchor_geo", str(self.lambda_anchor_geo),
+                                "--lambda_anchor_scale", str(self.lambda_anchor_scale),
+                                "--lambda_anchor_opacity", str(self.lambda_anchor_opacity)
+                            ])
+                    
                     imgui.end_tab_item()
 
             imgui.end_tab_bar()   
@@ -193,6 +514,8 @@ class EditorWidget(Widget):
         viz.args.text_change = self.text_change
         viz.args.draw_image = self.draw_image
         viz.args.edit3D = self.edit3D
+        viz.args.edit_single = self.edit_single
+        viz.args.single_image = self.single_image
 
         viz.args.rec_start = self.rec_start
         viz.args.rec_end = self.rec_end
@@ -265,10 +588,113 @@ class EditorWidget(Widget):
         else:
             self.rec_start, self.rec_end = None, None
     
+    def edit_single_image(self, prompts, negative_prompt, seed, image_path, mask_path):
+        BrushEdit_path = ".cache/models/"
+
+        base_model_path = os.path.join(BrushEdit_path, "base_model/realisticVisionV60B1_v51VAE")
+        torch_dtype = torch.float16
+        brushnet_path = os.path.join(BrushEdit_path, "brushnetX")
+
+
+        brushnet = BrushNetModel.from_pretrained(brushnet_path, torch_dtype=torch_dtype, cache_dir=None)
+        pipe = StableDiffusionBrushNetPipeline.from_pretrained(
+                base_model_path, brushnet=brushnet, torch_dtype=torch_dtype, low_cpu_mem_usage=False
+            )
+        # speed up diffusion process with faster scheduler and memory optimization
+        pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+        # remove following line if xformers is not installed or when using Torch 2.0.
+        # pipe.enable_xformers_memory_efficient_attention()
+        pipe.enable_model_cpu_offload()
+
+        generator = torch.Generator("cuda").manual_seed(seed)
+        num_inference_steps = 50
+        guidance_scale = 7.5
+        control_strength = 1
+        num_samples = 1
+        blending = True
+
+        image = Image.open(f"{image_path}")
+        original_image = np.array(image)
+        mask_image = Image.open(f"{mask_path}").convert('L')  # 'L'表示灰度模式
+        # mask = np.ones((image.size[1], image.size[0]), dtype=np.uint8) * 255
+        # mask_image = Image.fromarray(mask)
+        mask_np = np.array(mask_image)
+        negative_prompt = "ugly, low quality"
+
+        result,_,_,_ = BrushEdit_Pipeline(pipe, 
+                                        prompts,
+                                        mask_np,
+                                        original_image, 
+                                        generator,
+                                        num_inference_steps,
+                                        guidance_scale,
+                                        control_strength,
+                                        negative_prompt,
+                                        blending)  
+        del brushnet
+        del pipe
+        return np.array(result[0])
+
+    def generate3D(self):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        xm = load_model('transmitter', device=device)
+        model = load_model('text300M', device=device)
+        diffusion = diffusion_from_config(load_config('diffusion'))
+
+        latents = sample_latents(
+            batch_size=1,
+            model=model,
+            diffusion=diffusion,
+            guidance_scale=15.0,
+            model_kwargs=dict(texts=[self.generate_3D_prompt]),
+            progress=True,
+            clip_denoised=True,
+            use_fp16=True,
+            use_karras=True,
+            karras_steps=64,
+            sigma_min=1e-3,
+            sigma_max=160,
+            s_churn=0,
+        )
+        
+        mesh_path = "tmp_add/inpaint_mesh.obj"
+        gs_path = "tmp_add/inpaint_gs.obj"
+
+        for i, latent in enumerate(latents):
+            t = decode_latent_mesh(xm, latent).tri_mesh()
+            with open(mesh_path, 'w') as f:
+                t.write_obj(f)
+        
+
+
+        del xm
+        del model
+        del diffusion
+
+        p3 = subprocess.Popen(
+            [
+                f"{sys.prefix}/bin/python",
+                "train_from_mesh.py",
+                "--mesh",
+                mesh_path,
+                "--save_path",
+                gs_path,
+                "--prompt",
+                "",
+            ]
+        )
+        p3.wait()
+
     def close(self):
         if self.text_edit_trainer != None:
             self.text_edit_trainer.terminate()
             self.text_edit_trainer.wait()
+        if self.mask_edit_trainer != None:
+            self.mask_edit_trainer.terminate()
+            self.mask_edit_trainer.wait()
+        if self.sketch_edit_trainer != None:
+            self.sketch_edit_trainer.terminate()
+            self.sketch_edit_trainer.wait()
         super().close()
 
 

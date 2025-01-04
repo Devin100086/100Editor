@@ -1,3 +1,4 @@
+.cache/
 datasets/
 *.jpg
 submodules
@@ -12,3 +13,4 @@ wonder3D/ckpts
 threestudio/utils/wonder3D/instant-nsr-pl/exp
 edit_cache/
 *.pth
+tmp_add/

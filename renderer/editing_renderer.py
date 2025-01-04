@@ -58,7 +58,7 @@ class EditingRenderer(Renderer):
         try:
             current_bytes = 0
             expected_bytes = resolution * resolution * 3
-            try_counter = 10
+            try_counter = 50
             counter = 0
             message = bytes()
             while current_bytes < expected_bytes:
@@ -140,7 +140,7 @@ class EditingRenderer(Renderer):
             "keep_alive": True,
             "scaling_modifier": 1,
             "view_matrix": world_view_transform.cpu().numpy().flatten().tolist(),
-            "view_projection_matrix": full_proj_transform.cpu().numpy().flatten().tolist(),
+            "view_projection_matrix": full_proj_transform.float().cpu().numpy().flatten().tolist(),
             "slider": slider,
             "single_training_step": single_training_step,
             "stop_at_value": stop_at_value, 

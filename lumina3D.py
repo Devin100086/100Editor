@@ -252,6 +252,9 @@ class Lumina3D(imgui_window.ImguiWindow):
                     result = self.renderer.result
                     if result is not None:
                         self.result = result
+
+                    if self.args.edit_single:
+                        self.result.image = self.args.single_image
             
             if imgui.begin_tab_item("other")[0]:
                 for widget in self.other_widgets:

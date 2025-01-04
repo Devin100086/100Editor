@@ -32,20 +32,25 @@ def load_mesh_as_pcd_trimesh(mesh_file, num_points):
     mesh = as_mesh(trimesh.load_mesh(mesh_file))
     n = num_points
     points = []
+    colors = []
     while n > 0:
-        p, _ = trimesh.sample.sample_surface_even(mesh, n)
+        p, _, c = trimesh.sample.sample_surface(mesh, n, sample_color=True)
         n -= p.shape[0]
         if n >= 0:
             points.append(p)
+            colors.append(c)
         else:
             points.append(p[:n])
+            colors.append(c[:n])
     if len(points) > 1:
         points = np.concatenate(points, axis=0)
+        colors = np.concatenate(colors, axis=0)
     else:
         points = points[0]
+        colors = colors[0]
     points = torch.from_numpy(points.astype(np.float32))
-
-    return points, torch.rand_like(points)
+    colors = torch.from_numpy(colors[:, :3].astype(np.float32)/ 255.0)
+    return points, colors
 
 
 def get_random_poses(num_images, camera_dist, coord="opengl"):
