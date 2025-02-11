@@ -115,6 +115,7 @@ class EditorWidget(Widget):
         self.edit_begin_step = 0
         self.edit_cam_num = 48
         self.edit_train_steps = 1500
+        self.cameara_update_step = 500
         
         # text-edit
         self.guidance_type = ["InstructPix2Pix","ControlNet-Pix2Pix"]
@@ -134,7 +135,8 @@ class EditorWidget(Widget):
         self.traincoarseadd = None
         self.depth = 1
 
-        # sketch-edit
+        # adding
+        self.editing_option = 0
         self.points = []
         self.current_color = [1.0, 1.0, 1.0, 1.0]
         self.line_width = 2.0
@@ -148,7 +150,7 @@ class EditorWidget(Widget):
         self.single_image = None
         self.edit_single = False
         self.segmentation_prompt = "hat"
-        
+        self.video_editing = True
 
         self.draw_image = False
         self.edit3D = False
@@ -165,6 +167,8 @@ class EditorWidget(Widget):
                     _, self.edit_cam_num = imgui.slider_int("##Camera Num", self.edit_cam_num, 12, 200, format="%d")
                     label("Total Step", viz.label_w)
                     _, self.edit_train_steps = imgui.slider_int("##Total Step", self.edit_train_steps, 0, 5000, format="%d")
+                    label("Cameara Update Step", viz.label_w)
+                    _, self.cameara_update_step = imgui.slider_int("##Cameara Update Step", self.cameara_update_step, 0, 5000, format="%d")
                     label("Lambda L1", viz.label_w)
                     _, self.lambda_l1 = imgui.slider_int("##Lambda L1", self.lambda_l1, 0, 100, format="%d")
                     label("Lambda Perceptual", viz.label_w)
@@ -315,39 +319,33 @@ class EditorWidget(Widget):
 
                     imgui.end_tab_item()
                 
-                if imgui.begin_tab_item("sketch")[0]:
+                if imgui.begin_tab_item("add")[0]:
                     self.rec_start = None
                     self.rec_end = None
-                    changed, self.line_width = imgui.slider_float("width", self.line_width, 1.0, 10.0)
-                    _, self.current_color = imgui.color_edit4("color choice", self.current_color)
-                    if imgui.button("clear"):
-                        self.points = []
-                    label("Painting", viz.label_w)
-                    changed, self.turn_camera = imgui.checkbox("##painting", self.turn_camera)
+                    label("Add Option", viz.label_w)
+                    if imgui.radio_button("Sketch", self.editing_option == 0):
+                        self.editing_option = 0
+                    imgui.same_line()
+                    if imgui.radio_button("Text", self.editing_option == 1):
+                        self.editing_option = 1
 
-                    label("prompt", viz.label_w)
-                    changed, self.sketch_prompt = imgui.input_text("##Prompt", self.sketch_prompt, 256)
-                    label("Negative Prompt", viz.label_w)
-                    changed, self.negative_prompt = imgui.input_text("##Negative Prompt", self.negative_prompt, 256)
-                    self.text_change = True if imgui.is_item_active() else False
-                    if not self.turn_camera and not self.text_change and self.judge_move():  
-                        self.draw_image = False
-                        self.points = []
+                    if self.editing_option == 0:
+                        label("Painting", viz.label_w)
+                        _, self.turn_camera = imgui.checkbox("##painting", self.turn_camera)
+                        if not self.turn_camera and self.judge_move():  
+                            self.draw_image = False
+                            self.points = []
 
-                    label("Generate 3D Prompt", viz.label_w)
-                    changed, self.generate_3D_prompt = imgui.input_text("##3D Prompt", self.generate_3D_prompt, 256)
-                    if imgui_utils.button("Generate", width=viz.button_w):
-                        self.generate3D()
+                    elif self.editing_option == 1:
+                        label("Generate 3D Prompt", viz.label_w)
+                        _, self.generate_3D_prompt = imgui.input_text("##3D Prompt", self.generate_3D_prompt, 256)
+                        if imgui_utils.button("Generate", width=viz.button_w):
+                            self.generate3D()
 
-                    if not self.turn_camera:
-                        imgui.begin_disabled()
-                        if imgui_utils.button("Edit", width=viz.button_w):
-                            pass
-                        imgui.end_disabled()    
-                        
+                    if not self.turn_camera or self.editing_option == 1:   
                         label("Depth", viz.label_w)
                         _, self.depth = imgui.slider_float("##Depth", self.depth, 0, 10, format="%.2f")
-                        if os.path.exists("tmp_add/inpaint_gs.obj"):
+                        if os.path.exists("tmp_add/inpaint_gs.obj") and os.path.exists("tmp_edit/camera.pkl"):
                             if imgui_utils.button("Show", width=viz.button_w): 
                                 self.edit_single = False
                                 self.edit3D = True 
@@ -382,11 +380,22 @@ class EditorWidget(Widget):
                                 pass
                             imgui.end_disabled()
 
-
                     else:
+                        _, self.line_width = imgui.slider_float("width", self.line_width, 1.0, 10.0)
+                        _, self.current_color = imgui.color_edit4("color choice", self.current_color)
+                        if imgui.button("clear"):
+                            self.points = []
+                        imgui.separator()
+
                         self.handle_mouse_input()
                         self.draw_image = True
                         edit_image = True
+                        label("prompt", viz.label_w)
+                        _, self.sketch_prompt = imgui.input_text("##Prompt", self.sketch_prompt, 256)
+                        label("Negative Prompt", viz.label_w)
+                        _, self.negative_prompt = imgui.input_text("##Negative Prompt", self.negative_prompt, 256)
+                        self.text_change = True if imgui.is_item_active() else False
+
                         label("Seed", viz.label_w)
                         _, self.seed = imgui.slider_int("##Seed", self.seed, 0, 10, format="%d")
                         if imgui_utils.button("Edit", width=viz.button_w):
@@ -428,12 +437,10 @@ class EditorWidget(Widget):
                             )
                             self.traincoarseadd = TrainCoarseAdd(cfg=cfg)  
                             self.traincoarseadd.add_sketch(origin, self.segmentation_prompt)                                
-
-                        imgui.separator()
                         
                         label("Depth", viz.label_w)
                         _, self.depth = imgui.slider_float("##Depth", self.depth, 0, 10, format="%.2f")
-                        if os.path.exists("tmp_add/inpaint_gs.obj"):
+                        if os.path.exists("tmp_add/inpaint_gs.obj") and os.path.exists("tmp_edit/camera.pkl"):
                             if imgui_utils.button("Show", width=viz.button_w): 
                                 self.edit_single = False
                                 self.edit3D = True 
@@ -470,6 +477,8 @@ class EditorWidget(Widget):
                         
                         imgui.separator()
 
+                        label("Video", viz.label_w)
+                        _, self.video_editing = imgui.checkbox("##Video", self.video_editing)
                         if imgui_utils.button("Edit3D", width=viz.button_w):
                             if self.mask_edit_trainer != None:
                                     self.mask_edit_trainer.terminate()
@@ -491,9 +500,9 @@ class EditorWidget(Widget):
                                 "--text_prompt", str(self.sketch_prompt),
                                 "--negative_prompt", str(self.negative_prompt),
                                 "--edit_train_steps", str(self.edit_train_steps),
+                                "--cameara_update_step", str(self.cameara_update_step),
                                 "--mask_dir", str(f"{cache_dir}/mask.png"),
-                                "--cam_dir",str(f"{cache_dir}/camera.pkl"),
-
+                                "--video", str(self.video_editing),
                                 "--edit_cam_num", str(self.edit_cam_num),
                                 "--guidance_type", str(self.guidance_type[self.guidance_item]),
                                 "--per_editing_step", str(self.per_editing_step),

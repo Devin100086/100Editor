@@ -1,40 +1,36 @@
-import os
 from dataclasses import dataclass
 
 import cv2
 import numpy as np
-from lang_sam import LangSAM
 import torch
 import torch.nn.functional as F
-from controlnet_aux import CannyDetector, NormalBaeDetector
-from diffusers import StableDiffusionBrushNetPipeline, BrushNetModel, UniPCMultistepScheduler, DDIMScheduler
+from diffusers import DDIMScheduler, StableDiffusionBrushNetPipeline, BrushNetModel, UniPCMultistepScheduler
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import randn_tensor
 from tqdm import tqdm
-from torchvision.transforms.functional import to_pil_image
 
 import threestudio
 from threestudio.models.prompt_processors.base import PromptProcessorOutput
 from threestudio.utils.base import BaseObject
 from threestudio.utils.misc import C, parse_version
 from threestudio.utils.typing import *
+import threestudio.utils.vidtome as vidtome
 
 
-@threestudio.register("stable-diffusion-BrushNetx-guidance")
+@threestudio.register("stable-diffusion-brushnet-guidance")
 class BrushNetGuidance(BaseObject):
     @dataclass
     class Config(BaseObject.Config):
         cache_dir: Optional[str] = None
-        BrushEdit_path: str = ".cache/models/"
-
-        pretrained_model_name_or_path: str = os.path.join(BrushEdit_path, "base_model/realisticVisionV60B1_v51VAE")
         ddim_scheduler_name_or_path: str = "runwayml/stable-diffusion-v1-5"
+        pretrained_model_name_or_path: str = ".cache/models/base_model/realisticVisionV60B1_v51VAE"
 
         enable_memory_efficient_attention: bool = False
         enable_sequential_cpu_offload: bool = False
         enable_attention_slicing: bool = False
         enable_channels_last_format: bool = False
         guidance_scale: float = 7.5
-        condition_scale: float = 1.5
+        condition_scale: float = 1
         grad_clip: Optional[
             Any
         ] = None  # field(default_factory=lambda: [0, 2.0, 8.0, 1000])
@@ -51,21 +47,10 @@ class BrushNetGuidance(BaseObject):
 
     cfg: Config
 
-    def make_inpaint_condition(self,image, image_mask):
-        image = np.array(image.convert("RGB")).astype(np.float32) / 255.0
-        image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
-
-        assert image.shape[0:1] == image_mask.shape[0:1], "image and image_mask must have the same image size"
-        image[image_mask > 0.5] = -1.0  # set as masked pixel
-        image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
-        image = torch.from_numpy(image)
-        return image
-
     def configure(self) -> None:
         threestudio.info(f"Loading BrushNetX ...")
 
-        brushnet_name_or_path: str
-        brushnet_name_or_path = os.path.join(self.cfg.BrushEdit_path, "brushnetX")
+        brushnet_name_or_path: str = ".cache/models/brushnetX"
 
         self.weights_dtype = (
             torch.float16 if self.cfg.half_precision_weights else torch.float32
@@ -84,20 +69,20 @@ class BrushNetGuidance(BaseObject):
             torch_dtype=self.weights_dtype,
             cache_dir=self.cfg.cache_dir,
         )
+
         self.pipe = StableDiffusionBrushNetPipeline.from_pretrained(
             self.cfg.pretrained_model_name_or_path, brushnet=brushnet, **pipe_kwargs
         ).to(self.device)
-        self.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
 
-        # self.scheduler = DDIMScheduler.from_pretrained(
-        #     self.cfg.ddim_scheduler_name_or_path,
-        #     subfolder="scheduler",
-        #     torch_dtype=self.weights_dtype,
-        #     cache_dir=self.cfg.cache_dir,
-        # )
         # self.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
+        self.scheduler = DDIMScheduler.from_pretrained(
+            self.cfg.ddim_scheduler_name_or_path,
+            subfolder="scheduler",
+            torch_dtype=self.weights_dtype,
+            cache_dir=self.cfg.cache_dir,
+        )
         self.scheduler.set_timesteps(self.cfg.diffusion_steps)
-
+ 
         if self.cfg.enable_memory_efficient_attention:
             if parse_version(torch.__version__) >= parse_version("2"):
                 threestudio.info(
@@ -124,8 +109,6 @@ class BrushNetGuidance(BaseObject):
         self.unet = self.pipe.unet.eval()
         self.brushnet = self.pipe.brushnet.eval()
 
-        self.preprocessor = LangSAM()
-
         for p in self.vae.parameters():
             p.requires_grad_(False)
         for p in self.unet.parameters():
@@ -140,7 +123,23 @@ class BrushNetGuidance(BaseObject):
 
         self.grad_clip_val: Optional[float] = None
 
-        threestudio.info(f"Loaded BurshNetX!")
+        threestudio.info(f"Loaded BrushNet!")
+
+        self.chunk_size = 4
+        self.chunk_ord = "mix-4"
+        self.merge_global = True
+        self.local_merge_ratio = 0.9
+        self.global_merge_ratio = 0.8
+        self.global_rand =  0.5
+        self.seed = 123456
+        self.batch_size = 4
+        self.align_batch = True
+
+        # self.activate_vidtome()
+
+    def activate_vidtome(self):
+        vidtome.apply_patch(self.pipe, self.local_merge_ratio, self.merge_global, self.global_merge_ratio, 
+            seed = self.seed, batch_size = self.batch_size, align_batch = self.align_batch, global_rand = self.global_rand)   
 
     @torch.cuda.amp.autocast(enabled=False)
     def set_min_max_steps(self, min_step_percent=0.02, max_step_percent=0.98):
@@ -148,11 +147,11 @@ class BrushNetGuidance(BaseObject):
         self.max_step = int(self.num_train_timesteps * max_step_percent)
 
     @torch.cuda.amp.autocast(enabled=False)
-    def forward_Brushnet(
+    def forward_brushnet(
         self,
         latents: Float[Tensor, "..."],
         t: Float[Tensor, "..."],
-        image_cond: Float[Tensor, "..."],
+        brushnet_cond: Float[Tensor, "..."],
         condition_scale: float,
         encoder_hidden_states: Float[Tensor, "..."],
     ) -> Float[Tensor, "..."]:
@@ -160,20 +159,22 @@ class BrushNetGuidance(BaseObject):
             latents.to(self.weights_dtype),
             t.to(self.weights_dtype),
             encoder_hidden_states=encoder_hidden_states.to(self.weights_dtype),
-            brushnet_cond=image_cond.to(self.weights_dtype),
+            brushnet_cond=brushnet_cond.to(self.weights_dtype),
             conditioning_scale=condition_scale,
             return_dict=False,
         )
 
+
     @torch.cuda.amp.autocast(enabled=False)
-    def forward_BrushNet_unet(
+    def forward_brushnet_unet(
         self,
         latents: Float[Tensor, "..."],
         t: Float[Tensor, "..."],
         encoder_hidden_states: Float[Tensor, "..."],
         cross_attention_kwargs,
-        down_block_additional_residuals,
-        mid_block_additional_residual,
+        down_block_res_samples,
+        mid_block_res_sample,
+        up_block_res_samples
     ) -> Float[Tensor, "..."]:
         input_dtype = latents.dtype
         return self.unet(
@@ -181,8 +182,9 @@ class BrushNetGuidance(BaseObject):
             t.to(self.weights_dtype),
             encoder_hidden_states=encoder_hidden_states.to(self.weights_dtype),
             cross_attention_kwargs=cross_attention_kwargs,
-            down_block_additional_residuals=down_block_additional_residuals,
-            mid_block_additional_residual=mid_block_additional_residual,
+            down_block_add_samples=down_block_res_samples,
+            mid_block_add_sample=mid_block_res_sample,
+            up_block_add_samples=up_block_res_samples,
         ).sample.to(input_dtype)
 
     @torch.cuda.amp.autocast(enabled=False)
@@ -220,63 +222,58 @@ class BrushNetGuidance(BaseObject):
     def edit_latents(
         self,
         text_embeddings: Float[Tensor, "BB 77 768"],
-        latents: Float[Tensor, "B 4 DH DW"],
-        image_cond: Float[Tensor, "B 3 H W"],
-        t: Int[Tensor, "B"],
+        latents: Float[Tensor, "B 5 DH DW"],
+        noise_latents: Float[Tensor, "B 4 DH DW"],
     ) -> Float[Tensor, "B 4 DH DW"]:
-        self.scheduler.config.num_train_timesteps = t.item()
+        # self.scheduler.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
         self.scheduler.set_timesteps(self.cfg.diffusion_steps)
         with torch.no_grad():
             # add noise
-            noise = torch.randn_like(latents)
-            latents = self.scheduler.add_noise(latents, noise, t)  # type: ignore
-
-            # sections of code used from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_instruct_pix2pix.py
+            # noise = torch.randn_like(latents)
+            # latents = self.scheduler.add_noise(latents, noise, t)  # type: ignore
             threestudio.debug("Start editing...")
+            # sections of code used from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_instruct_pix2pix.py
             for i, t in enumerate(self.scheduler.timesteps):
                 # predict the noise residual with unet, NO grad!
                 with torch.no_grad():
                     # pred noise
-                    latent_model_input = torch.cat([latents] * 2)
-                    (
-                        down_block_res_samples,
-                        mid_block_res_sample,
-                    ) = self.forward_Brushnet(
+                    latent_model_input = torch.cat([noise_latents] * 2)
+
+                    down_block_res_samples, mid_block_res_sample, up_block_res_samples = self.forward_brushnet(
                         latent_model_input,
                         t,
                         encoder_hidden_states=text_embeddings,
-                        image_cond=image_cond,
+                        brushnet_cond=latents,
                         condition_scale=self.cfg.condition_scale,
                     )
 
-                    noise_pred = self.forward_BrushNet_unet(
-                        latent_model_input,
-                        t,
+                    noise_pred = self.forward_brushnet_unet(
+                        latent_model_input, 
+                        t, 
                         encoder_hidden_states=text_embeddings,
                         cross_attention_kwargs=None,
-                        down_block_additional_residuals=down_block_res_samples,
-                        mid_block_additional_residual=mid_block_res_sample,
+                        down_block_res_samples=down_block_res_samples,
+                        mid_block_res_sample=mid_block_res_sample,
+                        up_block_res_samples=up_block_res_samples
                     )
+
                 # perform classifier-free guidance
                 noise_pred_text, noise_pred_uncond = noise_pred.chunk(2)
                 noise_pred = noise_pred_uncond + self.cfg.guidance_scale * (
                     noise_pred_text - noise_pred_uncond
                 )
+
                 # get previous sample, continue loop
-                latents = self.scheduler.step(noise_pred, t, latents).prev_sample
+                noise_latents = self.scheduler.step(noise_pred, t, noise_latents).prev_sample
             threestudio.debug("Editing finished.")
-        return latents
 
-    # def prepare_image_cond(self, cond_rgb: Float[Tensor, "B H W C"]):
-
-
-    #     return control
+        return noise_latents
 
     def compute_grad_sds(
         self,
         text_embeddings: Float[Tensor, "BB 77 768"],
         latents: Float[Tensor, "B 4 DH DW"],
-        image_cond: Float[Tensor, "B 3 H W"],
+        image_cond_latents: Float[Tensor, "B 4 DH DW"],
         t: Int[Tensor, "B"],
     ):
         with torch.no_grad():
@@ -284,46 +281,47 @@ class BrushNetGuidance(BaseObject):
             noise = torch.randn_like(latents)  # TODO: use torch generator
             latents_noisy = self.scheduler.add_noise(latents, noise, t)
             # pred noise
-            latent_model_input = torch.cat([latents_noisy] * 2)
-            down_block_res_samples, mid_block_res_sample = self.forward_controlnet(
-                latent_model_input,
-                t,
-                encoder_hidden_states=text_embeddings,
-                image_cond=image_cond,
-                condition_scale=self.cfg.condition_scale,
+            latent_model_input = torch.cat([latents_noisy] * 3)
+            latent_model_input = torch.cat(
+                [latent_model_input, image_cond_latents], dim=1
             )
 
-            noise_pred = self.forward_control_unet(
-                latent_model_input,
-                t,
-                encoder_hidden_states=text_embeddings,
-                cross_attention_kwargs=None,
-                down_block_additional_residuals=down_block_res_samples,
-                mid_block_additional_residual=mid_block_res_sample,
+            noise_pred = self.forward_unet(
+                latent_model_input, t, encoder_hidden_states=text_embeddings
             )
 
-        # perform classifier-free guidance
-        noise_pred_text, noise_pred_uncond = noise_pred.chunk(2)
-        noise_pred = noise_pred_uncond + self.cfg.guidance_scale * (
-            noise_pred_text - noise_pred_uncond
+        noise_pred_text, noise_pred_image, noise_pred_uncond = noise_pred.chunk(3)
+        noise_pred = (
+            noise_pred_uncond
+            + self.cfg.guidance_scale * (noise_pred_text - noise_pred_image)
+            + self.cfg.condition_scale * (noise_pred_image - noise_pred_uncond)
         )
 
         w = (1 - self.alphas[t]).view(-1, 1, 1, 1)
         grad = w * (noise_pred - noise)
         return grad
 
+    def prepare_latents(self,batch_size, generator, num_channels_latents, height, width, dtype, device):
+        vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        shape = (batch_size, num_channels_latents, height // vae_scale_factor, width // vae_scale_factor)
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        latents = noise * self.scheduler.init_noise_sigma
+
+        return latents, noise
+
+
     def __call__(
         self,
         rgb: Float[Tensor, "B H W C"],
-        cond_rgb: Float[Tensor, "B H W C"],
+        mask: Float[Tensor, "B H W C"],
+        generator: torch.Generator,
         prompt_utils: PromptProcessorOutput,
         **kwargs,
     ):
         batch_size, H, W, _ = rgb.shape
-        assert batch_size == 1
-        assert rgb.shape[:-1] == cond_rgb.shape[:-1]
 
         rgb_BCHW = rgb.permute(0, 3, 1, 2)
+        mask = mask.permute(0, 3, 1, 2)
         latents: Float[Tensor, "B 4 DH DW"]
         if self.cfg.fixed_size > 0:
             RH, RW = self.cfg.fixed_size, self.cfg.fixed_size
@@ -332,28 +330,40 @@ class BrushNetGuidance(BaseObject):
         rgb_BCHW_HW8 = F.interpolate(
             rgb_BCHW, (RH, RW), mode="bilinear", align_corners=False
         )
+
+        rgb_BCHW_HW8 = torch.cat([rgb_BCHW_HW8] * 2)
+        
+        mask = mask * 2 - 1
+        mask = torch.cat([mask] * 2)
+        mask=(mask.sum(1)[:,None,:,:] < 0).to(rgb_BCHW_HW8.dtype)
+
+        height, width = rgb_BCHW_HW8.shape[-2:]
+
+        noise_latents, noise = self.prepare_latents(
+                    batch_size,
+                    generator,
+                    self.unet.config.in_channels,
+                    height,
+                    width,
+                    rgb_BCHW_HW8.dtype,
+                    rgb_BCHW_HW8.device,
+                )
+
         latents = self.encode_images(rgb_BCHW_HW8)
+        
+        mask = F.interpolate(
+                    mask, 
+                    size = (latents.shape[-2], latents.shape[-1]),
+                    mode="bilinear"
+                )
 
-        # image_cond = self.prepare_image_cond(cond_rgb)
+        latents = torch.concat([latents, mask],1)
 
-        image_cond = F.interpolate(
-            image_cond, (RH, RW), mode="bilinear", align_corners=False
-        )
-
-        temp = torch.zeros(1).to(rgb.device)
+        temp = torch.zeros(batch_size).to(rgb.device)
         text_embeddings = prompt_utils.get_text_embeddings(temp, temp, temp, False)
 
-        # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
-        t = torch.randint(
-            self.min_step,
-            self.max_step + 1,
-            [batch_size],
-            dtype=torch.long,
-            device=self.device,
-        )
-
         if self.cfg.use_sds:
-            grad = self.compute_grad_sds(text_embeddings, latents, image_cond, t)
+            grad = self.compute_grad_sds(text_embeddings, latents, cond_latents, t)
             grad = torch.nan_to_num(grad)
             if self.grad_clip_val is not None:
                 grad = grad.clamp(-self.grad_clip_val, self.grad_clip_val)
@@ -366,7 +376,7 @@ class BrushNetGuidance(BaseObject):
                 "max_step": self.max_step,
             }
         else:
-            edit_latents = self.edit_latents(text_embeddings, latents, image_cond, t)
+            edit_latents = self.edit_latents(text_embeddings, latents, noise_latents)
             edit_images = self.decode_latents(edit_latents)
             edit_images = F.interpolate(edit_images, (H, W), mode="bilinear")
 

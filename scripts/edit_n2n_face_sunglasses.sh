@@ -1,8 +1,8 @@
 python launch.py \
-    --config "configs/edit-n2n.yaml" \
-    --train \
+    --config configs/edit-n2n.yaml \
+    --train --gpu 0 \
     trainer.max_steps=1500 \
-    system.prompt_processor.prompt="turn him into a clown" \
+    system.prompt_processor.prompt="A man add a sunglasses" \
     system.max_densify_percent=0.01 \
     system.anchor_weight_init_g0=0.05 \
     system.anchor_weight_init=0.1 \
@@ -20,4 +20,4 @@ python launch.py \
     system.loss.lambda_anchor_opacity=0 \
     system.densify_from_iter=100 \
     system.densify_until_iter=1501 \
-    system.densification_interval=100
+    system.densification_interval=100 \

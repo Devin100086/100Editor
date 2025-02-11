@@ -19,7 +19,7 @@ data:
   # elevation_range: [-10 , 80]
 system_type: "gsedit-system-edit"
 system:
-  gs_source: /home/wucunqi/Desktop/results/face/3DGS/point_cloud/iteration_7000/point_cloud.ply
+  gs_source: /home/wucunqi/Desktop/code/3D/gaussian-splatting/output/depth+appearance_pearson(total)/point_cloud/iteration_7000/point_cloud.ply
   per_editing_step: 10
   edit_begin_step: 0
   densify_until_iter: 200000
