@@ -4,7 +4,7 @@
 It is a 3D editing software that hopes to allow everyone to experience 3D editing. The software is currently under intensive development.
 
 ## ⭐Running
-To start the software, simply use
+To start the software, use
 ```
 python run_main.py
 ```
@@ -20,16 +20,21 @@ python run_main.py
 - [x] [2024/11/15]🎨Add the visualization of training parameters.
 - [x] [2024/11/16]🎨Add gsplat framework.
 - [x] [2024/11/23]🎨Add ema loss option.
-4. "Edit" Feature
+4. ❄️"Edit" Feature
 - [x] 🎨Add Text-driven 3D Editing.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
-- [ ] ❄️Add Sketch-based 3D Editing.
+- [ ] ❄️Add Sketch-based 3D Adding.
   - [x] 🎨Add the GUI.
-  - [ ] 🧊Add model inference.
-- [ ] ❄️Add Mask-based 3D Editing.
+  - [x] 🎨Add model inference.
+  - [ ] 🧊Optimize the initial model.
+- [x] ❄️Add Mask-based 3D Adding.
   - [x] 🎨Add the GUI.
-  - [ ] 🧊Add model inference.
+  - [x] 🎨Add model inference.
+- [ ] ❄️Add Sketch-based 3D Deleting.
+  - [x] 🎨Add the GUI.
+  - [x] 🎨Add model inference.
+  - [ ] 🧊Optimize the initial model.  
 5. "Other" Feature
 - [x] [2024/11/18]🎨Add fitting one single image.
 - [x] [2024/11/23]🎨Add ema loss option.
