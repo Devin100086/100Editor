@@ -114,7 +114,7 @@ class EditorWidget(Widget):
         self.per_editing_step = 10
         self.edit_begin_step = 0
         self.edit_cam_num = 48
-        self.edit_train_steps = 1500
+        self.edit_train_steps = 500
         self.cameara_update_step = 500
         
         # text-edit
@@ -151,6 +151,13 @@ class EditorWidget(Widget):
         self.edit_single = False
         self.segmentation_prompt = "hat"
         self.video_editing = True
+
+        # deleting
+        self.delete_prompt = "man"
+        self.inpaint_prompt = "wall"
+        self.inpaint_scale = 1.0
+        self.mask_dilate = 15
+        self.delete_trainer = None
 
         self.draw_image = False
         self.edit3D = False
@@ -518,6 +525,41 @@ class EditorWidget(Widget):
                     
                     imgui.end_tab_item()
 
+                if imgui.begin_tab_item("delete")[0]:
+                    label("Seg Prompt", viz.label_w)
+                    imgui.input_text("##Seg Prompt", self.delete_prompt, 256)
+                    label("Inpaint Prompt", viz.label_w)
+                    imgui.input_text("##Inpaint Prompt", self.inpaint_prompt, 256)
+                    label("Inpaint Scale", viz.label_w)
+                    _, self.inpaint_scale = imgui.slider_float("##Inpaint Scale", self.inpaint_scale, 0, 10, format="%.1f")
+                    label("Mask Dilate", viz.label_w)
+                    _, self.mask_dilate = imgui.slider_int("##Mask Dilate", self.mask_dilate, 1, 30, format="%d")
+                    if imgui_utils.button("Delete", width=viz.button_w):
+                        self.edit3D = True 
+                        self.delete_trainer = subprocess.Popen([
+                            "python", 
+                            "EditorGS/GUIEditor/train_delete.py", 
+                            "--gs_source",str(viz.args.ply_file_paths[0]),
+                            "--colmap_dir",str(viz.args.data_source),
+                            "--inpaint_scale", str(self.inpaint_scale),
+                            "--mask_dilate", str(self.mask_dilate),
+                            "--edit_cam_num", str(self.edit_cam_num),
+                            "--delete_prompt", str(self.delete_prompt),
+                            "--inpaint_prompt", str(self.inpaint_prompt),
+                            "--edit_train_steps", str(self.edit_train_steps),
+                            "--per_editing_step", str(self.per_editing_step),
+                            "--edit_begin_step", str(self.edit_begin_step),
+                            "--edit_until_step", str(self.edit_until_step),
+                            "--lambda_l1", str(self.lambda_l1),
+                            "--lambda_p", str(self.lambda_p),
+                            "--lambda_anchor_color", str(self.lambda_anchor_color),
+                            "--lambda_anchor_geo", str(self.lambda_anchor_geo),
+                            "--lambda_anchor_scale", str(self.lambda_anchor_scale),
+                            "--lambda_anchor_opacity", str(self.lambda_anchor_opacity)
+                        ])
+                        
+
+                    imgui.end_tab_item()
             imgui.end_tab_bar()   
 
         viz.args.text_change = self.text_change
@@ -704,8 +746,12 @@ class EditorWidget(Widget):
         if self.sketch_edit_trainer != None:
             self.sketch_edit_trainer.terminate()
             self.sketch_edit_trainer.wait()
+        if self.delete_trainer != None:
+            self.delete_trainer.terminate()
+            self.delete_trainer.wait()
         super().close()
 
+    
 
 
 

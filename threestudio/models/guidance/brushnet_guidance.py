@@ -40,6 +40,7 @@ class BrushNetGuidance(BaseObject):
 
         min_step_percent: float = 0.02
         max_step_percent: float = 0.98
+        video: bool = False
 
         diffusion_steps: int = 20
 
@@ -135,7 +136,8 @@ class BrushNetGuidance(BaseObject):
         self.batch_size = 4
         self.align_batch = True
 
-        # self.activate_vidtome()
+        if self.cfg.video:
+            self.activate_vidtome()
 
     def activate_vidtome(self):
         vidtome.apply_patch(self.pipe, self.local_merge_ratio, self.merge_global, self.global_merge_ratio, 

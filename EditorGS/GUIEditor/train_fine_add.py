@@ -60,7 +60,7 @@ class TrainFineeAdd(BaseTrainer):
                     BrushNetGuidance,
                 )
         self.brushnet = BrushNetGuidance(
-                    OmegaConf.create({"min_step_percent": 0.02, "max_step_percent": 0.98})
+                    OmegaConf.create({"min_step_percent": 0.02, "max_step_percent": 0.98, "video": one_time})
                 )
         cur_2D_guidance = self.brushnet
         print("using BrushNet!")
@@ -78,7 +78,7 @@ class TrainFineeAdd(BaseTrainer):
         self.view_list = self.n2n_view_index
 
         self.masks = self.get_mask(self.colmap_cameras)
-        self.update_mask(self.colmap_cameras)
+        self.update_mask(self.colmap_cameras, text_prompt="hat")
         self.guidance = EditFineGuidance(
             guidance=cur_2D_guidance,
             gaussian=self.gaussian,
@@ -98,6 +98,9 @@ class TrainFineeAdd(BaseTrainer):
         view_index_stack = self.n2n_view_index.copy()
         ema_loss_for_log = 0.0
         network = EditorNetwork(host="127.0.0.1",port=8084)
+        
+        import time 
+        start_time = time.time()
         
         for step in tqdm(range(self.edit_train_steps)):
             if step % self.cameara_update_step == 0 and one_time:
@@ -129,9 +132,12 @@ class TrainFineeAdd(BaseTrainer):
                 return
             
             ema_loss_for_log = self.alpha * ema_loss_for_log + (1-self.alpha) * loss.item()
-        
+
+        end_time = time.time()
+        print(f"Time cost: {end_time - start_time}")
+
         os.makedirs("save", exist_ok=True)
-        self.gaussian.save_ply("save/result0.ply")
+        self.gaussian.save_ply("save/result2.ply")
 
     def sort_the_cameras_idx(self, cams):
         foward_vectos = [cam.R[:, 2] for cam in cams]
@@ -210,40 +216,12 @@ class TrainFineeAdd(BaseTrainer):
             sam_results = self.lang_sam(out, text_prompt)[
                     0
                 ]
-            # mask_np = sam_results.numpy().astype(np.uint8) * 255
-            mask_np = cv2.dilate(sam_results.numpy().astype(np.uint8), kernel, iterations=5) * 255
+            mask_np = sam_results.numpy().astype(np.uint8) * 255
+            # mask_np = cv2.dilate(sam_results.numpy().astype(np.uint8), kernel, iterations=5) * 255
+
             masks.append(mask_np)
         
         return masks
-    
-    def update_mask(self,edit_cameras) -> None:
-
-        masks = []
-        weights = torch.zeros_like(self.gaussian._opacity)
-        weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
-        kernel =  np.ones((5,5),np.uint8)
-
-        for i,cam in enumerate(edit_cameras):
-            cur_cam = cam
-            this_frame = render(
-                cur_cam, self.gaussian2, self.pipe, self.background_tensor
-            )["render"]
-            text_prompt = "hat"
-
-            mask = self.lang_sam(this_frame.unsqueeze(0).permute(0,2,3,1), text_prompt)[
-                    0
-                ].to(get_device())
-        
-            masks.append(mask)
-            self.gaussian.apply_weights(cur_cam, weights, weights_cnt, mask)
-
-        weights /= weights_cnt + 1e-7
-        selected_mask = weights > 0.5
-        selected_mask = selected_mask[:, 0]
-        self.gaussian.set_mask(selected_mask)
-        self.gaussian.apply_grad_mask(selected_mask)
-
-        return masks, selected_mask
 
 
 if __name__ == "__main__":
@@ -280,5 +258,8 @@ if __name__ == "__main__":
             anchor_weight_multiplier=1.3,
         )
         trainer.configure_optimizers()
+        
         trainer.edit(one_time=eval(args.video))
+    
+    
     

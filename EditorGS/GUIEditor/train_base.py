@@ -113,12 +113,6 @@ class BaseTrainer:
         self.edit_frames = {}
         self.origin_frames = {}
         self.masks_2D = {}
-        # self.text_segmentor = LangSAMTextSegmentor().to(get_device())
-        # self.sam_predictor = self.text_segmentor.model.sam
-        # self.sam_predictor.is_image_set = True
-        # self.sam_features = {}
-        # self.semantic_gauassian_masks = {}
-        # self.semantic_gauassian_masks["ALL"] = torch.ones_like(self.gaussian._opacity)
 
         self.parser = ArgumentParser(description="Training script parameters")
         self.pipe = PipelineParams(self.parser)
@@ -313,3 +307,31 @@ class BaseTrainer:
                     extent=self.cameras_extent,
                     max_screen_size=5,
                 )
+    
+    def update_mask(self,edit_cameras, text_prompt = "hat") -> None:
+
+        masks = []
+        weights = torch.zeros_like(self.gaussian._opacity)
+        weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
+        kernel =  np.ones((5,5),np.uint8)
+
+        for i,cam in enumerate(edit_cameras):
+            cur_cam = cam
+            this_frame = render(
+                cur_cam, self.gaussian2, self.pipe, self.background_tensor
+            )["render"]
+
+            mask = self.lang_sam(this_frame.unsqueeze(0).permute(0,2,3,1), text_prompt)[
+                    0
+                ].to(get_device())
+
+            masks.append(mask)
+            self.gaussian.apply_weights(cur_cam, weights, weights_cnt, mask)
+
+        weights /= weights_cnt + 1e-7
+        selected_mask = weights > 0.5
+        selected_mask = selected_mask[:, 0]
+        self.gaussian.set_mask(selected_mask)
+        self.gaussian.apply_grad_mask(selected_mask)
+
+        return masks, selected_mask
