@@ -31,7 +31,7 @@ python run_main.py
 - [x] ❄️Add Mask-based 3D Adding.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
-- [ ] ❄️Add Sketch-based 3D Deleting.
+- [ ] ❄️Add 3D Deleting.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
   - [ ] 🧊Optimize the initial model.  
