@@ -114,7 +114,7 @@ class EditorWidget(Widget):
         self.per_editing_step = 10
         self.edit_begin_step = 0
         self.edit_cam_num = 48
-        self.edit_train_steps = 500
+        self.edit_train_steps = 3000
         self.cameara_update_step = 500
         
         # text-edit
@@ -140,7 +140,7 @@ class EditorWidget(Widget):
         self.points = []
         self.current_color = [1.0, 1.0, 1.0, 1.0]
         self.line_width = 2.0
-        self.sketch_prompt = "a man wear a wreath on head"
+        self.sketch_prompt = "a man wear a red hat on head"
         self.negative_prompt = "ugly, low quality"
         self.generate_3D_prompt = "a red hat"
         self.is_drawing = False
@@ -508,6 +508,7 @@ class EditorWidget(Widget):
                                 "--negative_prompt", str(self.negative_prompt),
                                 "--edit_train_steps", str(self.edit_train_steps),
                                 "--cameara_update_step", str(self.cameara_update_step),
+                                "--seg_prompt", str(self.segmentation_prompt),
                                 "--mask_dir", str(f"{cache_dir}/mask.png"),
                                 "--video", str(self.video_editing),
                                 "--edit_cam_num", str(self.edit_cam_num),
@@ -527,9 +528,9 @@ class EditorWidget(Widget):
 
                 if imgui.begin_tab_item("delete")[0]:
                     label("Seg Prompt", viz.label_w)
-                    imgui.input_text("##Seg Prompt", self.delete_prompt, 256)
+                    _, self.delete_prompt = imgui.input_text("##Seg Prompt", self.delete_prompt, 256)
                     label("Inpaint Prompt", viz.label_w)
-                    imgui.input_text("##Inpaint Prompt", self.inpaint_prompt, 256)
+                    _, self.inpaint_prompt = imgui.input_text("##Inpaint Prompt", self.inpaint_prompt, 256)
                     label("Inpaint Scale", viz.label_w)
                     _, self.inpaint_scale = imgui.slider_float("##Inpaint Scale", self.inpaint_scale, 0, 10, format="%.1f")
                     label("Mask Dilate", viz.label_w)
