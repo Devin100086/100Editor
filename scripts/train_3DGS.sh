@@ -1,0 +1,1 @@
+python train.py -s /home/wucunqi/Desktop/datasets/face
