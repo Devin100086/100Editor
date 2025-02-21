@@ -4,14 +4,14 @@ import pickle
 from imgui_bundle import imgui
 from omegaconf import OmegaConf
 from EditorGS.gaussiansplatting.scene.cameras import CustomCam             
-from EditorGS.GUIEditor.train_coarse_add import TrainCoarseAdd                                        
+from EditorGS.GUIEditor.train_coarse_add import TrainCoarseAdd
+from EditorGS.GUIEditor.show import ShowGaussian                                    
 from lumina3D_utils.gui_utils import imgui_utils
 from lumina3D_utils.command_utils import *
 from lumina3D_utils.gui_utils.easy_imgui import label
 
 from torchvision.transforms.functional import to_tensor
 import torch
-import cv2
 import sys
 
 from shap_e.diffusion.sample import sample_latents
@@ -57,7 +57,6 @@ class EditorWidget(Widget):
         self.guidance_type = ["InstructPix2Pix","ControlNet-Pix2Pix"]
         self.guidance_item = 0
         self.text_prompt = "turn him a clown"
-        self.text_edit_trainer = None
 
         # mask-edit
         self.mask_prompt = "add a red hat"
@@ -67,7 +66,6 @@ class EditorWidget(Widget):
         self.rec_start = None 
         self.rec_end = None
         self.drawing_rect = False
-        self.mask_edit_trainer = None
         self.traincoarseadd = None
         self.depth = 1
 
@@ -81,7 +79,6 @@ class EditorWidget(Widget):
         self.is_drawing = False
         self.adding = False
         self.painting = False
-        self.sketch_edit_trainer = None
         self.seed = 1
         self.single_image = None
         self.edit_single = False
@@ -93,8 +90,8 @@ class EditorWidget(Widget):
         self.inpaint_prompt = "wall"
         self.inpaint_scale = 1.0
         self.mask_dilate = 15
-        self.delete_trainer = None
 
+        self.edit_trainer = None
         self.draw_image = False
         self.edit3D = False
         self.text_change = False
@@ -133,42 +130,32 @@ class EditorWidget(Widget):
                     imgui.end_tab_item()
 
                 if imgui.begin_tab_item("text")[0]:
-                    label("guidance_type", viz.label_w)
-                    clicked, self.guidance_item = imgui.combo(
-                        "##guidance_type",                
+                    label("guidance type", viz.label_w)
+                    _, self.guidance_item = imgui.combo(
+                        "##guidance type",                
                         self.guidance_item,           
                         self.guidance_type                   
                     )
                     label("prompt", viz.label_w)
-                    changed, self.text_prompt = imgui.input_text("##Prompt", self.text_prompt, 256)
+                    _, self.text_prompt = imgui.input_text("##Prompt", self.text_prompt, 256)
                     self.text_change = True if imgui.is_item_active() else False
+                
                     if not self.edit3D:
                         if imgui_utils.button("Edit", width=viz.button_w):
                             self.edit3D = True
-                            self.text_edit_trainer = subprocess.Popen([
-                                "python", 
-                                "EditorGS/GUIEditor/train_edit.py", 
-                                "--gs_source",str(viz.args.ply_file_paths[0]),
-                                "--colmap_dir",str(viz.args.data_source),
-                                "--edit_cam_num", str(self.edit_cam_num),
-                                "--guidance_type", str(self.guidance_type[self.guidance_item]),
-                                "--text_prompt", str(self.text_prompt),
-                                "--edit_train_steps", str(self.edit_train_steps),
-                                "--per_editing_step", str(self.per_editing_step),
-                                "--edit_begin_step", str(self.edit_begin_step),
-                                "--edit_until_step", str(self.edit_until_step),
-                                "--lambda_l1", str(self.lambda_l1),
-                                "--lambda_p", str(self.lambda_p),
-                                "--lambda_anchor_color", str(self.lambda_anchor_color),
-                                "--lambda_anchor_geo", str(self.lambda_anchor_geo),
-                                "--lambda_anchor_scale", str(self.lambda_anchor_scale),
-                                "--lambda_anchor_opacity", str(self.lambda_anchor_opacity)
-                            ])
+                            self.edit_trainer = training_text_adding_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
+                                                                             edit_cam_num=self.edit_cam_num,guidance_type=self.guidance_type[self.guidance_item],
+                                                                             text_prompt=self.text_prompt,edit_train_steps=self.edit_train_steps,
+                                                                             per_editing_step=self.per_editing_step,edit_begin_step=self.edit_begin_step,
+                                                                             edit_until_step=self.edit_until_step,lambda_l1=self.lambda_l1,
+                                                                             lambda_p=self.lambda_p,lambda_anchor_color=self.lambda_anchor_color,
+                                                                             lambda_anchor_geo=self.lambda_anchor_geo,lambda_anchor_scale=self.lambda_anchor_scale,
+                                                                             lambda_anchor_opacity=self.lambda_anchor_opacity)
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
                             self.edit3D = False
-                            self.text_edit_trainer.terminate()
-                            self.text_edit_trainer.wait()
+                            self.edit_trainer.terminate()
+                            self.edit_trainer.wait()
                     imgui.end_tab_item()
                 
                 if imgui.begin_tab_item("mask")[0]:
@@ -177,9 +164,9 @@ class EditorWidget(Widget):
                         self.rec_start = None
                         self.rec_end = None
                     label("Paint Mask", viz.label_w)
-                    changed, self.mask = imgui.checkbox("##Mask", self.mask)
+                    _, self.mask = imgui.checkbox("##Mask", self.mask)
                     label("prompt", viz.label_w)
-                    changed, self.mask_prompt = imgui.input_text("##Prompt", self.mask_prompt, 256)
+                    _, self.mask_prompt = imgui.input_text("##Prompt", self.mask_prompt, 256)
                     self.text_change = True if imgui.is_item_active() else False
                     if not self.mask and not self.text_change and self.judge_move():  
                         self.draw_image = False
@@ -237,23 +224,12 @@ class EditorWidget(Widget):
                             with open(f'tmp_edit/camera.pkl', 'wb') as f:
                                 pickle.dump(cam, f)    
 
-                            if self.mask_edit_trainer != None:
-                                self.mask_edit_trainer.terminate()
-                                self.mask_edit_trainer.wait()   
+                            if self.edit_trainer != None:
+                                self.edit_trainer.terminate()
+                                self.edit_trainer.wait()   
         
-                            self.mask_edit_trainer = subprocess.Popen([
-                                "python", 
-                                "EditorGS/GUIEditor/train_coarse_add.py", 
-                                "--gs_source",str(viz.args.ply_file_paths[0]),
-                                "--colmap_dir",str(viz.args.data_source),
-                                "--depth", str(self.depth),
-                                "--text_prompt", "",
-                                "--edit_train_steps", "-1",
-                                "--left_up", "-1","-1",
-                                "--right_down", "-1","-1",
-                                "--zoom", "-1",
-                                "--cam_dir",str(f"tmp_edit/camera.pkl"),
-                            ])
+                            self.edit_trainer = show_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
+                                                                      depth=self.depth,cam_dir=str(f"tmp_edit/camera.pkl"))
                     else:
                         imgui.begin_disabled()
                         if imgui_utils.button("Show", width=viz.button_w):
@@ -300,11 +276,11 @@ class EditorWidget(Widget):
                                 with open(f'tmp_edit/camera.pkl', 'wb') as f:
                                     pickle.dump(cam, f)    
 
-                                if self.mask_edit_trainer != None:
-                                    self.mask_edit_trainer.terminate()
-                                    self.mask_edit_trainer.wait()   
+                                if self.edit_trainer != None:
+                                    self.edit_trainer.terminate()
+                                    self.edit_trainer.wait()   
             
-                                self.mask_edit_trainer = show_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
+                                self.edit_trainer = show_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
                                                                       depth=self.depth,cam_dir=str(f"tmp_edit/camera.pkl"))
                         else:
                             imgui.begin_disabled()
@@ -387,11 +363,11 @@ class EditorWidget(Widget):
                                 with open(f'tmp_edit/camera.pkl', 'wb') as f:
                                     pickle.dump(cam, f)    
 
-                                if self.mask_edit_trainer != None:
-                                    self.mask_edit_trainer.terminate()
-                                    self.mask_edit_trainer.wait()   
-            
-                                self.mask_edit_trainer = show_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
+                                if self.edit_trainer != None:
+                                    self.edit_trainer.terminate()
+                                    self.edit_trainer.wait()   
+
+                                self.edit_trainer = show_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
                                                                       depth=self.depth,cam_dir=str(f"tmp_edit/camera.pkl"))
                         else:
                             imgui.begin_disabled()
@@ -404,9 +380,9 @@ class EditorWidget(Widget):
                         label("Video", viz.label_w)
                         _, self.video_editing = imgui.checkbox("##Video", self.video_editing)
                         if imgui_utils.button("Edit3D", width=viz.button_w):
-                            if self.mask_edit_trainer != None:
-                                    self.mask_edit_trainer.terminate()
-                                    self.mask_edit_trainer.wait()   
+                            if self.edit_trainer != None:
+                                    self.edit_trainer.terminate()
+                                    self.edit_trainer.wait()   
                             self.edit3D = True
                             origin = Image.fromarray(viz.result.image).convert("RGB")
                             cache_dir = "tmp_edit"
@@ -416,7 +392,7 @@ class EditorWidget(Widget):
                             cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
                             with open(f'{cache_dir}/camera.pkl', 'wb') as f:
                                 pickle.dump(cam, f)     
-                            self.mask_edit_trainer = training_fine_adding_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
+                            self.edit_trainer = training_fine_adding_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
                                                                                   text_prompt=self.sketch_prompt,
                                                                                   edit_train_steps=self.edit_train_steps,cameara_update_step=self.cameara_update_step,
                                                                                   seg_prompt=self.segmentation_prompt,mask_dir=str(f"{cache_dir}/mask.png"),
@@ -440,7 +416,7 @@ class EditorWidget(Widget):
                     _, self.mask_dilate = imgui.slider_int("##Mask Dilate", self.mask_dilate, 1, 30, format="%d")
                     if imgui_utils.button("Delete", width=viz.button_w):
                         self.edit3D = True 
-                        self.delete_trainer = subprocess.Popen([
+                        self.edit_trainer = subprocess.Popen([
                             "python", 
                             "EditorGS/GUIEditor/train_delete.py", 
                             "--gs_source",str(viz.args.ply_file_paths[0]),
@@ -626,18 +602,9 @@ class EditorWidget(Widget):
         p3.wait()
 
     def close(self):
-        if self.text_edit_trainer != None:
-            self.text_edit_trainer.terminate()
-            self.text_edit_trainer.wait()
-        if self.mask_edit_trainer != None:
-            self.mask_edit_trainer.terminate()
-            self.mask_edit_trainer.wait()
-        if self.sketch_edit_trainer != None:
-            self.sketch_edit_trainer.terminate()
-            self.sketch_edit_trainer.wait()
-        if self.delete_trainer != None:
-            self.delete_trainer.terminate()
-            self.delete_trainer.wait()
+        if self.edit_trainer != None:
+            self.edit_trainer.terminate()
+            self.edit_trainer.wait()
         super().close()
 
     

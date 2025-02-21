@@ -20,10 +20,6 @@ class TrainFineeAdd(BaseTrainer):
     def __init__(self, cfg):
         super().__init__(cfg)
         self.mask_dir = cfg.mask_dir
-        self.inpaint_seed = 1
-        self.depth_scaler = 1
-        self.refine_text = ""
-        self.negative_prompt = cfg.negative_prompt
 
         self.edit_cam_num = cfg.edit_cam_num
         self.guidance_type = cfg.guidance_type
@@ -211,7 +207,6 @@ if __name__ == "__main__":
     parser.add_argument("--gs_source", type=str, required=True)  # gs ply or obj file?
     parser.add_argument("--colmap_dir", type=str, required=True)
     parser.add_argument("--mask_dir", type=str,required=True)
-    parser.add_argument("--negative_prompt", type=str ,default="ugly, low quality")
     parser.add_argument("--seg_prompt", type=str ,default="hat", help="Seg Prompt.")
     parser.add_argument("--text_prompt", type=str ,default="turn him a clown", help="Text prompt.")
     parser.add_argument("--edit_train_steps", type=int, default=1500, help="Edit train steps.")
