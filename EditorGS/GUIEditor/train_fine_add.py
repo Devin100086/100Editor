@@ -181,7 +181,7 @@ class TrainFineeAdd(BaseTrainer):
             )
 
             # save_image(images.permute(0,3,1,2), f'batch_image_{global_step}.png', nrow=4)
-            save_image(edited_images.permute(0, 3, 1, 2), f'batch_image_{global_step}.png', nrow=4)
+            # save_image(edited_images.permute(0, 3, 1, 2), f'batch_image_{global_step}.png', nrow=4)
             for view_index_tmp in range(len(self.view_list)):
                 self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
 

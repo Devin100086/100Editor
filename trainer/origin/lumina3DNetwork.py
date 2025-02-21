@@ -39,7 +39,7 @@ class Lumina3DNetwork:
         expected_bytes = int.from_bytes(messageLength, 'little')
 
         current_bytes = 0
-        try_counter = 10
+        try_counter = 50
         counter = 0
         message = bytes()
         while current_bytes < expected_bytes:

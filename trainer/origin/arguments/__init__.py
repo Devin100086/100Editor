@@ -56,6 +56,10 @@ class ModelParams(ParamGroup):
         self.train_test_exp = False
         self.data_device = "cuda"
         self.eval = False
+
+        self.box_p = 128
+        self.p_corr = 0.5
+
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
@@ -94,9 +98,19 @@ class OptimizationParams(ParamGroup):
         self.densify_until_iter = 15_000
         self.densify_grad_threshold = 0.0002
         self.depth_l1_weight_init = 1.0
+        self.densify_grad_abs_threshold = 0.0004
+
+        self.opacity_reduce_interval = 500
+        self.use_reduce = True
+
         self.depth_l1_weight_final = 0.01
         self.random_background = False
         self.optimizer_type = "default"
+
+        # Appearance Decouple
+        self.appearance_embeddings_lr = 0.001 
+        self.appearance_network_lr = 0.001  
+
         super().__init__(parser, "Optimization Parameters")
 
 def get_combined_args(parser : ArgumentParser):

@@ -18,10 +18,14 @@ from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec
 from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
 import numpy as np
 import json
+
+from transformers import pipeline
 from pathlib import Path
 from plyfile import PlyData, PlyElement
+from torchvision.transforms.functional import to_tensor
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
+DepthPredictor = pipeline(task="depth-estimation", model="LiheYoung/depth-anything-small-hf")
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -31,6 +35,8 @@ class CameraInfo(NamedTuple):
     FovX: np.array
     depth_params: dict
     image_path: str
+    image: np.array
+    depth: np.array
     image_name: str
     depth_path: str
     width: int
@@ -107,9 +113,14 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, depths_params, images_fold
 
         image_path = os.path.join(images_folder, extr.name)
         image_name = extr.name
+        image = Image.open(image_path).resize((1024,1024))
+
         depth_path = os.path.join(depths_folder, f"{extr.name[:-n_remove]}.png") if depths_folder != "" else ""
 
-        cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, depth_params=depth_params,
+        depth_map = np.array(DepthPredictor(Image.open(image_path))["depth"])
+        depth_map = to_tensor(depth_map)
+
+        cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, depth_params=depth_params,image=image,depth=depth_map,
                               image_path=image_path, image_name=image_name, depth_path=depth_path,
                               width=width, height=height, is_test=image_name in test_cam_names_list)
         cam_infos.append(cam_info)

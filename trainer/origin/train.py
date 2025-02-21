@@ -11,17 +11,18 @@
 
 import os
 import sys
+from scene.appearance import decouple_appearance
 from lumina3DNetwork import Lumina3DNetwork
 import torch
 from random import randint
-from utils.loss_utils import l1_loss, ssim
-from gaussian_renderer import render
+from utils.loss_utils import l1_loss, ssim, pearson_depth_loss, local_pearson_loss
+from gaussian_renderer import render, render_for_depth, render_for_opa
 import sys
 from scene import Scene, GaussianModel
 from utils.general_utils import safe_state, get_expon_lr_func
 import uuid
 from tqdm import tqdm
-from utils.image_utils import psnr
+from utils.image_utils import psnr, normalize_depth
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
 try:
@@ -107,13 +108,19 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # Loss
         gt_image = viewpoint_cam.original_image.cuda()
-        Ll1 = l1_loss(image, gt_image)
+        decouple_image, transformation_map = decouple_appearance(image, gaussians, viewpoint_cam.uid)
+        Ll1 = l1_loss(decouple_image, gt_image)
         if FUSED_SSIM_AVAILABLE:
             ssim_value = fused_ssim(image.unsqueeze(0), gt_image.unsqueeze(0))
         else:
             ssim_value = ssim(image, gt_image)
 
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
+
+        # depth loss
+        depth = render_pkg["depth"]
+        deploss =  pearson_depth_loss(depth, viewpoint_cam.depth)
+        loss += deploss * 0.5
 
         # Depth regularization
         Ll1depth_pure = 0.0
@@ -136,7 +143,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         with torch.no_grad():
             # Progress bar
             ema_loss_for_log = alpha * ema_loss_for_log + (1-alpha) * loss.item()
-            ema_Ll1depth_for_log = alpha * ema_Ll1depth_for_log + (1-alpha) * Ll1depth
+            ema_Ll1depth_for_log = alpha * ema_Ll1depth_for_log + (1-alpha) * deploss
 
             if iteration % 10 == 0:
                 progress_bar.set_postfix({"Loss": f"{ema_loss_for_log:.{7}f}", "Depth Loss": f"{ema_Ll1depth_for_log:.{7}f}"})
@@ -160,6 +167,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                     size_threshold = 20 if iteration > opt.opacity_reset_interval else None
                     gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold, radii)
                 
+                if iteration % opt.opacity_reduce_interval == 0 and opt.use_reduce:
+                    gaussians.reduce_opacity()
+
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
 
