@@ -6,6 +6,7 @@ from omegaconf import OmegaConf
 from EditorGS.gaussiansplatting.scene.cameras import CustomCam             
 from EditorGS.GUIEditor.train_coarse_add import TrainCoarseAdd                                        
 from lumina3D_utils.gui_utils import imgui_utils
+from lumina3D_utils.command_utils import *
 from lumina3D_utils.gui_utils.easy_imgui import label
 
 from torchvision.transforms.functional import to_tensor
@@ -48,8 +49,8 @@ class EditorWidget(Widget):
         self.edit_until_step = 1000
         self.per_editing_step = 10
         self.edit_begin_step = 0
-        self.edit_cam_num = 48
-        self.edit_train_steps = 3000
+        self.edit_cam_num = 16
+        self.edit_train_steps = 1500
         self.cameara_update_step = 500
         
         # text-edit
@@ -76,10 +77,10 @@ class EditorWidget(Widget):
         self.current_color = [1.0, 1.0, 1.0, 1.0]
         self.line_width = 2.0
         self.sketch_prompt = "a man wear a red hat on head"
-        self.negative_prompt = "ugly, low quality"
         self.generate_3D_prompt = "a red hat"
         self.is_drawing = False
-        self.turn_camera = False
+        self.adding = False
+        self.painting = False
         self.sketch_edit_trainer = None
         self.seed = 1
         self.single_image = None
@@ -272,9 +273,9 @@ class EditorWidget(Widget):
                         self.editing_option = 1
 
                     if self.editing_option == 0:
-                        label("Painting", viz.label_w)
-                        _, self.turn_camera = imgui.checkbox("##painting", self.turn_camera)
-                        if not self.turn_camera and self.judge_move():  
+                        label("Addding", viz.label_w)
+                        _, self.adding = imgui.checkbox("##adding", self.adding)
+                        if not self.adding and self.judge_move():  
                             self.draw_image = False
                             self.points = []
 
@@ -284,7 +285,7 @@ class EditorWidget(Widget):
                         if imgui_utils.button("Generate", width=viz.button_w):
                             self.generate3D()
 
-                    if not self.turn_camera or self.editing_option == 1:   
+                    if not self.adding or self.editing_option == 1:   
                         label("Depth", viz.label_w)
                         _, self.depth = imgui.slider_float("##Depth", self.depth, 0, 10, format="%.2f")
                         if os.path.exists("tmp_add/inpaint_gs.obj") and os.path.exists("tmp_edit/camera.pkl"):
@@ -303,19 +304,8 @@ class EditorWidget(Widget):
                                     self.mask_edit_trainer.terminate()
                                     self.mask_edit_trainer.wait()   
             
-                                self.mask_edit_trainer = subprocess.Popen([
-                                    "python", 
-                                    "EditorGS/GUIEditor/train_coarse_add.py", 
-                                    "--gs_source",str(viz.args.ply_file_paths[0]),
-                                    "--colmap_dir",str(viz.args.data_source),
-                                    "--depth", str(self.depth),
-                                    "--text_prompt", "",
-                                    "--edit_train_steps", "-1",
-                                    "--left_up", "-1","-1",
-                                    "--right_down", "-1","-1",
-                                    "--zoom", "-1",
-                                    "--cam_dir",str(f"tmp_edit/camera.pkl"),
-                                ])
+                                self.mask_edit_trainer = show_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
+                                                                      depth=self.depth,cam_dir=str(f"tmp_edit/camera.pkl"))
                         else:
                             imgui.begin_disabled()
                             if imgui_utils.button("Show", width=viz.button_w):
@@ -323,19 +313,23 @@ class EditorWidget(Widget):
                             imgui.end_disabled()
 
                     else:
-                        _, self.line_width = imgui.slider_float("width", self.line_width, 1.0, 10.0)
-                        _, self.current_color = imgui.color_edit4("color choice", self.current_color)
-                        if imgui.button("clear"):
-                            self.points = []
+                        label("Painting", viz.label_w)
+                        _, self.painting = imgui.checkbox("##painting", self.painting)
+                        if self.painting:
+                            _, self.line_width = imgui.slider_float("width", self.line_width, 1.0, 10.0)
+                            _, self.current_color = imgui.color_edit4("color choice", self.current_color)
+                            if imgui.button("clear"):
+                                self.points = []
+                            self.handle_mouse_input()
+                    
                         imgui.separator()
 
-                        self.handle_mouse_input()
-                        self.draw_image = True
+                        self.draw_image = True if self.painting else False
+                        if not self.painting and self.judge_move():  
+                            self.points = []
                         edit_image = True
                         label("prompt", viz.label_w)
                         _, self.sketch_prompt = imgui.input_text("##Prompt", self.sketch_prompt, 256)
-                        label("Negative Prompt", viz.label_w)
-                        _, self.negative_prompt = imgui.input_text("##Negative Prompt", self.negative_prompt, 256)
                         self.text_change = True if imgui.is_item_active() else False
 
                         label("Seed", viz.label_w)
@@ -353,7 +347,6 @@ class EditorWidget(Widget):
 
                             self.single_image = self.edit_single_image(
                                                       prompts = self.sketch_prompt,
-                                                      negative_prompt = self.negative_prompt,
                                                       seed = self.seed,
                                                       image_path = f"{cache_dir}/origin.png",
                                                       mask_path = f"{cache_dir}/mask.png")
@@ -398,19 +391,8 @@ class EditorWidget(Widget):
                                     self.mask_edit_trainer.terminate()
                                     self.mask_edit_trainer.wait()   
             
-                                self.mask_edit_trainer = subprocess.Popen([
-                                    "python", 
-                                    "EditorGS/GUIEditor/train_coarse_add.py", 
-                                    "--gs_source",str(viz.args.ply_file_paths[0]),
-                                    "--colmap_dir",str(viz.args.data_source),
-                                    "--depth", str(self.depth),
-                                    "--text_prompt", "",
-                                    "--edit_train_steps", "-1",
-                                    "--left_up", "-1","-1",
-                                    "--right_down", "-1","-1",
-                                    "--zoom", "-1",
-                                    "--cam_dir",str(f"tmp_edit/camera.pkl"),
-                                ])
+                                self.mask_edit_trainer = show_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
+                                                                      depth=self.depth,cam_dir=str(f"tmp_edit/camera.pkl"))
                         else:
                             imgui.begin_disabled()
                             if imgui_utils.button("Show", width=viz.button_w):
@@ -434,30 +416,16 @@ class EditorWidget(Widget):
                             cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
                             with open(f'{cache_dir}/camera.pkl', 'wb') as f:
                                 pickle.dump(cam, f)     
-                            self.mask_edit_trainer = subprocess.Popen([
-                                "python", 
-                                "EditorGS/GUIEditor/train_fine_add.py", 
-                                "--gs_source",str(viz.args.ply_file_paths[0]),
-                                "--colmap_dir",str(viz.args.data_source),
-                                "--text_prompt", str(self.sketch_prompt),
-                                "--negative_prompt", str(self.negative_prompt),
-                                "--edit_train_steps", str(self.edit_train_steps),
-                                "--cameara_update_step", str(self.cameara_update_step),
-                                "--seg_prompt", str(self.segmentation_prompt),
-                                "--mask_dir", str(f"{cache_dir}/mask.png"),
-                                "--video", str(self.video_editing),
-                                "--edit_cam_num", str(self.edit_cam_num),
-                                "--guidance_type", str(self.guidance_type[self.guidance_item]),
-                                "--per_editing_step", str(self.per_editing_step),
-                                "--edit_begin_step", str(self.edit_begin_step),
-                                "--edit_until_step", str(self.edit_until_step),
-                                "--lambda_l1", str(self.lambda_l1),
-                                "--lambda_p", str(self.lambda_p),
-                                "--lambda_anchor_color", str(self.lambda_anchor_color),
-                                "--lambda_anchor_geo", str(self.lambda_anchor_geo),
-                                "--lambda_anchor_scale", str(self.lambda_anchor_scale),
-                                "--lambda_anchor_opacity", str(self.lambda_anchor_opacity)
-                            ])
+                            self.mask_edit_trainer = training_fine_adding_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
+                                                                                  text_prompt=self.sketch_prompt,
+                                                                                  edit_train_steps=self.edit_train_steps,cameara_update_step=self.cameara_update_step,
+                                                                                  seg_prompt=self.segmentation_prompt,mask_dir=str(f"{cache_dir}/mask.png"),
+                                                                                  video=self.video_editing,edit_cam_num=self.edit_cam_num,
+                                                                                  guidance_type=self.guidance_type[self.guidance_item],per_editing_step=self.per_editing_step,
+                                                                                  edit_begin_step=self.edit_begin_step,edit_until_step=self.edit_until_step,
+                                                                                  lambda_l1=self.lambda_l1,lambda_p=self.lambda_p,
+                                                                                  lambda_anchor_color=self.lambda_anchor_color,lambda_anchor_geo=self.lambda_anchor_geo,
+                                                                                  lambda_anchor_scale=self.lambda_anchor_scale,lambda_anchor_opacity=self.lambda_anchor_opacity)
                     
                     imgui.end_tab_item()
 
@@ -507,7 +475,7 @@ class EditorWidget(Widget):
         viz.args.rec_start = self.rec_start
         viz.args.rec_end = self.rec_end
         viz.args.edit_image = edit_image
-        viz.args.turn_camera = self.turn_camera  
+        viz.args.painting = self.painting  
         viz.args.mask = self.mask     
         viz.args.points = self.points
         viz.args.current_color = self.current_color
@@ -575,7 +543,7 @@ class EditorWidget(Widget):
         else:
             self.rec_start, self.rec_end = None, None
     
-    def edit_single_image(self, prompts, negative_prompt, seed, image_path, mask_path):
+    def edit_single_image(self, prompts, seed, image_path, mask_path):
         from threestudio.models.guidance.brushnet_guidance import (
                     BrushNetGuidance,
                 )
