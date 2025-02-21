@@ -1,30 +1,18 @@
 from argparse import ArgumentParser
-from pathlib import Path
-import pickle
-import subprocess
 from omegaconf import OmegaConf
-import rembg
 from tqdm import tqdm
-from PIL import Image
-from lang_sam import LangSAM
-from transformers import pipeline
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from EditorGS.GUIEditor.train_base import *
 from EditorGS.gaussiansplatting.gaussian_renderer import render
-from EditorGS.gaussiansplatting.utils.graphics_utils import fov2focal
 from EditorGS.GUIEditor.utils import *
 from EditorGS.GUIEditor.Network import EditorNetwork
 from EditorGS.GUIEditor.Guidance.EditFineGuidance import EditFineGuidance
-from torchvision.transforms.functional import to_pil_image, to_tensor
-from torchvision.ops import masks_to_boxes
 from utils import *
 import torch.nn.functional as F
 import numpy as np
 import torch
-
-from diffusers import StableDiffusionBrushNetPipeline, BrushNetModel, UniPCMultistepScheduler
 
 from torchvision.utils import save_image
 
@@ -49,6 +37,7 @@ class TrainFineeAdd(BaseTrainer):
         self.edit_begin_step = cfg.edit_begin_step
         self.edit_until_step = cfg.edit_until_step
         self.cameara_update_step = cfg.cameara_update_step
+        self.seg_prompt = cfg.seg_prompt
         self.lang_sam = LangSAMTextSegmentor().to(get_device())
 
         self.mask_frames = {}
@@ -77,8 +66,8 @@ class TrainFineeAdd(BaseTrainer):
         )
         self.view_list = self.n2n_view_index
 
-        self.masks = self.get_mask(self.colmap_cameras)
-        self.update_mask(self.colmap_cameras, text_prompt="hat")
+        self.masks = self.get_mask(self.colmap_cameras, text_prompt=self.seg_prompt)
+        self.update_mask(self.colmap_cameras, text_prompt=self.seg_prompt)
         self.guidance = EditFineGuidance(
             guidance=cur_2D_guidance,
             gaussian=self.gaussian,
@@ -98,9 +87,6 @@ class TrainFineeAdd(BaseTrainer):
         view_index_stack = self.n2n_view_index.copy()
         ema_loss_for_log = 0.0
         network = EditorNetwork(host="127.0.0.1",port=8084)
-        
-        import time 
-        start_time = time.time()
         
         for step in tqdm(range(self.edit_train_steps)):
             if step % self.cameara_update_step == 0 and one_time:
@@ -133,11 +119,8 @@ class TrainFineeAdd(BaseTrainer):
             
             ema_loss_for_log = self.alpha * ema_loss_for_log + (1-self.alpha) * loss.item()
 
-        end_time = time.time()
-        print(f"Time cost: {end_time - start_time}")
-
         os.makedirs("save", exist_ok=True)
-        self.gaussian.save_ply("save/result2.ply")
+        self.gaussian.save_ply("save/result1.ply")
 
     def sort_the_cameras_idx(self, cams):
         foward_vectos = [cam.R[:, 2] for cam in cams]
@@ -206,13 +189,12 @@ class TrainFineeAdd(BaseTrainer):
             for view_index_tmp in range(len(self.view_list)):
                 self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
     
-    def get_mask(self, edit_cameras):
+    def get_mask(self, edit_cameras, text_prompt="hat"):
         masks = []
         depths = []
         kernel =  np.ones((5,5),np.uint8)
         for cam in edit_cameras:
             out = self.render(cam,mask=True)["comp_rgb"]
-            text_prompt = "hat"
             sam_results = self.lang_sam(out, text_prompt)[
                     0
                 ]
@@ -230,6 +212,7 @@ if __name__ == "__main__":
     parser.add_argument("--colmap_dir", type=str, required=True)
     parser.add_argument("--mask_dir", type=str,required=True)
     parser.add_argument("--negative_prompt", type=str ,default="ugly, low quality")
+    parser.add_argument("--seg_prompt", type=str ,default="hat", help="Seg Prompt.")
     parser.add_argument("--text_prompt", type=str ,default="turn him a clown", help="Text prompt.")
     parser.add_argument("--edit_train_steps", type=int, default=1500, help="Edit train steps.")
     parser.add_argument("--cameara_update_step", type=int, default=500, help="Cameara Update Step.")

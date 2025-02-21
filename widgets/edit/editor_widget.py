@@ -2,13 +2,13 @@ import os
 import subprocess
 import pickle
 from imgui_bundle import imgui
+from omegaconf import OmegaConf
 from EditorGS.gaussiansplatting.scene.cameras import CustomCam             
 from EditorGS.GUIEditor.train_coarse_add import TrainCoarseAdd                                        
 from lumina3D_utils.gui_utils import imgui_utils
 from lumina3D_utils.gui_utils.easy_imgui import label
 
-from diffusers import StableDiffusionBrushNetPipeline, BrushNetModel, UniPCMultistepScheduler
-from diffusers.image_processor  import VaeImageProcessor
+from torchvision.transforms.functional import to_tensor
 import torch
 import cv2
 import sys
@@ -16,7 +16,6 @@ import sys
 from shap_e.diffusion.sample import sample_latents
 from shap_e.diffusion.gaussian_diffusion import diffusion_from_config
 from shap_e.models.download import load_model, load_config
-from shap_e.util.notebooks import create_pan_cameras, decode_latent_images, gif_widget
 from shap_e.util.notebooks import decode_latent_mesh
 
 from widgets.widget import Widget
@@ -24,70 +23,6 @@ import glfw
 from PIL import Image
 import numpy as np
 from OpenGL.GL import *
-
-def BrushEdit_Pipeline(pipe, 
-                    prompts,
-                    mask_np,
-                    original_image, 
-                    generator,
-                    num_inference_steps,
-                    guidance_scale,
-                    control_strength,
-                    negative_prompt,
-                    blending):
-    if mask_np.ndim != 3:
-        mask_np = mask_np[:, :, np.newaxis]
-
-    mask_np = mask_np / 255
-    height, width = mask_np.shape[0], mask_np.shape[1]
-    ## resize the mask and original image to the same size which is divisible by vae_scale_factor
-    image_processor = VaeImageProcessor(vae_scale_factor=pipe.vae_scale_factor, do_convert_rgb=True)
-    height_new, width_new = image_processor.get_default_height_width(original_image, height, width)
-    mask_np = cv2.resize(mask_np, (width_new, height_new))[:,:,np.newaxis]
-    mask_blurred = cv2.GaussianBlur(mask_np*255, (21, 21), 0)/255
-    mask_blurred = mask_blurred[:, :, np.newaxis]
-
-    original_image = cv2.resize(original_image, (width_new, height_new))
-
-    init_image = original_image * (1 - mask_np)
-    init_image = Image.fromarray(init_image.astype(np.uint8)).convert("RGB")
-    mask_image = Image.fromarray((mask_np.repeat(3, -1) * 255).astype(np.uint8)).convert("RGB")
-
-    brushnet_conditioning_scale = float(control_strength)
-    
-    images = pipe(
-        prompts, 
-        init_image, 
-        mask_image, 
-        num_inference_steps=num_inference_steps, 
-        guidance_scale=guidance_scale,
-        generator=generator,
-        brushnet_conditioning_scale=brushnet_conditioning_scale,
-        negative_prompt=negative_prompt,
-        height=height_new,
-        width=width_new,
-    ).images
-
-    ## convert to vae shape format, must be divisible by 8
-    original_image_pil = Image.fromarray(original_image).convert("RGB")
-    init_image_np = np.array(image_processor.preprocess(original_image_pil, height=height_new, width=width_new).squeeze())
-    init_image_np = ((init_image_np.transpose(1,2,0) + 1.) / 2.) * 255
-    init_image_np = init_image_np.astype(np.uint8)
-    if blending:
-        mask_blurred = mask_blurred * 0.5 + 0.5
-        image_all = []
-        for image_i in images:
-            image_np = np.array(image_i)
-            ## blending
-            image_pasted = init_image_np * (1 - mask_blurred) + mask_blurred * image_np
-            image_pasted = image_pasted.astype(np.uint8)
-            image = Image.fromarray(image_pasted)
-            image_all.append(image)
-    else:
-        image_all = images
-
-
-    return image_all, mask_image, mask_np, init_image_np
 
 class Config:
     def __init__(self, ply_file_path, data_source, mask_prompt, edit_train_steps, left_up, right_down, zoom):
@@ -641,51 +576,36 @@ class EditorWidget(Widget):
             self.rec_start, self.rec_end = None, None
     
     def edit_single_image(self, prompts, negative_prompt, seed, image_path, mask_path):
-        BrushEdit_path = ".cache/models/"
-
-        base_model_path = os.path.join(BrushEdit_path, "base_model/realisticVisionV60B1_v51VAE")
-        torch_dtype = torch.float16
-        brushnet_path = os.path.join(BrushEdit_path, "brushnetX")
-
-
-        brushnet = BrushNetModel.from_pretrained(brushnet_path, torch_dtype=torch_dtype, cache_dir=None)
-        pipe = StableDiffusionBrushNetPipeline.from_pretrained(
-                base_model_path, brushnet=brushnet, torch_dtype=torch_dtype, low_cpu_mem_usage=False
-            )
-        # speed up diffusion process with faster scheduler and memory optimization
-        pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
-        # remove following line if xformers is not installed or when using Torch 2.0.
-        # pipe.enable_xformers_memory_efficient_attention()
-        pipe.enable_model_cpu_offload()
-
-        generator = torch.Generator("cuda").manual_seed(seed)
-        num_inference_steps = 50
-        guidance_scale = 7.5
-        control_strength = 1
-        num_samples = 1
-        blending = True
+        from threestudio.models.guidance.brushnet_guidance import (
+                    BrushNetGuidance,
+                )
+        from threestudio.models.prompt_processors.stable_diffusion_prompt_processor import StableDiffusionPromptProcessor
+        brushnet = BrushNetGuidance(
+                    OmegaConf.create({"min_step_percent": 0.02, "max_step_percent": 0.98})
+                )
 
         image = Image.open(f"{image_path}")
-        original_image = np.array(image)
-        mask_image = Image.open(f"{mask_path}").convert('L')  # 'L'表示灰度模式
+        image = to_tensor(image).unsqueeze(0).permute(0,2,3,1).to("cuda")
+        mask = Image.open(f"{mask_path}").convert('L') 
+        mask = to_tensor(mask).unsqueeze(0).permute(0,2,3,1).repeat(1,1,1,3).float().to("cuda")
+        image =  image*(1-mask)
+        generator = torch.Generator("cuda").manual_seed(seed)
+        prompt_utils = StableDiffusionPromptProcessor(
+            {
+                "pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5",
+                "prompt": prompts,
+            }
+        )()
         # mask = np.ones((image.size[1], image.size[0]), dtype=np.uint8) * 255
         # mask_image = Image.fromarray(mask)
-        mask_np = np.array(mask_image)
-        negative_prompt = "ugly, low quality"
-
-        result,_,_,_ = BrushEdit_Pipeline(pipe, 
-                                        prompts,
-                                        mask_np,
-                                        original_image, 
-                                        generator,
-                                        num_inference_steps,
-                                        guidance_scale,
-                                        control_strength,
-                                        negative_prompt,
-                                        blending)  
-        del brushnet
-        del pipe
-        return np.array(result[0])
+        result = brushnet(
+                image,
+                mask,
+                generator,
+                prompt_utils,
+            )
+        
+        return np.array(result['edit_images'].squeeze(0).cpu())
 
     def generate3D(self):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

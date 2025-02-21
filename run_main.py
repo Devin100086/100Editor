@@ -1,6 +1,4 @@
 from lumina3D  import Lumina3D
-import torch
-import threading
 import argparse 
 
 def main():
