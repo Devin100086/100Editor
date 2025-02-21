@@ -1,16 +1,13 @@
 from argparse import ArgumentParser
 from omegaconf import OmegaConf
 from tqdm import tqdm
-import torch
 import sys
 import os
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from EditorGS.GUIEditor.train_base import BaseTrainer
+from EditorGS.GUIEditor.train_base import *
 from EditorGS.GUIEditor.Guidance.EditGuidance import EditGuidance
-from torchvision.transforms.functional import to_pil_image, to_tensor
 from EditorGS.gaussiansplatting.gaussian_renderer import render
-from lang_sam import LangSAM
-from PIL import Image
 from EditorGS.GUIEditor.utils import *
 from EditorGS.GUIEditor.Network import EditorNetwork
 class EditTrainer(BaseTrainer):
@@ -25,11 +22,11 @@ class EditTrainer(BaseTrainer):
         self.lambda_anchor_scale = cfg.lambda_anchor_scale
         self.lambda_anchor_opacity = cfg.lambda_anchor_opacity
         self.per_editing_step = cfg.per_editing_step
-        self.lang_sam = LangSAM()
+        self.lang_sam = LangSAMTextSegmentor().to(get_device())
         self.edit_begin_step = cfg.edit_begin_step
         self.edit_until_step = cfg.edit_until_step
 
-    def edit(self):
+    def edit(self, use_sam, seg_prompt):
         edit_cameras = sample_train_camera(self.colmap_cameras,
                                            self.edit_cam_num,
                                           )
@@ -59,6 +56,10 @@ class EditTrainer(BaseTrainer):
             print("using ControlNet-InstructPix2Pix!")
         
         origin_frames = self.render_cameras_list(edit_cameras)
+
+        if use_sam:
+            self.masks = self.get_mask(edit_cameras, text_prompt=seg_prompt)
+            self.update_mask(edit_cameras, text_prompt=seg_prompt)
 
         self.guidance = EditGuidance(
             guidance=cur_2D_guidance,
@@ -122,6 +123,8 @@ if __name__ == "__main__":
     parser.add_argument("--lambda_anchor_geo", type=float, default=1.0, help="Lambda anchor geo.")
     parser.add_argument("--lambda_anchor_scale", type=float, default=1.0, help="Lambda anchor scale.")
     parser.add_argument("--lambda_anchor_opacity", type=float, default=1.0, help="Lambda anchor opacity.")
+    parser.add_argument("--use_sam", type=str, default=1.0, help="Lambda anchor term.")
+    parser.add_argument("--seg_prompt", type=str, default="face", help="seg Prompt.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):
@@ -132,4 +135,4 @@ if __name__ == "__main__":
             anchor_weight_multiplier=1.3,
         )
         trainer.configure_optimizers()
-        trainer.edit()
+        trainer.edit(use_sam=eval(args.use_sam), seg_prompt=args.seg_prompt)

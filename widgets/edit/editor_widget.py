@@ -57,6 +57,8 @@ class EditorWidget(Widget):
         self.guidance_type = ["InstructPix2Pix","ControlNet-Pix2Pix"]
         self.guidance_item = 0
         self.text_prompt = "turn him a clown"
+        self.use_sam = False
+        self.text_seg_prompt = "face"
 
         # mask-edit
         self.mask_prompt = "add a red hat"
@@ -139,7 +141,12 @@ class EditorWidget(Widget):
                     label("prompt", viz.label_w)
                     _, self.text_prompt = imgui.input_text("##Prompt", self.text_prompt, 256)
                     self.text_change = True if imgui.is_item_active() else False
-                
+                    label("Use SAM", viz.label_w)
+                    _, self.use_sam = imgui.checkbox("##use sam", self.use_sam)
+                    if self.use_sam:
+                        label("Seg prompt", viz.label_w)
+                        _, self.text_seg_prompt = imgui.input_text("##seg prompt", self.text_seg_prompt, 256)
+
                     if not self.edit3D:
                         if imgui_utils.button("Edit", width=viz.button_w):
                             self.edit3D = True
@@ -150,7 +157,8 @@ class EditorWidget(Widget):
                                                                              edit_until_step=self.edit_until_step,lambda_l1=self.lambda_l1,
                                                                              lambda_p=self.lambda_p,lambda_anchor_color=self.lambda_anchor_color,
                                                                              lambda_anchor_geo=self.lambda_anchor_geo,lambda_anchor_scale=self.lambda_anchor_scale,
-                                                                             lambda_anchor_opacity=self.lambda_anchor_opacity)
+                                                                             lambda_anchor_opacity=self.lambda_anchor_opacity,use_sam=self.use_sam,
+                                                                             seg_prompt=self.text_seg_prompt)
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
                             self.edit3D = False

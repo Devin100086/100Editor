@@ -7,7 +7,7 @@ import subprocess
 def training_text_adding_command(
     gs_source, colmap_dir, edit_cam_num, guidance_type, text_prompt, edit_train_steps,
     per_editing_step, edit_begin_step, edit_until_step, lambda_l1, lambda_p,
-    lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity
+    lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,use_sam, seg_prompt
 ):
     process = subprocess.Popen([
         "python",
@@ -26,7 +26,9 @@ def training_text_adding_command(
         "--lambda_anchor_color", str(lambda_anchor_color),
         "--lambda_anchor_geo", str(lambda_anchor_geo),
         "--lambda_anchor_scale", str(lambda_anchor_scale),
-        "--lambda_anchor_opacity", str(lambda_anchor_opacity)
+        "--lambda_anchor_opacity", str(lambda_anchor_opacity),
+        "--use_sam",str(use_sam),
+        "--seg_prompt",str(seg_prompt)
     ])
     return process
 

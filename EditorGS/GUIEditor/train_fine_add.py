@@ -184,22 +184,6 @@ class TrainFineeAdd(BaseTrainer):
             save_image(edited_images.permute(0, 3, 1, 2), f'batch_image_{global_step}.png', nrow=4)
             for view_index_tmp in range(len(self.view_list)):
                 self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
-    
-    def get_mask(self, edit_cameras, text_prompt="hat"):
-        masks = []
-        depths = []
-        kernel =  np.ones((5,5),np.uint8)
-        for cam in edit_cameras:
-            out = self.render(cam,mask=True)["comp_rgb"]
-            sam_results = self.lang_sam(out, text_prompt)[
-                    0
-                ]
-            mask_np = sam_results.numpy().astype(np.uint8) * 255
-            # mask_np = cv2.dilate(sam_results.numpy().astype(np.uint8), kernel, iterations=5) * 255
-
-            masks.append(mask_np)
-        
-        return masks
 
 
 if __name__ == "__main__":
