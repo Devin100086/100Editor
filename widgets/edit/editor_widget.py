@@ -387,30 +387,37 @@ class EditorWidget(Widget):
 
                         label("Video", viz.label_w)
                         _, self.video_editing = imgui.checkbox("##Video", self.video_editing)
-                        if imgui_utils.button("Edit3D", width=viz.button_w):
-                            if self.edit_trainer != None:
-                                    self.edit_trainer.terminate()
-                                    self.edit_trainer.wait()   
-                            self.edit3D = True
-                            origin = Image.fromarray(viz.result.image).convert("RGB")
-                            cache_dir = "tmp_edit"
-                            R = viz.extr.inverse()[:3, :3].T.numpy()
-                            T = viz.extr.inverse()[:3, 3].numpy()
-                            fov_rad = viz.fov / 360 * 2 * np.pi
-                            cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
-                            with open(f'{cache_dir}/camera.pkl', 'wb') as f:
-                                pickle.dump(cam, f)     
-                            self.edit_trainer = training_fine_adding_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
-                                                                                  text_prompt=self.sketch_prompt,
-                                                                                  edit_train_steps=self.edit_train_steps,cameara_update_step=self.cameara_update_step,
-                                                                                  seg_prompt=self.segmentation_prompt,mask_dir=str(f"{cache_dir}/mask.png"),
-                                                                                  video=self.video_editing,edit_cam_num=self.edit_cam_num,
-                                                                                  guidance_type=self.guidance_type[self.guidance_item],per_editing_step=self.per_editing_step,
-                                                                                  edit_begin_step=self.edit_begin_step,edit_until_step=self.edit_until_step,
-                                                                                  lambda_l1=self.lambda_l1,lambda_p=self.lambda_p,
-                                                                                  lambda_anchor_color=self.lambda_anchor_color,lambda_anchor_geo=self.lambda_anchor_geo,
-                                                                                  lambda_anchor_scale=self.lambda_anchor_scale,lambda_anchor_opacity=self.lambda_anchor_opacity)
-                    
+                        if not self.edit3D: 
+                            if imgui_utils.button("Edit3D", width=viz.button_w):
+                                if self.edit_trainer != None:
+                                        self.edit_trainer.terminate()
+                                        self.edit_trainer.wait()   
+                                self.edit3D = True
+                                origin = Image.fromarray(viz.result.image).convert("RGB")
+                                cache_dir = "tmp_edit"
+                                R = viz.extr.inverse()[:3, :3].T.numpy()
+                                T = viz.extr.inverse()[:3, 3].numpy()
+                                fov_rad = viz.fov / 360 * 2 * np.pi
+                                cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
+                                with open(f'{cache_dir}/camera.pkl', 'wb') as f:
+                                    pickle.dump(cam, f)    
+
+                                self.edit_trainer = training_fine_adding_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
+                                                                                    text_prompt=self.sketch_prompt,
+                                                                                    edit_train_steps=self.edit_train_steps,cameara_update_step=self.cameara_update_step,
+                                                                                    seg_prompt=self.segmentation_prompt,mask_dir=str(f"{cache_dir}/mask.png"),
+                                                                                    video=self.video_editing,edit_cam_num=self.edit_cam_num,
+                                                                                    guidance_type=self.guidance_type[self.guidance_item],per_editing_step=self.per_editing_step,
+                                                                                    edit_begin_step=self.edit_begin_step,edit_until_step=self.edit_until_step,
+                                                                                    lambda_l1=self.lambda_l1,lambda_p=self.lambda_p,
+                                                                                    lambda_anchor_color=self.lambda_anchor_color,lambda_anchor_geo=self.lambda_anchor_geo,
+                                                                                    lambda_anchor_scale=self.lambda_anchor_scale,lambda_anchor_opacity=self.lambda_anchor_opacity)
+                        else:
+                            if imgui_utils.button("Stop", width=viz.button_w):
+                                self.edit3D = False
+                                self.edit_trainer.terminate()
+                                self.edit_trainer.wait()
+
                     imgui.end_tab_item()
 
                 if imgui.begin_tab_item("delete")[0]:
@@ -422,33 +429,30 @@ class EditorWidget(Widget):
                     _, self.inpaint_scale = imgui.slider_float("##Inpaint Scale", self.inpaint_scale, 0, 10, format="%.1f")
                     label("Mask Dilate", viz.label_w)
                     _, self.mask_dilate = imgui.slider_int("##Mask Dilate", self.mask_dilate, 1, 30, format="%d")
-                    if imgui_utils.button("Delete", width=viz.button_w):
-                        self.edit3D = True 
-                        self.edit_trainer = subprocess.Popen([
-                            "python", 
-                            "EditorGS/GUIEditor/train_delete.py", 
-                            "--gs_source",str(viz.args.ply_file_paths[0]),
-                            "--colmap_dir",str(viz.args.data_source),
-                            "--inpaint_scale", str(self.inpaint_scale),
-                            "--mask_dilate", str(self.mask_dilate),
-                            "--edit_cam_num", str(self.edit_cam_num),
-                            "--delete_prompt", str(self.delete_prompt),
-                            "--inpaint_prompt", str(self.inpaint_prompt),
-                            "--edit_train_steps", str(self.edit_train_steps),
-                            "--per_editing_step", str(self.per_editing_step),
-                            "--edit_begin_step", str(self.edit_begin_step),
-                            "--edit_until_step", str(self.edit_until_step),
-                            "--lambda_l1", str(self.lambda_l1),
-                            "--lambda_p", str(self.lambda_p),
-                            "--lambda_anchor_color", str(self.lambda_anchor_color),
-                            "--lambda_anchor_geo", str(self.lambda_anchor_geo),
-                            "--lambda_anchor_scale", str(self.lambda_anchor_scale),
-                            "--lambda_anchor_opacity", str(self.lambda_anchor_opacity)
-                        ])
-                        
-
+                    if not self.edit3D:
+                        if imgui_utils.button("Delete", width=viz.button_w):
+                            self.edit3D = True 
+                            self.edit_trainer = training_delete_command(
+                                gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
+                                inpaint_scale=self.inpaint_scale,mask_dilate=self.mask_dilate,
+                                edit_cam_num=self.edit_cam_num,delete_prompt=self.delete_prompt,
+                                inpaint_prompt=self.inpaint_prompt,edit_train_steps=self.edit_train_steps,
+                                per_editing_step=self.per_editing_step,edit_begin_step=self.edit_begin_step,
+                                edit_until_step=self.edit_until_step,lambda_l1=self.lambda_l1,
+                                lambda_p=self.lambda_p,lambda_anchor_color=self.lambda_anchor_color,
+                                lambda_anchor_geo=self.lambda_anchor_geo,lambda_anchor_scale=self.lambda_anchor_scale,
+                                lambda_anchor_opacity=self.lambda_anchor_opacity
+                            )
+                    else:
+                        if imgui_utils.button("Stop", width=viz.button_w):
+                            self.edit3D = False
+                            self.edit_trainer.terminate()
+                            self.edit_trainer.wait()
                     imgui.end_tab_item()
             imgui.end_tab_bar()   
+
+        if self.edit_trainer!= None and self.edit_trainer.poll() is not None:
+            self.edit3D = False
 
         viz.args.text_change = self.text_change
         viz.args.draw_image = self.draw_image
