@@ -365,7 +365,15 @@ class BrushNetGuidance(BaseObject):
         text_embeddings = prompt_utils.get_text_embeddings(temp, temp, temp, False)
 
         if self.cfg.use_sds:
-            grad = self.compute_grad_sds(text_embeddings, latents, cond_latents, t)
+            # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
+            t = torch.randint(
+                self.min_step,
+                self.max_step + 1,
+                [batch_size],
+                dtype=torch.long,
+                device=self.device,
+            )
+            grad = self.compute_grad_sds(text_embeddings, latents, latents, t)
             grad = torch.nan_to_num(grad)
             if self.grad_clip_val is not None:
                 grad = grad.clamp(-self.grad_clip_val, self.grad_clip_val)
