@@ -15,6 +15,7 @@ import numpy as np
 from utils.graphics_utils import getWorld2View2, getProjectionMatrix
 from utils.general_utils import PILtoTorch
 import cv2
+import torch.nn.functional as F
 
 class Camera(nn.Module):
     def __init__(self, resolution, colmap_id, R, T, FoVx, FoVy, depth_params, image, invdepthmap,
@@ -83,7 +84,17 @@ class Camera(nn.Module):
         self.trans = trans
         self.scale = scale
 
-        self.depth = depth.to(self.data_device) if depth is not None else None
+        # self.depth = depth.to(self.data_device) if depth is not None else None
+        if depth is not None:
+            resized_depth = F.interpolate(
+                                depth.unsqueeze(0),  
+                                size=resolution[::-1],            
+                                mode="bilinear",            
+                                align_corners=False         
+                            ).squeeze(0)
+            self.depth = resized_depth.to(self.data_device)
+        else:
+            self.depth = None
 
         self.world_view_transform = torch.tensor(getWorld2View2(R, T, trans, scale)).transpose(0, 1).cuda()
         self.projection_matrix = getProjectionMatrix(znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy).transpose(0,1).cuda()
