@@ -43,7 +43,6 @@ class EditFineGuidance:
         )()
         self.perceptual_loss = PerceptualLoss().eval().to(get_device())
         self.lang_sam = LangSAMTextSegmentor().to(get_device())
-        self.generator = torch.Generator("cuda").manual_seed(1)
     
     def __call__(self, rendering, view_index, step):
 
@@ -102,7 +101,6 @@ class EditFineGuidance:
         result = self.guidance(
             rgb,
             masks,
-            self.generator,
             self.prompt_utils,
         )
             # print("edited image index", cur_index)

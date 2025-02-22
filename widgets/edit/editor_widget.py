@@ -87,6 +87,10 @@ class EditorWidget(Widget):
         self.segmentation_prompt = "hat"
         self.video_editing = True
 
+        self.fine_add_prompt = "a man wear a red hat"
+        self.fine_seg_prompt = "hat"
+
+
         # deleting
         self.delete_prompt = "man"
         self.inpaint_prompt = "wall"
@@ -295,6 +299,8 @@ class EditorWidget(Widget):
                             if imgui_utils.button("Show", width=viz.button_w):
                                 pass
                             imgui.end_disabled()
+                        if self.editing_option == 1:
+                            imgui.separator_text("Fine-Adding")
 
                     else:
                         label("Painting", viz.label_w)
@@ -306,7 +312,7 @@ class EditorWidget(Widget):
                                 self.points = []
                             self.handle_mouse_input()
                     
-                        imgui.separator()
+                        imgui.separator_text("Edit one image")
 
                         self.draw_image = True if self.painting else False
                         if not self.painting and self.judge_move():  
@@ -336,7 +342,7 @@ class EditorWidget(Widget):
                                                       mask_path = f"{cache_dir}/mask.png")
                             self.points = []
 
-                        imgui.separator()
+                        imgui.separator_text("Coarse Adding")
 
                         label("Segmentation", viz.label_w)
                         changed, self.segmentation_prompt = imgui.input_text("##Segmentation", self.segmentation_prompt, 256)
@@ -383,8 +389,13 @@ class EditorWidget(Widget):
                                 pass
                             imgui.end_disabled()
                         
-                        imgui.separator()
+                        imgui.separator_text("Fine-Adding")
 
+                    if self.adding or self.editing_option == 1:
+                        label("prompt", viz.label_w)
+                        _, self.fine_add_prompt = imgui.input_text("##prompt", self.fine_add_prompt, 256)
+                        label("Seg prompt", viz.label_w)
+                        _, self.fine_seg_prompt = imgui.input_text("##seg prompt", self.fine_seg_prompt, 256)
                         label("Video", viz.label_w)
                         _, self.video_editing = imgui.checkbox("##Video", self.video_editing)
                         if not self.edit3D: 
@@ -403,9 +414,9 @@ class EditorWidget(Widget):
                                     pickle.dump(cam, f)    
 
                                 self.edit_trainer = training_fine_adding_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
-                                                                                    text_prompt=self.sketch_prompt,
+                                                                                    text_prompt=self.fine_add_prompt,
                                                                                     edit_train_steps=self.edit_train_steps,cameara_update_step=self.cameara_update_step,
-                                                                                    seg_prompt=self.segmentation_prompt,mask_dir=str(f"{cache_dir}/mask.png"),
+                                                                                    seg_prompt=self.fine_seg_prompt,mask_dir=str(f"{cache_dir}/mask.png"),
                                                                                     video=self.video_editing,edit_cam_num=self.edit_cam_num,
                                                                                     guidance_type=self.guidance_type[self.guidance_item],per_editing_step=self.per_editing_step,
                                                                                     edit_begin_step=self.edit_begin_step,edit_until_step=self.edit_until_step,
