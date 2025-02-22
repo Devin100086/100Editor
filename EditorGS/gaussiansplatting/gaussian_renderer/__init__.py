@@ -35,6 +35,7 @@ def camera2rasterizer(viewpoint_camera, bg_color: torch.Tensor, sh_degree: int =
         campos=viewpoint_camera.camera_center,
         prefiltered=False,
         debug=False,
+        antialiasing=False
     )
 
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)

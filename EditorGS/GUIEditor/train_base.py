@@ -4,7 +4,7 @@ from omegaconf import OmegaConf
 import torch
 import numpy as np
 import os
-
+from torchvision.transforms.functional import to_pil_image, to_tensor
 from EditorGS.gaussiansplatting.scene.cameras import Simple_Camera
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import sys
@@ -38,6 +38,7 @@ from threestudio.utils.camera import camera_ray_sample_points, project, unprojec
 
 from argparse import ArgumentParser
 from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
+from transformers import pipeline
 
 
 class BaseTrainer:
@@ -318,7 +319,7 @@ class BaseTrainer:
         for i,cam in enumerate(edit_cameras):
             cur_cam = cam
             this_frame = render(
-                cur_cam, self.gaussian2, self.pipe, self.background_tensor
+                cur_cam, self.gaussian, self.pipe, self.background_tensor
             )["render"]
 
             mask = self.lang_sam(this_frame.unsqueeze(0).permute(0,2,3,1), text_prompt)[
@@ -336,5 +337,15 @@ class BaseTrainer:
 
         return masks, selected_mask
 
-    def obtain_depth(self):
-        pass
+    def obtain_depth(self,edit_camears):
+        pipe = pipeline(task="depth-estimation", model="depth-anything/depth-anything-V2-Base-hf")
+        depths = []
+        for i, cam in enumerate(edit_camears):
+            cur_cam = cam
+            this_frame = render(
+                cur_cam, self.gaussian2, self.pipe, self.background_tensor
+            )["render"]
+            this_frame_pil = to_pil_image(this_frame.cpu())
+            depth = pipe(this_frame_pil)["depth"]
+            depths.append(to_tensor(depth))
+        return depths

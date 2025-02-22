@@ -6,15 +6,16 @@ from torchvision.transforms.functional import to_pil_image
 from torchvision.transforms import ToTensor
 
 from threestudio.models.prompt_processors.stable_diffusion_prompt_processor import StableDiffusionPromptProcessor
-
+from transformers import pipeline
 # Diffusion model (cached) + prompts + edited_frames + training config
 
 class DelGuidance:
     def __init__(self, guidance, latents, gaussian, text_prompt,
                  lambda_l1, lambda_p, lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,
-                 cams,):
+                 cams):
         self.guidance = guidance # ctn-inpaint guidance
         self.latents = latents
+        self.depthPredictor = pipeline(task="depth-estimation", model="depth-anything/depth-anything-V2-Base-hf")
         self.lambda_l1 = lambda_l1
         self.lambda_p = lambda_p
         self.lambda_anchor_color = lambda_anchor_color
@@ -23,6 +24,7 @@ class DelGuidance:
         self.lambda_anchor_opacity = lambda_anchor_opacity
         self.gaussian = gaussian
         self.edit_frames = {}
+        self.depth_frames = {}
         self.text_prompt = text_prompt
         self.cams = cams
         self.visible = True
@@ -67,8 +69,9 @@ class DelGuidance:
         ).images[0]
 
         self.edit_frames[view_index] = self.to_tensor(out).to("cuda")[None].permute(0,2,3,1) # 1 C H W to 1 H W C
+        self.depth_frames[view_index] = self.to_tensor(self.depthPredictor(out)["depth"]).unsqueeze(0).permute(0,2,3,1)
 
-    def __call__(self, rendering, image_in, mask_in, view_index, step):
+    def __call__(self, rendering, depth_rendering, image_in, mask_in, view_index, step):
         self.gaussian.update_learning_rate(step)
         if view_index not in self.edit_frames:
             self.inpaint_with_mask_ctn(image_in, mask_in, view_index)
@@ -91,4 +94,20 @@ class DelGuidance:
                     self.lambda_anchor_opacity * anchor_out['loss_anchor_opacity'] + \
                     self.lambda_anchor_scale * anchor_out['loss_anchor_scale']
 
+        loss += self.pearson_depth_loss(depth_rendering, self.depth_frames[view_index].to(depth_rendering.device))
+
         return loss
+    
+    def pearson_depth_loss(self, depth_src, depth_target):
+        #co = pearson(depth_src.reshape(-1), depth_target.reshape(-1))
+
+        src = depth_src - depth_src.mean()
+        target = depth_target - depth_target.mean()
+
+        src = src / (src.std() + 1e-6)
+        target = target / (target.std() + 1e-6)
+
+        co = (src * target).mean()
+        assert not torch.any(torch.isnan(co))
+        return 1 - co
+    

@@ -123,10 +123,12 @@ class DeleteTrainer(BaseTrainer):
             view_index = random.choice(view_index_stack)
             view_index_stack.remove(view_index)
 
-            rendering = self.render(edit_cameras[view_index], train=True)["comp_rgb"]
-
+            render_pkg = self.render(edit_cameras[view_index], train=True)
+            rendering = render_pkg["comp_rgb"]
+            depth_rendering = render_pkg["depth"]
             loss = self.guidance(
                 rendering,
+                depth_rendering,
                 origin_frames[view_index],
                 inpaint_2D_mask[view_index],
                 view_index,
