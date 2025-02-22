@@ -335,3 +335,6 @@ class BaseTrainer:
         self.gaussian.apply_grad_mask(selected_mask)
 
         return masks, selected_mask
+
+    def obtain_depth(self):
+        pass
