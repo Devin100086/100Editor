@@ -64,7 +64,6 @@ class EditFineGuidance:
             result = self.guidance(
                 rgb,
                 mask,
-                self.generator,
                 self.prompt_utils,
             )
             self.edit_frames[view_index] = result["edit_images"].detach().clone() # 1 H W C

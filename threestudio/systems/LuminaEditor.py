@@ -81,6 +81,7 @@ class LuminaEditor(BaseLift3DSystem):
         )
         self.edit_frames = {}
         self.origin_frames = {}
+        self.masks = {}
         self.perceptual_loss = PerceptualLoss().eval().to(get_device())
         self.text_segmentor = LangSAMTextSegmentor().to(get_device())
 
@@ -109,6 +110,7 @@ class LuminaEditor(BaseLift3DSystem):
                 mask = self.text_segmentor(self.origin_frames[id], self.cfg.seg_prompt)[
                     0
                 ].to(get_device())
+                self.masks[id] = mask.permute(1, 2, 0)[None].repeat(1, 1, 1, 3)
 
                 mask_to_save = (
                         mask[0]
@@ -247,6 +249,7 @@ class LuminaEditor(BaseLift3DSystem):
                 self.origin_frames[id] = torch.tensor(
                     cached_image / 255, device="cuda", dtype=torch.float32
                 )[None]
+                
 
     def on_before_optimizer_step(self, optimizer):
         with torch.no_grad():

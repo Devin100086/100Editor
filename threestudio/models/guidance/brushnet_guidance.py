@@ -109,6 +109,7 @@ class BrushNetGuidance(BaseObject):
         self.vae = self.pipe.vae.eval()
         self.unet = self.pipe.unet.eval()
         self.brushnet = self.pipe.brushnet.eval()
+        self.generator = torch.Generator("cuda").manual_seed(1)
 
         for p in self.vae.parameters():
             p.requires_grad_(False)
@@ -316,7 +317,6 @@ class BrushNetGuidance(BaseObject):
         self,
         rgb: Float[Tensor, "B H W C"],
         mask: Float[Tensor, "B H W C"],
-        generator: torch.Generator,
         prompt_utils: PromptProcessorOutput,
         **kwargs,
     ):
@@ -343,7 +343,7 @@ class BrushNetGuidance(BaseObject):
 
         noise_latents, noise = self.prepare_latents(
                     batch_size,
-                    generator,
+                    self.generator,
                     self.unet.config.in_channels,
                     height,
                     width,

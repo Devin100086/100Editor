@@ -16,6 +16,7 @@ outputs/
 wonder3D/ckpts
 threestudio/utils/wonder3D/instant-nsr-pl/exp
 edit_cache/
+fine_add_cache/
 *.pth
 tmp_*/
 shap_e_model_cache/

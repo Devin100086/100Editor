@@ -2,5 +2,6 @@ from . import (
     # LuminaEditorAdd,
     LuminaEditorDel,
     LuminaEditorEdit,
-    LuminaEditor
+    LuminaEditorFineAdd,
+    LuminaEditor,
 )
