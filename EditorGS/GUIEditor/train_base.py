@@ -325,7 +325,7 @@ class BaseTrainer:
                     0
                 ].to(get_device())
 
-            masks.append(mask)
+            masks.append(mask.cpu().numpy().astype(np.uint8) * 255)
             self.gaussian.apply_weights(cur_cam, weights, weights_cnt, mask)
 
         weights /= weights_cnt + 1e-7
@@ -335,19 +335,3 @@ class BaseTrainer:
         self.gaussian.apply_grad_mask(selected_mask)
 
         return masks, selected_mask
-
-    def get_mask(self, edit_cameras, text_prompt="hat"):
-        masks = []
-        depths = []
-        kernel =  np.ones((5,5),np.uint8)
-        for cam in edit_cameras:
-            out = self.render(cam,mask=True)["comp_rgb"]
-            sam_results = self.lang_sam(out, text_prompt)[
-                    0
-                ]
-            mask_np = sam_results.numpy().astype(np.uint8) * 255
-            # mask_np = cv2.dilate(sam_results.numpy().astype(np.uint8), kernel, iterations=5) * 255
-
-            masks.append(mask_np)
-        
-        return masks

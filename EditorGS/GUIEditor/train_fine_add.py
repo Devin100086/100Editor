@@ -62,8 +62,7 @@ class TrainFineeAdd(BaseTrainer):
         )
         self.view_list = self.n2n_view_index
 
-        self.masks = self.get_mask(self.colmap_cameras, text_prompt=self.seg_prompt)
-        self.update_mask(self.colmap_cameras, text_prompt=self.seg_prompt)
+        self.masks, _ = self.update_mask(self.colmap_cameras, text_prompt=self.seg_prompt)
         self.guidance = EditFineGuidance(
             guidance=cur_2D_guidance,
             gaussian=self.gaussian,
