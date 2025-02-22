@@ -38,6 +38,8 @@ python run_main.py
 5. "Other" Feature
 - [x] [2024/11/18]🎨Add fitting one single image.
 - [x] [2024/11/23]🎨Add ema loss option.
+6. System Command
+- [x] [2025/2/22]🎨Provide the System command about fine-adding
 
 
 
