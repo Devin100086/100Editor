@@ -99,8 +99,10 @@ class EditTrainer(BaseTrainer):
             if self.stop_training:
                 self.stop_training = False
                 return
-            
-            ema_loss_for_log = self.alpha * ema_loss_for_log + (1-self.alpha) * loss.item()
+            if ema_loss_for_log == 0:
+                ema_loss_for_log = loss.item()
+            else:
+                ema_loss_for_log = self.alpha * ema_loss_for_log + (1-self.alpha) * loss.item()
         
         os.makedirs("save", exist_ok=True)
         self.gaussian.save_ply("save/result1.ply")

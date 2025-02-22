@@ -7,11 +7,13 @@ from EditorGS.gaussiansplatting.scene.cameras import CustomCam
 from EditorGS.GUIEditor.train_coarse_add import TrainCoarseAdd
 from EditorGS.GUIEditor.show import ShowGaussian                                    
 from lumina3D_utils.gui_utils import imgui_utils
+from imgui_bundle import implot
 from lumina3D_utils.command_utils import *
 from lumina3D_utils.gui_utils.easy_imgui import label
 
 from torchvision.transforms.functional import to_tensor
 import torch
+from lumina3D_utils.dict_utils import EasyDict
 import sys
 
 from shap_e.diffusion.sample import sample_latents
@@ -87,7 +89,7 @@ class EditorWidget(Widget):
         self.segmentation_prompt = "hat"
         self.video_editing = True
 
-        self.fine_add_prompt = "a man wear a red hat"
+        self.fine_add_prompt = "a man wear a red hat on head"
         self.fine_seg_prompt = "hat"
 
 
@@ -101,6 +103,11 @@ class EditorWidget(Widget):
         self.draw_image = False
         self.edit3D = False
         self.text_change = False
+        self.plots = EasyDict(
+            loss=dict(values=[], dtype=float),
+            num_gaussians=dict(values=[], dtype=int),
+        )
+        self.iterations = []
 
     @imgui_utils.scoped_by_object_id
     def __call__(self, show=True):
@@ -168,6 +175,24 @@ class EditorWidget(Widget):
                             self.edit3D = False
                             self.edit_trainer.terminate()
                             self.edit_trainer.wait()
+                    
+                    if "training_stats" in viz.result.keys():
+                        stats = viz.result["training_stats"]
+                        self.iterations.append(stats["iteration"])
+                        self.plots.loss["values"].append(stats["loss"])
+                        self.plots.num_gaussians["values"].append(stats["num_gaussians"])
+                        
+                        for plot_name, plot_values in self.plots.items():
+                            plot_size = imgui.ImVec2(viz.pane_w - 150, 200)
+                            implot.set_next_axes_to_fit()
+                            if implot.begin_plot(plot_name, plot_size):
+                                implot.plot_line( 
+                                    plot_name,
+                                    ys=np.array(plot_values["values"], dtype=plot_values["dtype"]),
+                                    xs=np.array(self.iterations, dtype=plot_values["dtype"]),
+                                )
+                                implot.end_plot()
+
                     imgui.end_tab_item()
                 
                 if imgui.begin_tab_item("mask")[0]:
