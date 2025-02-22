@@ -20,3 +20,5 @@ python launch.py \
     system.densify_from_iter=100 \
     system.densify_until_iter=1501 \
     system.densification_interval=100 \
+    data.source="/home/wucunqi/Desktop/results/face" \
+    system.gs_source="/home/wucunqi/Desktop/results/face/3DGS+depth/point_cloud/iteration_7000/point_cloud.ply"
