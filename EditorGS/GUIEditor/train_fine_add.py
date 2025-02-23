@@ -117,27 +117,6 @@ class TrainFineeAdd(BaseTrainer):
         os.makedirs("save", exist_ok=True)
         self.gaussian.save_ply("save/result1.ply")
 
-    def sort_the_cameras_idx(self, cams):
-        foward_vectos = [cam.R[:, 2] for cam in cams]
-        foward_vectos = np.array(foward_vectos)
-        cams_center_x = np.array([cam.camera_center[0].item() for cam in cams])
-        most_left_vecotr = foward_vectos[np.argmin(cams_center_x)]
-        distances = [np.arccos(np.clip(np.dot(most_left_vecotr, cam.R[:, 2]), 0, 1)) for cam in cams]
-        sorted_cams = [cam for _, cam in sorted(zip(distances, cams), key=lambda pair: pair[0])]
-        reference_axis = np.cross(most_left_vecotr, sorted_cams[1].R[:, 2])
-        distances_with_sign = [np.arccos(np.dot(most_left_vecotr, cam.R[:, 2])) if np.dot(reference_axis,  np.cross(most_left_vecotr, cam.R[:, 2])) >= 0 else 2 * np.pi - np.arccos(np.dot(most_left_vecotr, cam.R[:, 2])) for cam in cams]
-        
-        sorted_cam_idx = [idx for _, idx in sorted(zip(distances_with_sign, range(len(cams))), key=lambda pair: pair[0])]
-
-        return sorted_cam_idx
-
-    def update_cameras(self, random_seed=0):
-        random.seed(random_seed)
-        self.n2n_view_index = random.sample(
-            range(0, len(self.colmap_cameras)),
-            min(len(self.colmap_cameras), 16),
-        )
-
     def edit_all_view(self, update_camera=False, global_step=0):
         
         self.edited_cams = []
@@ -158,12 +137,10 @@ class TrainFineeAdd(BaseTrainer):
                    
             for id in view_sorted:
                 cur_cam = self.colmap_cameras[id]
-
-                # out_pkg = self(cur_batch)
                 out_pkg = self.render(cur_cam)
                 out = out_pkg["comp_rgb"]
-                # if self.cfg.use_masked_image:
-                #     out = out * out_pkg["masks"].unsqueeze(-1)
+                if self.cfg.use_masked_image:
+                    out = out * out_pkg["masks"].unsqueeze(-1)
                 images.append(out)
                 cached_image = self.masks[id]
                 self.mask_frames[id] = torch.tensor(
