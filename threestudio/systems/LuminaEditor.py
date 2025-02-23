@@ -506,3 +506,17 @@ class LuminaEditor(BaseLift3DSystem):
         }
 
         return ret
+    
+    def sort_the_cameras_idx(self, cams):
+        foward_vectos = [cam.R[:, 2] for cam in cams]
+        foward_vectos = np.array(foward_vectos)
+        cams_center_x = np.array([cam.camera_center[0].item() for cam in cams])
+        most_left_vecotr = foward_vectos[np.argmin(cams_center_x)]
+        distances = [np.arccos(np.clip(np.dot(most_left_vecotr, cam.R[:, 2]), 0, 1)) for cam in cams]
+        sorted_cams = [cam for _, cam in sorted(zip(distances, cams), key=lambda pair: pair[0])]
+        reference_axis = np.cross(most_left_vecotr, sorted_cams[1].R[:, 2])
+        distances_with_sign = [np.arccos(np.dot(most_left_vecotr, cam.R[:, 2])) if np.dot(reference_axis,  np.cross(most_left_vecotr, cam.R[:, 2])) >= 0 else 2 * np.pi - np.arccos(np.dot(most_left_vecotr, cam.R[:, 2])) for cam in cams]
+        
+        sorted_cam_idx = [idx for _, idx in sorted(zip(distances_with_sign, range(len(cams))), key=lambda pair: pair[0])]
+
+        return sorted_cam_idx
