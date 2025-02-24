@@ -104,8 +104,7 @@ class ShowGaussian():
 
         with torch.no_grad():
             render_pkg = render(cam, self.gaussian, self.pipe, self.background_tensor)
-        rendered_depth = render_pkg["depth_3dgs"][..., ~object_mask]
-
+        rendered_depth = (16*(1-render_pkg["depth_3dgs"]))[..., ~object_mask]
         inpainted_depth = estimated_depth[~object_mask]
         object_depth = estimated_depth[..., object_mask]
 

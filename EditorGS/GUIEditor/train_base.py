@@ -319,7 +319,7 @@ class BaseTrainer:
         for i,cam in enumerate(edit_cameras):
             cur_cam = cam
             this_frame = render(
-                cur_cam, self.gaussian2, self.pipe, self.background_tensor
+                cur_cam, self.gaussian, self.pipe, self.background_tensor
             )["render"]
 
             mask = self.lang_sam(this_frame.unsqueeze(0).permute(0,2,3,1), text_prompt)[

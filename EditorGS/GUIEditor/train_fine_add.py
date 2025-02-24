@@ -39,6 +39,34 @@ class TrainFineeAdd(BaseTrainer):
         self.mask_frames = {}
 
         self.use_masked_image = False
+    
+    def update_mask(self,edit_cameras, text_prompt = "hat") -> None:
+
+        masks = []
+        weights = torch.zeros_like(self.gaussian._opacity)
+        weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
+        kernel =  np.ones((5,5),np.uint8)
+
+        for i,cam in enumerate(edit_cameras):
+            cur_cam = cam
+            this_frame = render(
+                cur_cam, self.gaussian2, self.pipe, self.background_tensor
+            )["render"]
+
+            mask = self.lang_sam(this_frame.unsqueeze(0).permute(0,2,3,1), text_prompt)[
+                    0
+                ].to(get_device())
+
+            masks.append(mask.cpu().numpy().astype(np.uint8) * 255)
+            self.gaussian.apply_weights(cur_cam, weights, weights_cnt, mask)
+
+        weights /= weights_cnt + 1e-7
+        selected_mask = weights > 0.5
+        selected_mask = selected_mask[:, 0]
+        self.gaussian.set_mask(selected_mask)
+        self.gaussian.apply_grad_mask(selected_mask)
+
+        return masks, selected_mask
 
     def edit(self, one_time = True):
         from threestudio.models.guidance.brushnet_guidance import (
@@ -115,7 +143,7 @@ class TrainFineeAdd(BaseTrainer):
             ema_loss_for_log = self.alpha * ema_loss_for_log + (1-self.alpha) * loss.item()
 
         os.makedirs("save", exist_ok=True)
-        self.gaussian.save_ply("save/result1.ply")
+        self.gaussian.save_ply("save/result0.ply")
 
     def edit_all_view(self, update_camera=False, global_step=0):
         
