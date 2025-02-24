@@ -84,12 +84,12 @@ class TrainFineeAdd(BaseTrainer):
         network = EditorNetwork(host="127.0.0.1",port=8084)
         
         for step in tqdm(range(self.edit_train_steps)):
+            network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
             if step % self.cameara_update_step == 0 and one_time:
                 print("start editing")
                 self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
                 print("end editing")
-            network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
-            
+
             if not view_index_stack:
                 view_index_stack = self.n2n_view_index.copy()
             view_index = random.choice(view_index_stack)
@@ -139,7 +139,7 @@ class TrainFineeAdd(BaseTrainer):
                 cur_cam = self.colmap_cameras[id]
                 out_pkg = self.render(cur_cam)
                 out = out_pkg["comp_rgb"]
-                if self.cfg.use_masked_image:
+                if self.use_masked_image:
                     out = out * out_pkg["masks"].unsqueeze(-1)
                 images.append(out)
                 cached_image = self.masks[id]
@@ -157,7 +157,7 @@ class TrainFineeAdd(BaseTrainer):
             )
 
             # save_image(images.permute(0,3,1,2), f'batch_image_{global_step}.png', nrow=4)
-            # save_image(edited_images.permute(0, 3, 1, 2), f'batch_image_{global_step}.png', nrow=4)
+            save_image(edited_images.permute(0, 3, 1, 2), f'batch_image_{global_step}.png', nrow=4)
             for view_index_tmp in range(len(self.view_list)):
                 self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
 

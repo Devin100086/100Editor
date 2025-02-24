@@ -40,11 +40,23 @@ class BrushNetGuidance(BaseObject):
 
         min_step_percent: float = 0.02
         max_step_percent: float = 0.98
-        video: bool = False
 
         diffusion_steps: int = 20
 
         use_sds: bool = False
+
+        video: bool = False
+
+         # vidtome
+        chunk_size: int = 2
+        chunk_ord: str = "mix-4"
+        merge_global: bool = True
+        local_merge_ratio: float = 0.9
+        global_merge_ratio: float = 0.8
+        global_rand: float =  0.5
+        seed: int = 123456
+        batch_size: int = 2
+        align_batch: bool = True
 
     cfg: Config
 
@@ -127,22 +139,12 @@ class BrushNetGuidance(BaseObject):
 
         threestudio.info(f"Loaded BrushNet!")
 
-        self.chunk_size = 4
-        self.chunk_ord = "mix-4"
-        self.merge_global = True
-        self.local_merge_ratio = 0.9
-        self.global_merge_ratio = 0.8
-        self.global_rand =  0.5
-        self.seed = 123456
-        self.batch_size = 4
-        self.align_batch = True
-
         if self.cfg.video:
             self.activate_vidtome()
 
     def activate_vidtome(self):
-        vidtome.apply_patch(self.pipe, self.local_merge_ratio, self.merge_global, self.global_merge_ratio, 
-            seed = self.seed, batch_size = self.batch_size, align_batch = self.align_batch, global_rand = self.global_rand)   
+        vidtome.apply_patch(self.pipe, self.cfg.local_merge_ratio, self.cfg.merge_global, self.cfg.global_merge_ratio, 
+            seed = self.cfg.seed, batch_size = self.cfg.batch_size, align_batch = self.cfg.align_batch, global_rand = self.cfg.global_rand)   
 
     @torch.cuda.amp.autocast(enabled=False)
     def set_min_max_steps(self, min_step_percent=0.02, max_step_percent=0.98):
@@ -222,6 +224,39 @@ class BrushNetGuidance(BaseObject):
         image = (image * 0.5 + 0.5).clamp(0, 1)
         return image.to(input_dtype)
 
+    def get_chunks(self, flen):
+        x_index = torch.arange(flen)
+
+        # The first chunk has a random length
+        rand_first = np.random.randint(0, self.cfg.chunk_size) + 1
+        chunks = x_index[rand_first:].split(self.cfg.chunk_size, dim=0)
+        chunks = [x_index[:rand_first]] + list(chunks) if len(chunks[0]) > 0 else [x_index[:rand_first]]
+        if np.random.rand() > 0.5:
+            chunks = chunks[::-1]
+        
+        # Chunk order only matter when we do global token merging
+        if self.cfg.merge_global == False:
+            return chunks
+
+        # Chunk order. "seq": sequential order. "rand": full permutation. "mix": partial permutation.
+        if self.cfg.chunk_ord == "rand":
+            order = torch.randperm(len(chunks))
+        elif self.cfg.chunk_ord == "mix":
+            randord = torch.randperm(len(chunks)).tolist()
+            rand_len = int(len(randord) / self.perm_div)
+            seqord = sorted(randord[rand_len:])
+            if rand_len > 0:
+                randord = randord[:rand_len]
+                if abs(seqord[-1] - randord[-1]) < abs(seqord[0] - randord[-1]):
+                    seqord = seqord[::-1]
+                order = randord + seqord
+            else:
+                order = seqord
+        else:
+            order = torch.arange(len(chunks))
+        chunks = [chunks[i] for i in order]
+        return chunks
+
     def edit_latents(
         self,
         text_embeddings: Float[Tensor, "BB 77 768"],
@@ -268,6 +303,66 @@ class BrushNetGuidance(BaseObject):
 
                 # get previous sample, continue loop
                 noise_latents = self.scheduler.step(noise_pred, t, noise_latents).prev_sample
+            threestudio.debug("Editing finished.")
+
+        return noise_latents
+    
+    def edit_all_latents(
+        self,
+        text_embeddings: Float[Tensor, "BB 77 768"],
+        latents: Float[Tensor, "B 4 DH DW"],
+        noise_latents: Float[Tensor, "B 4 DH DW"],
+    ) -> Float[Tensor, "B 4 DH DW"]:
+        
+        # self.scheduler.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
+        self.scheduler.set_timesteps(self.cfg.diffusion_steps)
+        with torch.no_grad():
+            # add noise
+            # noise = torch.randn_like(latents)
+            # latents = self.scheduler.add_noise(latents, noise, t)  # type: ignore
+            threestudio.debug("Start editing...")
+            # sections of code used from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_instruct_pix2pix.py
+            for i, t in enumerate(self.scheduler.timesteps):
+                # predict the noise residual with unet, NO grad!
+                chunks = self.get_chunks(len(noise_latents))
+                noise_preds = torch.zeros_like(noise_latents)
+
+                for chunk in chunks:
+                    
+                    with torch.no_grad():
+                        # pred noise
+                        latent_model_input = torch.cat([noise_latents[chunk]] * 2)
+                        image_latent, mask = latents.chunk(2)
+                        latents_chunks = torch.cat([image_latent[chunk], mask[chunk]], dim=0)
+                        pos, neg = text_embeddings.chunk(2)
+                        text_embeddings_chunk = torch.cat([pos[chunk], neg[chunk]], dim=0)
+
+                        down_block_res_samples, mid_block_res_sample, up_block_res_samples = self.forward_brushnet(
+                            latent_model_input,
+                            t,
+                            encoder_hidden_states=text_embeddings_chunk,
+                            brushnet_cond=latents_chunks,
+                            condition_scale=self.cfg.condition_scale,
+                        )
+
+                        noise_pred = self.forward_brushnet_unet(
+                            latent_model_input, 
+                            t, 
+                            encoder_hidden_states=text_embeddings_chunk,
+                            cross_attention_kwargs=None,
+                            down_block_res_samples=down_block_res_samples,
+                            mid_block_res_sample=mid_block_res_sample,
+                            up_block_res_samples=up_block_res_samples
+                        )
+
+                    # perform classifier-free guidance
+                    noise_pred_text, noise_pred_uncond = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + self.cfg.guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
+                    noise_preds[chunk] = noise_pred
+                # get previous sample, continue loop
+                noise_latents = self.scheduler.step(noise_preds, t, noise_latents).prev_sample
             threestudio.debug("Editing finished.")
 
         return noise_latents
@@ -386,7 +481,10 @@ class BrushNetGuidance(BaseObject):
                 "max_step": self.max_step,
             }
         else:
-            edit_latents = self.edit_latents(text_embeddings, latents, noise_latents)
+            if self.cfg.video:
+                edit_latents = self.edit_all_latents(text_embeddings, latents, noise_latents)
+            else:
+                edit_latents = self.edit_latents(text_embeddings, latents, noise_latents)
             edit_images = self.decode_latents(edit_latents)
             edit_images = F.interpolate(edit_images, (H, W), mode="bilinear")
 
