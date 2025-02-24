@@ -270,17 +270,13 @@ class GSLoadIterableDataset(IterableDataset, Updateable):
             "width": self.width,
         }
 
-    def update_step(self, epoch: int, global_step: int, on_load_weights: bool = False):
-        size_ind = bisect.bisect_right(self.resolution_milestones, global_step) - 1
-        self.height = self.heights[size_ind]
-        self.width = self.widths[size_ind]
-        self.batch_size = self.batch_sizes[size_ind]
-        # self.directions_unit_focal = self.directions_unit_focals[size_ind]
-        threestudio.debug(
-            f"Training height: {self.height}, width: {self.width}, batch_size: {self.batch_size}"
+    def update_cameras(self, random_seed: int = 0):
+        random.seed(random_seed)
+        self.n2n_view_index = random.sample(
+            range(0, self.total_view_num),
+            min(self.total_view_num, self.cfg.max_view_num),
         )
-        # progressive view
-        self.progressive_view(global_step)
+        self.view_index_stack = self.n2n_view_index.copy()
 
     def __iter__(self):
         while True:

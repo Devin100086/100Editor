@@ -13,7 +13,6 @@ from threestudio.models.prompt_processors.base import PromptProcessorOutput
 from threestudio.utils.base import BaseObject
 from threestudio.utils.misc import C, parse_version
 from threestudio.utils.typing import *
-from threestudio.models.guidance.utils import *
 import threestudio.utils.vidtome as vidtome
 
 
@@ -50,7 +49,7 @@ class InstructPix2PixGuidance(BaseObject):
         # vidtome
         chunk_size: int = 3
         chunk_ord: str = "mix-4"
-        merge_global = True
+        merge_global: bool = True
         local_merge_ratio: float = 0.9
         global_merge_ratio: float = 0.8
         global_rand: float =  0.5
@@ -192,7 +191,8 @@ class InstructPix2PixGuidance(BaseObject):
         image_cond_latents: Float[Tensor, "B 4 DH DW"],
         t: Int[Tensor, "B"],
     ) -> Float[Tensor, "B 4 DH DW"]:
-        self.scheduler.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
+        
+        self.scheduler.config.num_train_timesteps = t.item()
         self.scheduler.set_timesteps(self.cfg.diffusion_steps)
         with torch.no_grad():
             # add noise
@@ -228,6 +228,39 @@ class InstructPix2PixGuidance(BaseObject):
                 latents = self.scheduler.step(noise_pred, t, latents).prev_sample
             threestudio.debug("Editing finished.")
         return latents
+
+    def get_chunks(self, flen):
+        x_index = torch.arange(flen)
+
+        # The first chunk has a random length
+        rand_first = np.random.randint(0, self.cfg.chunk_size) + 1
+        chunks = x_index[rand_first:].split(self.cfg.chunk_size, dim=0)
+        chunks = [x_index[:rand_first]] + list(chunks) if len(chunks[0]) > 0 else [x_index[:rand_first]]
+        if np.random.rand() > 0.5:
+            chunks = chunks[::-1]
+        
+        # Chunk order only matter when we do global token merging
+        if self.cfg.merge_global == False:
+            return chunks
+
+        # Chunk order. "seq": sequential order. "rand": full permutation. "mix": partial permutation.
+        if self.cfg.chunk_ord == "rand":
+            order = torch.randperm(len(chunks))
+        elif self.cfg.chunk_ord == "mix":
+            randord = torch.randperm(len(chunks)).tolist()
+            rand_len = int(len(randord) / self.perm_div)
+            seqord = sorted(randord[rand_len:])
+            if rand_len > 0:
+                randord = randord[:rand_len]
+                if abs(seqord[-1] - randord[-1]) < abs(seqord[0] - randord[-1]):
+                    seqord = seqord[::-1]
+                order = randord + seqord
+            else:
+                order = seqord
+        else:
+            order = torch.arange(len(chunks))
+        chunks = [chunks[i] for i in order]
+        return chunks
 
     def edit_all_latents(
         self,
@@ -343,20 +376,34 @@ class InstructPix2PixGuidance(BaseObject):
         )
         cond_latents = self.encode_cond_images(cond_rgb_BCHW_HW8)
 
-        temp = torch.zeros(1).to(rgb.device)
+        temp = torch.zeros(batch_size).to(rgb.device)
         text_embeddings = prompt_utils.get_text_embeddings(temp, temp, temp, False)
-        text_embeddings = torch.cat(
-            [text_embeddings, text_embeddings[-1:]], dim=0
-        )  # [positive, negative, negative]
+        if self.cfg.video:
+            positive_text_embeddings, negative_text_embeddings = text_embeddings.chunk(2)
+            text_embeddings = torch.cat(
+            [positive_text_embeddings, negative_text_embeddings, negative_text_embeddings], dim=0)  # [positive, negative, negative]
+        else:
+            text_embeddings = torch.cat(
+                [text_embeddings, text_embeddings[-1:]], dim=0
+            )  # [positive, negative, negative]
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
-        t = torch.randint(
-            self.min_step,
-            self.max_step + 1,
-            [batch_size],
-            dtype=torch.long,
-            device=self.device,
-        )
+        if self.cfg.video:
+            t = torch.randint(
+                self.max_step - 1,
+                self.max_step,
+                [1],
+                dtype=torch.long,
+                device=self.device,
+            ).repeat(batch_size)
+        else:
+            t = torch.randint(
+                self.min_step,
+                self.max_step + 1,
+                [batch_size],
+                dtype=torch.long,
+                device=self.device,
+            )
 
         if self.cfg.use_sds:
             grad = self.compute_grad_sds(text_embeddings, latents, cond_latents, t)
