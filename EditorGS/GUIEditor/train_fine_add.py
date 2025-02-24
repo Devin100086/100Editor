@@ -39,6 +39,7 @@ class TrainFineeAdd(BaseTrainer):
         self.mask_frames = {}
 
         self.use_masked_image = False
+        self.t_max_step = [999, 300, 300, 21]
     
     def update_mask(self,edit_cameras, text_prompt = "hat") -> None:
 
@@ -155,8 +156,7 @@ class TrainFineeAdd(BaseTrainer):
         cameras = []
         images = []
         masked_frames = []
-        t_max_step = [999, 300, 300, 21]
-        self.guidance.guidance.max_step = t_max_step[min(len(t_max_step)-1, self.edit_train_steps// self.cameara_update_step)]
+        self.guidance.guidance.max_step = self.t_max_step[min(len(self.t_max_step)-1, self.edit_train_steps// self.cameara_update_step)]
         with torch.no_grad():
             for id in self.view_list:
                 cameras.append(self.colmap_cameras[id])

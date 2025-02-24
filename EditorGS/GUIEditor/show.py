@@ -68,7 +68,7 @@ class ShowGaussian():
         self.gaussian.training_setup(opt)
         self.opt = opt
 
-    def show(self,depth,cam):
+    def show(self, depth, cam):
         network = EditorNetwork(host="127.0.0.1",port=8084)
         cache_dir = Path("tmp_add").absolute().as_posix()
         os.makedirs(cache_dir, exist_ok=True)
@@ -104,7 +104,7 @@ class ShowGaussian():
 
         with torch.no_grad():
             render_pkg = render(cam, self.gaussian, self.pipe, self.background_tensor)
-        rendered_depth = (16*(1-render_pkg["depth_3dgs"]))[..., ~object_mask]
+        rendered_depth = (1/render_pkg["depth_3dgs"])[..., ~object_mask]
         inpainted_depth = estimated_depth[~object_mask]
         object_depth = estimated_depth[..., object_mask]
 
