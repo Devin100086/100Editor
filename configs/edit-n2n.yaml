@@ -31,6 +31,9 @@ system:
   prompt_processor:
     pretrained_model_name_or_path: "runwayml/stable-diffusion-v1-5"
     prompt: 'a man wear a red hat on head'
+  video: false
+  camera_update_per_step: 500
+  added_noise_schedule: [999, 300, 300, 21]
 
   guidance_type: "stable-diffusion-instructpix2pix-guidance"
   guidance:
@@ -38,7 +41,6 @@ system:
     max_step_percent: 0.98
     guidance_scale: 7.5
     condition_scale: 1.5
-
 
   loggers:
     wandb:

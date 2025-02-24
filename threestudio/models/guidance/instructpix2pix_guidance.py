@@ -13,6 +13,8 @@ from threestudio.models.prompt_processors.base import PromptProcessorOutput
 from threestudio.utils.base import BaseObject
 from threestudio.utils.misc import C, parse_version
 from threestudio.utils.typing import *
+from threestudio.models.guidance.utils import *
+import threestudio.utils.vidtome as vidtome
 
 
 @threestudio.register("stable-diffusion-instructpix2pix-guidance")
@@ -42,6 +44,19 @@ class InstructPix2PixGuidance(BaseObject):
         diffusion_steps: int = 20
 
         use_sds: bool = False
+
+        video: bool = False
+
+        # vidtome
+        chunk_size: int = 3
+        chunk_ord: str = "mix-4"
+        merge_global = True
+        local_merge_ratio: float = 0.9
+        global_merge_ratio: float = 0.8
+        global_rand: float =  0.5
+        seed: int = 123456
+        batch_size: int = 3
+        align_batch: bool = True
 
     cfg: Config
 
@@ -112,6 +127,13 @@ class InstructPix2PixGuidance(BaseObject):
 
         threestudio.info(f"Loaded InstructPix2Pix!")
 
+        if self.cfg.video:
+            self.activate_vidtome()
+
+    def activate_vidtome(self):
+        vidtome.apply_patch(self.pipe, self.cfg.local_merge_ratio, self.cfg.merge_global, self.cfg.global_merge_ratio, 
+            seed = self.cfg.seed, batch_size = self.cfg.batch_size, align_batch = self.cfg.align_batch, global_rand = self.cfg.global_rand) 
+        
     @torch.cuda.amp.autocast(enabled=False)
     def set_min_max_steps(self, min_step_percent=0.02, max_step_percent=0.98):
         self.min_step = int(self.num_train_timesteps * min_step_percent)
@@ -170,7 +192,7 @@ class InstructPix2PixGuidance(BaseObject):
         image_cond_latents: Float[Tensor, "B 4 DH DW"],
         t: Int[Tensor, "B"],
     ) -> Float[Tensor, "B 4 DH DW"]:
-        self.scheduler.config.num_train_timesteps = t.item()
+        self.scheduler.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
         self.scheduler.set_timesteps(self.cfg.diffusion_steps)
         with torch.no_grad():
             # add noise
@@ -180,6 +202,7 @@ class InstructPix2PixGuidance(BaseObject):
             # sections of code used from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_instruct_pix2pix.py
             for i, t in enumerate(self.scheduler.timesteps):
                 # predict the noise residual with unet, NO grad!
+
                 with torch.no_grad():
                     # pred noise
                     latent_model_input = torch.cat([latents] * 3)
@@ -204,6 +227,59 @@ class InstructPix2PixGuidance(BaseObject):
                 # get previous sample, continue loop
                 latents = self.scheduler.step(noise_pred, t, latents).prev_sample
             threestudio.debug("Editing finished.")
+        return latents
+
+    def edit_all_latents(
+        self,
+        text_embeddings: Float[Tensor, "BB 77 768"],
+        latents: Float[Tensor, "B 4 DH DW"],
+        image_cond_latents: Float[Tensor, "B 4 DH DW"],
+        t: Int[Tensor, "B"],
+        cams= None,
+    ) -> Float[Tensor, "B 4 DH DW"]:
+        
+        self.scheduler.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
+        self.scheduler.set_timesteps(self.cfg.diffusion_steps)
+
+        print("Start editing images...")
+
+        with torch.no_grad():
+            # add noise
+            noise = torch.randn_like(latents)
+            latents = self.scheduler.add_noise(latents, noise, t) 
+
+            # sections of code used from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_instruct_pix2pix.py
+            for t in self.scheduler.timesteps:
+                # pred noise
+                chunks = self.get_chunks(len(latents))
+                
+                noise_preds = torch.zeros_like(latents)
+                
+                for chunk in chunks:
+                    with torch.no_grad():
+                        latent_model_input = torch.cat([latents[chunk]] * 3)
+                        image_cond_latent = torch.cat([image_cond_latents[chunk]] * 3)
+                        latent_model_input = torch.cat(
+                        [latent_model_input, image_cond_latent], dim=1
+                        )
+                        pos1,neg1,neg2 = text_embeddings.chunk(3)
+                        text_embeddings_chunk = torch.cat([pos1[chunk], neg1[chunk], neg2[chunk]], dim=0)
+                        eps = self.forward_unet(
+                        latent_model_input, t, encoder_hidden_states=text_embeddings_chunk
+                    )
+                    noise_pred_text, noise_pred_image, noise_pred_uncond = eps.chunk(
+                        3
+                    )
+                    # perform classifier-free guidance
+                    noise_pred = (
+                        noise_pred_uncond
+                        + self.cfg.guidance_scale * (noise_pred_text - noise_pred_image)
+                        + self.cfg.condition_scale * (noise_pred_image - noise_pred_uncond)
+                    )
+                    noise_preds[chunk] = noise_pred
+                # get previous sample, continue loop
+                latents = self.scheduler.step(noise_preds, t, latents).prev_sample
+        print("Editing finished.")
         return latents
 
     def compute_grad_sds(
@@ -296,7 +372,10 @@ class InstructPix2PixGuidance(BaseObject):
                 "max_step": self.max_step,
             }
         else:
-            edit_latents = self.edit_latents(text_embeddings, latents, cond_latents, t)
+            if self.cfg.video == False:
+                edit_latents = self.edit_latents(text_embeddings, latents, cond_latents, t)
+            else:
+                edit_latents = self.edit_all_latents(text_embeddings, latents, cond_latents, t)
             edit_images = self.decode_latents(edit_latents)
             edit_images = F.interpolate(edit_images, (H, W), mode="bilinear")
 

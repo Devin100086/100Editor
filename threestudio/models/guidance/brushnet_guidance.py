@@ -15,6 +15,7 @@ from threestudio.utils.base import BaseObject
 from threestudio.utils.misc import C, parse_version
 from threestudio.utils.typing import *
 import threestudio.utils.vidtome as vidtome
+from threestudio.models.guidance.utils import *
 
 
 @threestudio.register("stable-diffusion-brushnet-guidance")
