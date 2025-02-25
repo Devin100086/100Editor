@@ -16,12 +16,12 @@ class EditLoadWidget(LoadWidget):
     def __call__(self, show=True):
         viz = self.viz
         if show:
-            if imgui_utils.button(f"Browse ply", width=viz.button_w):
+            if imgui_utils.button(f"Browse ply", width=viz.button_large_w):
                 ply_file = self._select_ply() 
                 self.plys = [self.plys[0] if isinstance(ply_file, tuple) else ply_file]
             imgui.same_line()
             imgui.text(f"Scene : " + os.path.basename(self.plys[0]))
-            if imgui_utils.button(f"Browse data", width=viz.button_w):
+            if imgui_utils.button(f"Browse data", width=viz.button_large_w):
                 data_source = self._select_folder()
                 self.data_source = self.data_source if isinstance(data_source, tuple) else data_source
             imgui.same_line()

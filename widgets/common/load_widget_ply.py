@@ -22,19 +22,19 @@ class LoadWidget(Widget):
             plys_to_remove = []
 
             for i, ply in enumerate(self.plys):
-                if imgui_utils.button(f"Browse {i + 1}", width=viz.button_w):
+                if imgui_utils.button(f"Browse {i + 1}", width=viz.button_large_w):
                     ply_file = self._select_ply() 
                     self.plys[i] = ply if isinstance(ply_file, tuple) else ply_file
                 imgui.same_line()
                 if i > 0:
-                    if imgui_utils.button(f"Remove {i + 1}", width=viz.button_w):
+                    if imgui_utils.button(f"Remove {i + 1}", width=viz.button_large_w):
                         plys_to_remove.append(i)
                     imgui.same_line()
                 imgui.text(f"Scene {i + 1}: " + os.path.basename(ply))
 
             for i in plys_to_remove[::-1]:
                 self.plys.pop(i)
-            if imgui_utils.button("Add Scene", width=viz.button_w):
+            if imgui_utils.button("Add Scene", width=viz.button_large_w):
                 self.plys.append(self.plys[-1])
 
             use_splitscreen, self.use_splitscreen = imgui.checkbox("Splitscreen", self.use_splitscreen)

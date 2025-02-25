@@ -42,6 +42,7 @@ class EditorWidget(Widget):
     def __init__(self, viz):
         super().__init__(viz, "Editor")
         # Option
+        self.select_option = -1
         self.lambda_l1 = 10
         self.lambda_p = 10
         self.lambda_anchor_color = 0
@@ -108,7 +109,7 @@ class EditorWidget(Widget):
             loss=dict(values=[], dtype=float),
             num_gaussians=dict(values=[], dtype=int),
         )
-        self.iterations = []
+        self.iterations = []    
 
     @imgui_utils.scoped_by_object_id
     def __call__(self, show=True):
@@ -117,6 +118,29 @@ class EditorWidget(Widget):
         if show:
             if imgui.begin_tab_bar("EditBar"):
                 if imgui.begin_tab_item("Option")[0]:
+
+                    if imgui.radio_button("Text-Editing", self.select_option == 0):
+                        self.select_option = 0
+                        self.edit_cam_num = 48
+                    imgui.same_line()
+                    if imgui.radio_button("Text-VideoEditing", self.select_option == 1):
+                        self.select_option = 1
+                        self.edit_cam_num = 20
+                    imgui.same_line()
+                    if imgui.radio_button("Coarse-Editing", self.select_option == 2):
+                        self.select_option = 2
+                    imgui.same_line()
+                    if imgui.radio_button("Fine-Adding", self.select_option == 3):
+                        self.select_option = 3
+                        self.edit_cam_num = 48
+                    imgui.same_line()
+                    if imgui.radio_button("Fine-VideoAdding", self.select_option == 4):
+                        self.select_option = 4
+                        self.edit_cam_num = 20
+                    if imgui.radio_button("Deleting", self.select_option == 5):
+                        self.select_option = 5
+                        self.edit_cam_num = 48
+                    imgui.separator_text("Parameters")
                     label("Camera Num", viz.label_w)
                     _, self.edit_cam_num = imgui.slider_int("##Camera Num", self.edit_cam_num, 12, 200, format="%d")
                     label("Total Step", viz.label_w)
