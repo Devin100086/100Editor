@@ -156,7 +156,7 @@ class TrainFineeAdd(BaseTrainer):
         cameras = []
         images = []
         masked_frames = []
-        self.guidance.guidance.max_step = self.t_max_step[min(len(self.t_max_step)-1, self.edit_train_steps// self.cameara_update_step)]
+        self.guidance.guidance.max_step = self.t_max_step[min(len(self.t_max_step)-1, global_step// self.cameara_update_step)]
         with torch.no_grad():
             for id in self.view_list:
                 cameras.append(self.colmap_cameras[id])

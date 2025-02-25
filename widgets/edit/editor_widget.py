@@ -60,6 +60,7 @@ class EditorWidget(Widget):
         self.guidance_item = 0
         self.text_prompt = "turn him a clown"
         self.use_sam = False
+        self.text_videoEditing = False
         self.text_seg_prompt = "face"
 
         # mask-edit
@@ -152,6 +153,8 @@ class EditorWidget(Widget):
                     label("prompt", viz.label_w)
                     _, self.text_prompt = imgui.input_text("##Prompt", self.text_prompt, 256)
                     self.text_change = True if imgui.is_item_active() else False
+                    label("Video", viz.label_w)
+                    _, self.text_videoEditing = imgui.checkbox("##Video", self.text_videoEditing)
                     label("Use SAM", viz.label_w)
                     _, self.use_sam = imgui.checkbox("##use sam", self.use_sam)
                     if self.use_sam:
@@ -169,7 +172,7 @@ class EditorWidget(Widget):
                                                                              lambda_p=self.lambda_p,lambda_anchor_color=self.lambda_anchor_color,
                                                                              lambda_anchor_geo=self.lambda_anchor_geo,lambda_anchor_scale=self.lambda_anchor_scale,
                                                                              lambda_anchor_opacity=self.lambda_anchor_opacity,use_sam=self.use_sam,
-                                                                             seg_prompt=self.text_seg_prompt)
+                                                                             seg_prompt=self.text_seg_prompt,text_videoEditing=self.text_videoEditing)
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
                             self.edit3D = False

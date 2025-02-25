@@ -10,6 +10,9 @@ from EditorGS.GUIEditor.Guidance.EditGuidance import EditGuidance
 from EditorGS.gaussiansplatting.gaussian_renderer import render
 from EditorGS.GUIEditor.utils import *
 from EditorGS.GUIEditor.Network import EditorNetwork
+
+from torchvision.utils import save_image
+
 class EditTrainer(BaseTrainer):
     def __init__(self, cfg):
         super().__init__(cfg)
@@ -26,10 +29,14 @@ class EditTrainer(BaseTrainer):
         self.edit_begin_step = cfg.edit_begin_step
         self.edit_until_step = cfg.edit_until_step
 
-    def edit(self, use_sam, seg_prompt):
-        edit_cameras = sample_train_camera(self.colmap_cameras,
-                                           self.edit_cam_num,
-                                          )
+        self.t_max_step = [999, 300, 300, 21]
+        self.cameara_update_step = 500
+        self.use_masked_image = False
+
+    def edit(self, use_sam, seg_prompt, video):
+        # edit_cameras = sample_train_camera(self.colmap_cameras,
+        #                                    self.edit_cam_num,
+        #                                   )
         if self.guidance_type == "InstructPix2Pix":
             if not self.ip2p:
                 from threestudio.models.guidance.instructpix2pix_guidance import (
@@ -37,7 +44,9 @@ class EditTrainer(BaseTrainer):
                 )
 
                 self.ip2p = InstructPix2PixGuidance(
-                    OmegaConf.create({"min_step_percent": 0.02, "max_step_percent": 0.98})
+                    OmegaConf.create({"min_step_percent": 0.02,
+                                      "max_step_percent": 0.98,
+                                      "video":video})
                 )
             cur_2D_guidance = self.ip2p
             print("using InstructPix2Pix!")
@@ -55,16 +64,22 @@ class EditTrainer(BaseTrainer):
             cur_2D_guidance = self.ctn_ip2p
             print("using ControlNet-InstructPix2Pix!")
         
-        origin_frames = self.render_cameras_list(edit_cameras)
+        self.origin_frames = self.render_cameras_list(self.colmap_cameras)
+
+        random.seed(0)  # make sure same views
+        self.n2n_view_index = random.sample(
+            range(0, len(self.colmap_cameras)),
+            min(len(self.colmap_cameras), self.edit_cam_num),
+        )
+        self.view_list = self.n2n_view_index
 
         if use_sam:
-            self.masks = self.get_mask(edit_cameras, text_prompt=seg_prompt)
-            self.update_mask(edit_cameras, text_prompt=seg_prompt)
+            self.masks, _ = self.update_mask(self.colmap_cameras, text_prompt=seg_prompt)
 
         self.guidance = EditGuidance(
             guidance=cur_2D_guidance,
             gaussian=self.gaussian,
-            origin_frames=origin_frames,
+            origin_frames=self.origin_frames,
             text_prompt=self.edit_text,
             per_editing_step=self.per_editing_step,
             edit_begin_step=self.edit_begin_step,
@@ -75,21 +90,30 @@ class EditTrainer(BaseTrainer):
             lambda_anchor_geo=self.lambda_anchor_geo,
             lambda_anchor_scale=self.lambda_anchor_scale,
             lambda_anchor_opacity=self.lambda_anchor_opacity,
-            cams=edit_cameras,
+            cams=self.colmap_cameras,
         )
-        view_index_stack = list(range(len(edit_cameras)))
+        view_index_stack = self.n2n_view_index.copy()
         ema_loss_for_log = 0.0
         network = EditorNetwork(host="127.0.0.1",port=8084)
         for step in tqdm(range(self.edit_train_steps)):
             network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
+            if step % self.cameara_update_step == 0 and video:
+                print("start editing")
+                self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
+                print("end editing")
+
             if not view_index_stack:
-                view_index_stack = list(range(len(edit_cameras)))
+                view_index_stack = self.n2n_view_index.copy()
             view_index = random.choice(view_index_stack)
             view_index_stack.remove(view_index)
 
-            rendering = self.render(edit_cameras[view_index], train=True)["comp_rgb"]
+            rendering = self.render(self.colmap_cameras[view_index], train=True)["comp_rgb"]
+            
+            if not video:
+                loss = self.guidance(rendering, view_index, step)
+            else:
+                loss = self.guidance.get_loss(rendering, view_index)
 
-            loss = self.guidance(rendering, view_index, step)
             loss.backward()
 
             self.densify_and_prune(step)
@@ -106,6 +130,48 @@ class EditTrainer(BaseTrainer):
         
         os.makedirs("save", exist_ok=True)
         self.gaussian.save_ply("save/result1.ply")
+    
+    def edit_all_view(self, update_camera=False, global_step=0):
+    
+        self.edited_cams = []
+        if update_camera:
+            self.update_cameras(random_seed = global_step + 1)
+            self.view_list = self.n2n_view_index
+
+        cameras = []
+        images = []
+        origin_frames = []
+
+        self.guidance.guidance.max_step = self.t_max_step[min(len(self.t_max_step)-1, global_step// self.cameara_update_step)]
+        with torch.no_grad():
+            for id in self.view_list:
+                cameras.append(self.colmap_cameras[id])
+            sorted_cam_idx = self.sort_the_cameras_idx(cameras)
+            view_sorted = [self.view_list[idx] for idx in sorted_cam_idx]  
+                
+            for id in view_sorted:
+                cur_cam = self.colmap_cameras[id]
+                out_pkg = self.render(cur_cam)
+                out = out_pkg["comp_rgb"]
+                if self.use_masked_image:
+                    out = out * out_pkg["masks"].unsqueeze(-1)
+                images.append(out)
+                origin_frames.append(self.origin_frames[id])
+
+            images = torch.cat(images, dim=0)
+            origin_frames = torch.cat(origin_frames, dim=0)
+
+            edited_images = self.guidance.edit_all(
+                images,
+                origin_frames,
+                global_step,
+            )
+
+            # save_image(images.permute(0,3,1,2), f'batch_image_{global_step}.png', nrow=4)
+            save_image(edited_images.permute(0, 3, 1, 2), f'batch_image_{global_step}.png', nrow=4)
+            for view_index_tmp in range(len(self.view_list)):
+                self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
+
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -125,8 +191,9 @@ if __name__ == "__main__":
     parser.add_argument("--lambda_anchor_geo", type=float, default=1.0, help="Lambda anchor geo.")
     parser.add_argument("--lambda_anchor_scale", type=float, default=1.0, help="Lambda anchor scale.")
     parser.add_argument("--lambda_anchor_opacity", type=float, default=1.0, help="Lambda anchor opacity.")
-    parser.add_argument("--use_sam", type=str, default=1.0, help="Lambda anchor term.")
+    parser.add_argument("--use_sam", type=str, default="False", help="Use Sam.")
     parser.add_argument("--seg_prompt", type=str, default="face", help="seg Prompt.")
+    parser.add_argument("--video", type=str, default="False", help="video.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):
@@ -137,4 +204,4 @@ if __name__ == "__main__":
             anchor_weight_multiplier=1.3,
         )
         trainer.configure_optimizers()
-        trainer.edit(use_sam=eval(args.use_sam), seg_prompt=args.seg_prompt)
+        trainer.edit(use_sam=eval(args.use_sam), seg_prompt=args.seg_prompt, video=eval(args.video))
