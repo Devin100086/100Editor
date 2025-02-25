@@ -122,31 +122,37 @@ class EditorWidget(Widget):
                     if imgui.radio_button("Text-Editing", self.select_option == 0):
                         self.select_option = 0
                         self.edit_cam_num = 48
+                        self.per_editing_step = 10
                     imgui.same_line()
                     if imgui.radio_button("Text-VideoEditing", self.select_option == 1):
                         self.select_option = 1
                         self.edit_cam_num = 20
+                        self.per_editing_step = 10000
                     imgui.same_line()
                     if imgui.radio_button("Coarse-Editing", self.select_option == 2):
                         self.select_option = 2
+                        self.per_editing_step = 10
                     imgui.same_line()
                     if imgui.radio_button("Fine-Adding", self.select_option == 3):
                         self.select_option = 3
                         self.edit_cam_num = 48
+                        self.per_editing_step = 10
                     imgui.same_line()
                     if imgui.radio_button("Fine-VideoAdding", self.select_option == 4):
                         self.select_option = 4
                         self.edit_cam_num = 20
+                        self.per_editing_step = 10000
                     if imgui.radio_button("Deleting", self.select_option == 5):
                         self.select_option = 5
                         self.edit_cam_num = 48
+                        self.per_editing_step = 10
                     imgui.separator_text("Parameters")
                     label("Camera Num", viz.label_w)
                     _, self.edit_cam_num = imgui.slider_int("##Camera Num", self.edit_cam_num, 12, 200, format="%d")
                     label("Total Step", viz.label_w)
                     _, self.edit_train_steps = imgui.slider_int("##Total Step", self.edit_train_steps, 0, 5000, format="%d")
-                    label("Cameara Update Step", viz.label_w)
-                    _, self.cameara_update_step = imgui.slider_int("##Cameara Update Step", self.cameara_update_step, 0, 5000, format="%d")
+                    label("Camera Update Step", viz.label_w)
+                    _, self.cameara_update_step = imgui.slider_int("##Camera Update Step", self.cameara_update_step, 0, 5000, format="%d")
                     label("Lambda L1", viz.label_w)
                     _, self.lambda_l1 = imgui.slider_int("##Lambda L1", self.lambda_l1, 0, 100, format="%d")
                     label("Lambda Perceptual", viz.label_w)
@@ -164,7 +170,7 @@ class EditorWidget(Widget):
                     label("Edit Begining", viz.label_w)
                     _, self.edit_begin_step = imgui.slider_int("##Edit Begining", self.edit_begin_step, 0, 5000, format="%d")
                     label("Edit Interval", viz.label_w)
-                    _, self.per_editing_step = imgui.slider_int("##Edit Interval", self.per_editing_step, 4, 48, format="%d")
+                    _, self.per_editing_step = imgui.slider_int("##Edit Interval", self.per_editing_step, 4, 12000, format="%d")
                     imgui.end_tab_item()
 
                 if imgui.begin_tab_item("text")[0]:

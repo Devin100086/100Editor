@@ -98,9 +98,7 @@ class EditTrainer(BaseTrainer):
         for step in tqdm(range(self.edit_train_steps)):
             network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
             if step % self.cameara_update_step == 0 and video:
-                print("start editing")
                 self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
-                print("end editing")
 
             if not view_index_stack:
                 view_index_stack = self.n2n_view_index.copy()
@@ -109,10 +107,7 @@ class EditTrainer(BaseTrainer):
 
             rendering = self.render(self.colmap_cameras[view_index], train=True)["comp_rgb"]
             
-            if not video:
-                loss = self.guidance(rendering, view_index, step)
-            else:
-                loss = self.guidance.get_loss(rendering, view_index)
+            loss = self.guidance(rendering, view_index, step)
 
             loss.backward()
 
@@ -161,11 +156,7 @@ class EditTrainer(BaseTrainer):
             images = torch.cat(images, dim=0)
             origin_frames = torch.cat(origin_frames, dim=0)
 
-            edited_images = self.guidance.edit_all(
-                images,
-                origin_frames,
-                global_step,
-            )
+            edited_images = self.guidance.edit_all(images, origin_frames)
 
             # save_image(images.permute(0,3,1,2), f'batch_image_{global_step}.png', nrow=4)
             save_image(edited_images.permute(0, 3, 1, 2), f'batch_image_{global_step}.png', nrow=4)
