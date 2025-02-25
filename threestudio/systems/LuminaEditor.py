@@ -229,7 +229,7 @@ class LuminaEditor(BaseLift3DSystem):
         cache_dir = os.path.join(self.cache_dir, cache_name)
         os.makedirs(cache_dir, exist_ok=True)
         with torch.no_grad():
-            for id in tqdm(self.view_list):
+            for id in tqdm(range(self.trainer.datamodule.train_dataset.total_view_num)):
                 cur_path = os.path.join(cache_dir, "{:0>4d}.png".format(id))
                 if not os.path.exists(cur_path) or self.cfg.cache_overwrite:
                     cur_cam = self.trainer.datamodule.train_dataset.scene.cameras[id]
