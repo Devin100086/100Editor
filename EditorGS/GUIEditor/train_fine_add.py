@@ -115,9 +115,7 @@ class TrainFineeAdd(BaseTrainer):
         for step in tqdm(range(self.edit_train_steps)):
             network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
             if step % self.cameara_update_step == 0 and one_time:
-                print("start editing")
                 self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
-                print("end editing")
 
             if not view_index_stack:
                 view_index_stack = self.n2n_view_index.copy()
@@ -125,11 +123,8 @@ class TrainFineeAdd(BaseTrainer):
             view_index_stack.remove(view_index)
 
             rendering = self.render(self.colmap_cameras[view_index], train=True)["comp_rgb"]
-
-            if not one_time:
-                loss = self.guidance(rendering, view_index, step)
-            else:
-                loss = self.guidance.get_loss(rendering, view_index, step)
+            
+            loss = self.guidance(rendering, view_index, step)
 
             loss.backward()
 
@@ -181,7 +176,6 @@ class TrainFineeAdd(BaseTrainer):
             edited_images = self.guidance.edit_all(
                 images,
                 masked_frames,
-                global_step,
             )
 
             # save_image(images.permute(0,3,1,2), f'batch_image_{global_step}.png', nrow=4)
@@ -191,6 +185,8 @@ class TrainFineeAdd(BaseTrainer):
 
 
 if __name__ == "__main__":
+    import time 
+    start_time = time.time()
     parser = ArgumentParser()
     parser.add_argument("--gs_source", type=str, required=True)  # gs ply or obj file?
     parser.add_argument("--colmap_dir", type=str, required=True)
@@ -226,6 +222,8 @@ if __name__ == "__main__":
         trainer.configure_optimizers()
         
         trainer.edit(one_time=eval(args.video))
+    end_time = time.time()
+    print("Time taken:", end_time - start_time)
     
     
     

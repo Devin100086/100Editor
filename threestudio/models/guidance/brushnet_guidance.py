@@ -316,11 +316,11 @@ class BrushNetGuidance(BaseObject):
         
         # self.scheduler.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
         self.scheduler.set_timesteps(self.cfg.diffusion_steps)
+        print("Start editing images...")
         with torch.no_grad():
             # add noise
             # noise = torch.randn_like(latents)
             # latents = self.scheduler.add_noise(latents, noise, t)  # type: ignore
-            threestudio.debug("Start editing...")
             # sections of code used from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_instruct_pix2pix.py
             for i, t in enumerate(self.scheduler.timesteps):
                 # predict the noise residual with unet, NO grad!
@@ -363,7 +363,8 @@ class BrushNetGuidance(BaseObject):
                     noise_preds[chunk] = noise_pred
                 # get previous sample, continue loop
                 noise_latents = self.scheduler.step(noise_preds, t, noise_latents).prev_sample
-            threestudio.debug("Editing finished.")
+        
+        print("Editing finished.")
 
         return noise_latents
 
