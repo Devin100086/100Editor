@@ -48,7 +48,7 @@ def training_fine_adding_command(
     gs_source, colmap_dir, text_prompt, edit_train_steps, cameara_update_step,
     seg_prompt, mask_dir, video, edit_cam_num, guidance_type, per_editing_step, edit_begin_step,
     edit_until_step, lambda_l1, lambda_p, lambda_anchor_color, lambda_anchor_geo,
-    lambda_anchor_scale, lambda_anchor_opacity
+    lambda_anchor_scale, lambda_anchor_opacity, densification_interval, densify_until_step,
 ):
     process = subprocess.Popen([
         "python",
@@ -71,7 +71,9 @@ def training_fine_adding_command(
         "--lambda_anchor_color", str(lambda_anchor_color),
         "--lambda_anchor_geo", str(lambda_anchor_geo),
         "--lambda_anchor_scale", str(lambda_anchor_scale),
-        "--lambda_anchor_opacity", str(lambda_anchor_opacity)
+        "--lambda_anchor_opacity", str(lambda_anchor_opacity),
+        "--densification_interval", str(densification_interval),
+        "--densify_until_step", str(densify_until_step)
     ])
     return process
 

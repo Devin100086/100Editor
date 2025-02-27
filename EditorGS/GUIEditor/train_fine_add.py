@@ -30,9 +30,11 @@ class TrainFineeAdd(BaseTrainer):
         self.lambda_anchor_scale = cfg.lambda_anchor_scale
         self.lambda_anchor_opacity = cfg.lambda_anchor_opacity
         self.per_editing_step = cfg.per_editing_step
+        self.densify_until_step = cfg.densify_until_step
         self.edit_begin_step = cfg.edit_begin_step
         self.edit_until_step = cfg.edit_until_step
         self.cameara_update_step = cfg.cameara_update_step
+        self.densification_interval = cfg.densification_interval
         self.seg_prompt = cfg.seg_prompt
         self.lang_sam = LangSAMTextSegmentor().to(get_device())
 
@@ -202,6 +204,8 @@ if __name__ == "__main__":
     parser.add_argument("--per_editing_step", type=int, default=1, help="Per editing step.")
     parser.add_argument("--edit_begin_step", type=int, default=0, help="Edit begin step.")
     parser.add_argument("--edit_until_step", type=int, default=100, help="Edit until step.")
+    parser.add_argument("--densification_interval", type=float, default=50, help="Densification interval.")
+    parser.add_argument("--densify_until_step", type=int, default=1300, help="Densify until step.")
     parser.add_argument("--lambda_l1", type=float, default=1.0, help="Lambda L1.")
     parser.add_argument("--lambda_p", type=int, default=2, help="Lambda P.")
     parser.add_argument("--lambda_anchor_color", type=float, default=1.0, help="Lambda anchor color.")

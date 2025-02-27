@@ -54,7 +54,9 @@ class EditorWidget(Widget):
         self.edit_begin_step = 0
         self.edit_cam_num = 16
         self.edit_train_steps = 1500
+        self.densify_until_step = 1300
         self.cameara_update_step = 500
+        self.densification_interval = 50
         
         # text-edit
         self.guidance_type = ["InstructPix2Pix","ControlNet-Pix2Pix"]
@@ -122,30 +124,54 @@ class EditorWidget(Widget):
                     if imgui.radio_button("Text-Editing", self.select_option == 0):
                         self.select_option = 0
                         self.edit_cam_num = 48
+                        self.edit_train_steps = 1500
+                        self.edit_until_step = 1000
                         self.per_editing_step = 10
+                        self.densification_interval = 50
+                        self.densify_until_step = 1300
                     imgui.same_line()
                     if imgui.radio_button("Text-VideoEditing", self.select_option == 1):
                         self.select_option = 1
                         self.edit_cam_num = 20
+                        self.edit_train_steps = 1000
+                        self.edit_until_step = 4000
                         self.per_editing_step = 10000
+                        self.densification_interval = 100
+                        self.densify_until_step = 4000
                     imgui.same_line()
                     if imgui.radio_button("Coarse-Editing", self.select_option == 2):
                         self.select_option = 2
                         self.per_editing_step = 10
+                        self.edit_train_steps = 1500
+                        self.edit_until_step = 1000
+                        self.densification_interval = 50
+                        self.densify_until_step = 1300
                     imgui.same_line()
                     if imgui.radio_button("Fine-Adding", self.select_option == 3):
                         self.select_option = 3
                         self.edit_cam_num = 48
                         self.per_editing_step = 10
+                        self.densification_interval = 50
+                        self.edit_train_steps = 1500
+                        self.edit_until_step = 1000
+                        self.densify_until_step = 1300
                     imgui.same_line()
                     if imgui.radio_button("Fine-VideoAdding", self.select_option == 4):
                         self.select_option = 4
-                        self.edit_cam_num = 20
+                        self.edit_cam_num = 18
                         self.per_editing_step = 10000
+                        self.edit_train_steps = 1500
+                        self.edit_until_step = 4000
+                        self.densification_interval = 100
+                        self.densify_until_step = 4000
                     if imgui.radio_button("Deleting", self.select_option == 5):
                         self.select_option = 5
                         self.edit_cam_num = 48
                         self.per_editing_step = 10
+                        self.edit_train_steps = 1500
+                        self.edit_until_step = 1000
+                        self.densification_interval = 50
+                        self.densify_until_step = 1300
                     imgui.separator_text("Parameters")
                     label("Camera Num", viz.label_w)
                     _, self.edit_cam_num = imgui.slider_int("##Camera Num", self.edit_cam_num, 12, 200, format="%d")
@@ -171,6 +197,10 @@ class EditorWidget(Widget):
                     _, self.edit_begin_step = imgui.slider_int("##Edit Begining", self.edit_begin_step, 0, 5000, format="%d")
                     label("Edit Interval", viz.label_w)
                     _, self.per_editing_step = imgui.slider_int("##Edit Interval", self.per_editing_step, 4, 12000, format="%d")
+                    label("Densification Interval", viz.label_w)
+                    _, self.densification_interval = imgui.slider_int("##Densification Interval", self.densification_interval, 1, 200, format="%d")
+                    label("Densification Until Step", viz.label_w)
+                    _, self.densify_until_step = imgui.slider_int("##Densification Until Step", self.densify_until_step, 0, 5000, format="%d")
                     imgui.end_tab_item()
 
                 if imgui.begin_tab_item("text")[0]:
@@ -480,12 +510,30 @@ class EditorWidget(Widget):
                                                                                     edit_begin_step=self.edit_begin_step,edit_until_step=self.edit_until_step,
                                                                                     lambda_l1=self.lambda_l1,lambda_p=self.lambda_p,
                                                                                     lambda_anchor_color=self.lambda_anchor_color,lambda_anchor_geo=self.lambda_anchor_geo,
-                                                                                    lambda_anchor_scale=self.lambda_anchor_scale,lambda_anchor_opacity=self.lambda_anchor_opacity)
+                                                                                    lambda_anchor_scale=self.lambda_anchor_scale,lambda_anchor_opacity=self.lambda_anchor_opacity,
+                                                                                    densification_interval=self.densification_interval, densify_until_step=self.densify_until_step)
                         else:
                             if imgui_utils.button("Stop", width=viz.button_w):
                                 self.edit3D = False
                                 self.edit_trainer.terminate()
                                 self.edit_trainer.wait()
+                        
+                        if "training_stats" in viz.result.keys():
+                            stats = viz.result["training_stats"]
+                            self.iterations.append(stats["iteration"])
+                            self.plots.loss["values"].append(stats["loss"])
+                            self.plots.num_gaussians["values"].append(stats["num_gaussians"])
+                            
+                            for plot_name, plot_values in self.plots.items():
+                                plot_size = imgui.ImVec2(viz.pane_w - 150, 200)
+                                implot.set_next_axes_to_fit()
+                                if implot.begin_plot(plot_name, plot_size):
+                                    implot.plot_line( 
+                                        plot_name,
+                                        ys=np.array(plot_values["values"], dtype=plot_values["dtype"]),
+                                        xs=np.array(self.iterations, dtype=plot_values["dtype"]),
+                                    )
+                                    implot.end_plot()
 
                     imgui.end_tab_item()
 
