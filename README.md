@@ -24,10 +24,11 @@ python run_main.py
 - [x] 🎨Add Text-driven 3D Editing.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
+  - [x] 🎨Optimize the initial model.
 - [ ] ❄️Add Sketch-based 3D Adding.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
-  - [ ] 🧊Optimize the initial model.
+  - [x] 🎨Optimize the initial model.
 - [x] ❄️Add Mask-based 3D Adding.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
