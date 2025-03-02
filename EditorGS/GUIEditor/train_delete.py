@@ -52,58 +52,58 @@ class DeleteTrainer(BaseTrainer):
                                           )
 
         from diffusers import (
-                StableDiffusionControlNetInpaintPipeline,
-                ControlNetModel,
-                DDIMScheduler,
+                DDIMScheduler, DiffusionPipeline
             )
 
-        controlnet = ControlNetModel.from_pretrained(
-            "lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16
-        )
-        pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5",
-            controlnet=controlnet,
+        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu") 
+        scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
+        model_path = ".cache/models/stable-diffusion-xl-base-1.0" 
+        pipe = DiffusionPipeline.from_pretrained(
+            model_path,
+            custom_pipeline="extern/AttentiveEraser/pipelines/pipeline_stable_diffusion_xl_attentive_eraser.py",
+            scheduler=scheduler,
+            variant="fp16",
+            use_safetensors=True,
             torch_dtype=torch.float16,
-        )
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-
-        pipe.enable_model_cpu_offload()
+        ).to(device)
 
         self.ctn_inpaint = pipe
         self.ctn_inpaint.set_progress_bar_config(disable=True)
         self.ctn_inpaint.safety_checker = None
 
-        self.update_mask(self.colmap_cameras, text_prompt=self.delete_prompt)
+        mask, _ = self.update_mask(edit_cameras, text_prompt=self.delete_prompt)
 
-        # origin_frames = self.render_cameras_list(edit_cameras)
-        num_channels_latents = self.ctn_inpaint.vae.config.latent_channels
-        shape = (
-            1,
-            num_channels_latents,
-            edit_cameras[0].image_height // self.ctn_inpaint.vae_scale_factor,
-            edit_cameras[0].image_height // self.ctn_inpaint.vae_scale_factor,
-        )
+        origin_frames = self.render_cameras_list(edit_cameras)
+        # depth_frames = self.predict_depth(edit_cameras)
+        # num_channels_latents = self.ctn_inpaint.vae.config.latent_channels
+        # shape = (
+        #     1,
+        #     num_channels_latents,
+        #     edit_cameras[0].image_height // self.ctn_inpaint.vae_scale_factor,
+        #     edit_cameras[0].image_height // self.ctn_inpaint.vae_scale_factor,
+        # )
 
-        latents = torch.zeros(shape, dtype=torch.float16, device="cuda")
+        # latents = torch.zeros(shape, dtype=torch.float16, device="cuda")
 
-        dist_thres = (
-            self.inpaint_scale * self.cameras_extent * self.gaussian.percent_dense
-        )
-        valid_remaining_idx = self.gaussian.get_near_gaussians_by_mask(
-            self.gaussian.mask, dist_thres
-        )
+        # dist_thres = (
+        #     self.inpaint_scale * self.cameras_extent * self.gaussian.percent_dense
+        # )
+        # valid_remaining_idx = self.gaussian.get_near_gaussians_by_mask(
+        #     self.gaussian.mask, dist_thres
+        # )
         # Prune and update mask to valid_remaining_idx
-        self.gaussian.prune_with_mask(new_mask=valid_remaining_idx)
+        # self.gaussian.prune_with_mask(new_mask=valid_remaining_idx)
 
-        inpaint_2D_mask, origin_frames = self.render_all_view_with_mask(
-            edit_cameras
-        )
+        # inpaint_2D_mask, origin_frames = self.render_all_view_with_mask(
+        #     edit_cameras
+        # )
 
         self.guidance = DelGuidance(
             guidance=self.ctn_inpaint,
-            latents=latents,
+            # depth_frames=depth_frames,
+            origin_frames=origin_frames,
             gaussian=self.gaussian,
-            text_prompt=self.inpaint_prompt,
+            text_prompt=self.delete_prompt,
             lambda_l1=self.lambda_l1,
             lambda_p=self.lambda_p,
             lambda_anchor_color=self.lambda_anchor_color,
@@ -130,7 +130,7 @@ class DeleteTrainer(BaseTrainer):
                 rendering,
                 depth_rendering,
                 origin_frames[view_index],
-                inpaint_2D_mask[view_index],
+                (torch.tensor(mask[view_index])/255).to(get_device()),
                 view_index,
                 step,
             )
@@ -150,20 +150,19 @@ class DeleteTrainer(BaseTrainer):
         self.gaussian.save_ply("save/result1.ply")
 
     @torch.no_grad()
-    def render_all_view_with_mask(self, edit_cameras):
-        inpaint_2D_mask = []
-        origin_frames = []
-
+    def predict_depth(self, edit_cameras):
+        depth_frames = []
+        from transformers import pipeline
+        depth_predictor = pipeline(task="depth-estimation", model="depth-anything/depth-anything-V2-Base-hf")
         for _, cam in enumerate(edit_cameras):
             res = self.render(cam)
-            rgb, mask = res["comp_rgb"], res["masks"]
-            mask = dilate_mask(mask.to(torch.float32), self.mask_dilate)
-            if self.fix_holes:
-                mask = fill_closed_areas(mask)
-            inpaint_2D_mask.append(mask)
-            origin_frames.append(rgb)
+            rgb = res["comp_rgb"]
 
-        return inpaint_2D_mask, origin_frames
+            depth = self.to_tensor(depth_predictor(rgb)["depth"]).unsqueeze(0).permute(0,2,3,1)
+
+            depth_frames.append(depth)
+
+        return depth_frames
 
 
 if __name__ == "__main__":

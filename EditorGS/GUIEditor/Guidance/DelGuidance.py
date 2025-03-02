@@ -2,20 +2,19 @@ import torch
 import numpy as np
 from threestudio.utils.misc import get_device
 from threestudio.utils.perceptual import PerceptualLoss
-from torchvision.transforms.functional import to_pil_image
+from torchvision.transforms.functional import to_pil_image, to_tensor, gaussian_blur
 from torchvision.transforms import ToTensor
 
 from threestudio.models.prompt_processors.stable_diffusion_prompt_processor import StableDiffusionPromptProcessor
-from transformers import pipeline
+import torch.nn.functional as F
 # Diffusion model (cached) + prompts + edited_frames + training config
 
 class DelGuidance:
-    def __init__(self, guidance, latents, gaussian, text_prompt,
+    def __init__(self, guidance, origin_frames, gaussian, text_prompt,
                  lambda_l1, lambda_p, lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,
                  cams):
         self.guidance = guidance # ctn-inpaint guidance
-        self.latents = latents
-        self.depthPredictor = pipeline(task="depth-estimation", model="depth-anything/depth-anything-V2-Base-hf")
+        self.origin_frames = origin_frames
         self.lambda_l1 = lambda_l1
         self.lambda_p = lambda_p
         self.lambda_anchor_color = lambda_anchor_color
@@ -24,7 +23,7 @@ class DelGuidance:
         self.lambda_anchor_opacity = lambda_anchor_opacity
         self.gaussian = gaussian
         self.edit_frames = {}
-        self.depth_frames = {}
+        # self.depth_frames = {}
         self.text_prompt = text_prompt
         self.cams = cams
         self.visible = True
@@ -41,35 +40,33 @@ class DelGuidance:
 
     @torch.no_grad()
     def inpaint_with_mask_ctn(self, image_in, mask_in, view_index) -> None:
-        image_in_pil = to_pil_image(image_in[0].permute(2, 0, 1)) # 1, H, W, C to C, H, W
-        mask_in_pil = to_pil_image(torch.stack([mask_in[0].to(torch.uint8) * 255] * 3)) # C, H, W 255
-
-        def make_inpaint_condition(image, image_mask):
-            image = np.array(image.convert("RGB")).astype(np.float32) / 255.0
-            image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
-
-            assert image.shape[0:1] == image_mask.shape[
-                                       0:1], "image and image_mask must have the same image size"
-            image[image_mask > 0.5] = -1.0  # set as masked pixel
-            image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
-            image = torch.from_numpy(image)
-            return image
-
-        control_image = make_inpaint_condition(image_in_pil, mask_in_pil).to("cuda")
-        generator = torch.Generator(device="cuda").manual_seed(0)
+        device = get_device()  # Get the device (cpu or cuda)
+        generator = torch.Generator(device=device).manual_seed(123)
+        image_in = image_in.permute(0, 3, 1, 2)
+        image_in = F.interpolate(image_in, (1024, 1024))
+        mask_in = mask_in.unsqueeze(0)
+        mask_in = F.interpolate(mask_in, (1024, 1024))
+        mask_in = gaussian_blur(mask_in, kernel_size=(77, 77))
         out = self.guidance(
-            self.text_prompt,
-            num_inference_steps=20,
-            generator=generator,
-            eta=1.0,
-            image=image_in_pil,
-            mask_image=mask_in_pil,
-            control_image=control_image,
-            latents=self.latents,
-        ).images[0]
+                    prompt=self.text_prompt,
+                    image=image_in,
+                    mask_image=mask_in,
+                    height=1024,
+                    width=1024,
+                    AAS=True, # enable AAS
+                    strength=0.8, # inpainting strength
+                    rm_guidance_scale=9, # removal guidance scale
+                    ss_steps = 9, # similarity suppression steps
+                    ss_scale = 0.3, # similarity suppression scale
+                    AAS_start_step=0, # AAS start step
+                    AAS_start_layer=34, # AAS start layer
+                    AAS_end_layer=70, # AAS end layer
+                    num_inference_steps=50, # number of inference steps # AAS_end_step = int(strength*num_inference_steps)
+                    generator=generator,
+                    guidance_scale=1,
+                ).images[0]
 
-        self.edit_frames[view_index] = self.to_tensor(out).to("cuda")[None].permute(0,2,3,1) # 1 C H W to 1 H W C
-        self.depth_frames[view_index] = self.to_tensor(self.depthPredictor(out)["depth"]).unsqueeze(0).permute(0,2,3,1)
+        self.edit_frames[view_index] = F.interpolate(self.to_tensor(out).to("cuda")[None], (512,512)).permute(0,2,3,1) # 1 C H W to 1 H W C
 
     def __call__(self, rendering, depth_rendering, image_in, mask_in, view_index, step):
         self.gaussian.update_learning_rate(step)
@@ -94,7 +91,7 @@ class DelGuidance:
                     self.lambda_anchor_opacity * anchor_out['loss_anchor_opacity'] + \
                     self.lambda_anchor_scale * anchor_out['loss_anchor_scale']
 
-        loss += self.pearson_depth_loss(depth_rendering, self.depth_frames[view_index].to(depth_rendering.device))
+        # loss += self.pearson_depth_loss(depth_rendering, self.depth_frames[view_index].to(depth_rendering.device))
 
         return loss
     
