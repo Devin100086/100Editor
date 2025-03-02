@@ -7,6 +7,7 @@ from torchvision.transforms import ToTensor
 
 from threestudio.models.prompt_processors.stable_diffusion_prompt_processor import StableDiffusionPromptProcessor
 import torch.nn.functional as F
+from transformers import pipeline
 # Diffusion model (cached) + prompts + edited_frames + training config
 
 class DelGuidance:
@@ -15,6 +16,7 @@ class DelGuidance:
                  cams):
         self.guidance = guidance # ctn-inpaint guidance
         self.origin_frames = origin_frames
+        self.depthPredictor = pipeline(task="depth-estimation", model="depth-anything/depth-anything-V2-Base-hf")
         self.lambda_l1 = lambda_l1
         self.lambda_p = lambda_p
         self.lambda_anchor_color = lambda_anchor_color
@@ -23,7 +25,7 @@ class DelGuidance:
         self.lambda_anchor_opacity = lambda_anchor_opacity
         self.gaussian = gaussian
         self.edit_frames = {}
-        # self.depth_frames = {}
+        self.depth_frames = {}
         self.text_prompt = text_prompt
         self.cams = cams
         self.visible = True
@@ -67,6 +69,7 @@ class DelGuidance:
                 ).images[0]
 
         self.edit_frames[view_index] = F.interpolate(self.to_tensor(out).to("cuda")[None], (512,512)).permute(0,2,3,1) # 1 C H W to 1 H W C
+        self.depth_frames[view_index] = F.interpolate(self.to_tensor(self.depthPredictor(out)["depth"])[None], (512,512)).permute(0,2,3,1)
 
     def __call__(self, rendering, depth_rendering, image_in, mask_in, view_index, step):
         self.gaussian.update_learning_rate(step)
@@ -91,7 +94,7 @@ class DelGuidance:
                     self.lambda_anchor_opacity * anchor_out['loss_anchor_opacity'] + \
                     self.lambda_anchor_scale * anchor_out['loss_anchor_scale']
 
-        # loss += self.pearson_depth_loss(depth_rendering, self.depth_frames[view_index].to(depth_rendering.device))
+        loss += self.pearson_depth_loss(depth_rendering, self.depth_frames[view_index].to(depth_rendering.device))
 
         return loss
     
