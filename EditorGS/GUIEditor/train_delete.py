@@ -4,6 +4,8 @@ from tqdm import tqdm
 import torch
 import sys
 import os
+
+import yaml
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from EditorGS.GUIEditor.train_base import BaseTrainer
 from EditorGS.GUIEditor.Guidance.DelGuidance import DelGuidance
@@ -14,10 +16,7 @@ from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
 from PIL import Image
 from EditorGS.GUIEditor.utils import *
 from EditorGS.GUIEditor.Network import EditorNetwork
-from threestudio.utils.misc import (
-    dilate_mask,
-    fill_closed_areas,
-)
+from EditorGS.lama.saicinpainting.training.trainers import load_checkpoint
 
 class DeleteTrainer(BaseTrainer):
     def __init__(self, cfg):
@@ -56,47 +55,22 @@ class DeleteTrainer(BaseTrainer):
             )
 
         device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu") 
-        scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
-        model_path = ".cache/models/stable-diffusion-xl-base-1.0" 
-        pipe = DiffusionPipeline.from_pretrained(
-            model_path,
-            custom_pipeline="extern/AttentiveEraser/pipelines/pipeline_stable_diffusion_xl_attentive_eraser.py",
-            scheduler=scheduler,
-            variant="fp16",
-            use_safetensors=True,
-            torch_dtype=torch.float16,
-        ).to(device)
-
-        self.ctn_inpaint = pipe
-        self.ctn_inpaint.set_progress_bar_config(disable=True)
-        self.ctn_inpaint.safety_checker = None
+        train_config_path = os.path.join(".cache/models/big-lama", 'config.yaml')
+        with open(train_config_path, 'r') as f:
+            train_config = OmegaConf.create(yaml.safe_load(f))
+        train_config.training_model.predict_only = True
+        train_config.visualizer.kind = 'noop'
+        checkpoint_path = os.path.join(".cache/models/big-lama", 
+                                'models', 
+                                'best.ckpt')
+        model = load_checkpoint(train_config, checkpoint_path, strict=False, map_location='cpu')
+        model.freeze()
+            
+        self.ctn_inpaint = model
 
         mask, _ = self.update_mask(edit_cameras, text_prompt=self.delete_prompt)
 
         origin_frames = self.render_cameras_list(edit_cameras)
-        # depth_frames = self.predict_depth(edit_cameras)
-        # num_channels_latents = self.ctn_inpaint.vae.config.latent_channels
-        # shape = (
-        #     1,
-        #     num_channels_latents,
-        #     edit_cameras[0].image_height // self.ctn_inpaint.vae_scale_factor,
-        #     edit_cameras[0].image_height // self.ctn_inpaint.vae_scale_factor,
-        # )
-
-        # latents = torch.zeros(shape, dtype=torch.float16, device="cuda")
-
-        # dist_thres = (
-        #     self.inpaint_scale * self.cameras_extent * self.gaussian.percent_dense
-        # )
-        # valid_remaining_idx = self.gaussian.get_near_gaussians_by_mask(
-        #     self.gaussian.mask, dist_thres
-        # )
-        # Prune and update mask to valid_remaining_idx
-        # self.gaussian.prune_with_mask(new_mask=valid_remaining_idx)
-
-        # inpaint_2D_mask, origin_frames = self.render_all_view_with_mask(
-        #     edit_cameras
-        # )
 
         self.guidance = DelGuidance(
             guidance=self.ctn_inpaint,

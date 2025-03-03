@@ -674,7 +674,6 @@ class EditorWidget(Widget):
         result = brushnet(
                 image,
                 mask,
-                generator,
                 prompt_utils,
             )
         
