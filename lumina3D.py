@@ -37,7 +37,8 @@ from widgets.init import (
 )
 from widgets.load import (
     capture_widget,
-    camvideo_widget
+    camvideo_widget,
+    loadcam_widget
 )
 from widgets.train import (
     latent_widget,
@@ -93,7 +94,8 @@ class Lumina3D(imgui_window.ImguiWindow):
                 render_widget.RenderWidget(self),
                 edit_widget.EditWidget(self),
                 eval_widget.EvalWidget(self),
-                camvideo_widget.CamvideoWidget(self)
+                camvideo_widget.CamvideoWidget(self),
+                loadcam_widget.LoadCameraWidget(self)
         ]
         self.train_widgets = [
                 training_widget.TrainingWidget(self),

@@ -42,7 +42,7 @@ class CamvideoWidget(Widget):
                 }
                 )
             imgui.same_line()
-            if imgui_utils.button("Clear Cameras", viz.button_w*1.5):
+            if imgui_utils.button("Clear Cameras", viz.button_large_w):
                 self.cam.clear()
 
             size = imgui.ImVec2(0, 80)
@@ -50,10 +50,10 @@ class CamvideoWidget(Widget):
             for i, camera in enumerate(self.cam):
                 label(f"Camera {i+1}", viz.label_w)
                 imgui.same_line()
-                if imgui_utils.button(f"Remove{i+1}", viz.button_w):
+                if imgui_utils.button(f"Remove{i+1}", viz.button_large_w):
                     self.cam.pop(i)
                 imgui.same_line()
-                if imgui_utils.button(f"See{i+1}", viz.button_w):
+                if imgui_utils.button(f"See{i+1}", viz.button_large_w):
                     viz.load_widgets[1].pose = self.cam[i]["pose"]
                     viz.load_widgets[1].radius = self.cam[i]["radius"]
                     viz.load_widgets[1].lookat_point = self.cam[i]["lookat_point"]
