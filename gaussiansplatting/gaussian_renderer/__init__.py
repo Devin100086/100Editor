@@ -11,6 +11,7 @@
 
 import torch
 import math
+import numpy as np
 from diff_gauss import GaussianRasterizationSettings, GaussianRasterizer
 from scene.gaussian_model import GaussianModel
 from utils.sh_utils import eval_sh
@@ -187,3 +188,58 @@ def render_simple(viewpoint_camera, pc: GaussianModel, bg_color: torch.Tensor, s
         "alpha": rendered_alpha,
         "depth": rendered_depth
     }
+
+def render_colamp(pointxyz, pointcolor, resolution, fov_rad, cam_params):
+
+    fx = fy = (resolution / 2) / np.tan(fov_rad / 2)
+    cx = cy = resolution / 2
+
+    point_world = np.array(pointxyz)
+    homogeneous_points = np.hstack([point_world, np.ones((len(point_world), 1))])
+    point_cam = np.dot(cam_params, homogeneous_points.T).T[:, :3]
+
+    valid_points = point_cam[:, 2] > 0
+    point_cam = point_cam[valid_points]
+    pointcolor_filtered = pointcolor[valid_points]
+
+    u = fx * (point_cam[:, 0] / point_cam[:, 2]) + cx
+    v = fy * (point_cam[:, 1] / point_cam[:, 2]) + cy
+
+    inside_image = (u >= 0) & (u < resolution) & (v >= 0) & (v < resolution)
+    point_cam = point_cam[inside_image]
+    pointcolor_filtered = pointcolor_filtered[inside_image]
+    u = u[inside_image]
+    v = v[inside_image]
+
+    sorted_indices = np.argsort(point_cam[:, 2])
+    point_cam = point_cam[sorted_indices]
+    pointcolor_filtered = pointcolor_filtered[sorted_indices]
+    u = u[sorted_indices]
+    v = v[sorted_indices]
+
+    image = np.ones((resolution, resolution, 3), dtype=np.float32)
+    depth_buffer = np.full((resolution, resolution), np.inf, dtype=np.float32)
+
+    radius = 1.0
+
+    for i in range(len(point_cam)):
+        point_z = point_cam[i, 2]
+        point_u = u[i]
+        point_v = v[i]
+        point_color = pointcolor_filtered[i]
+
+        min_i = int(np.floor(point_v - radius))
+        max_i = int(np.ceil(point_v + radius)) + 1
+        min_j = int(np.floor(point_u - radius))
+        max_j = int(np.ceil(point_u + radius)) + 1
+
+        for pixel_i in range(max(0, min_i), min(resolution, max_i)):
+            for pixel_j in range(max(0, min_j), min(resolution, max_j)):
+                pixel_center_u = pixel_j + 0.5
+                pixel_center_v = pixel_i + 0.5
+                distance_squared = (point_u - pixel_center_u)**2 + (point_v - pixel_center_v)**2
+                if distance_squared <= radius**2 and point_z < depth_buffer[pixel_i, pixel_j]:
+                    image[pixel_i, pixel_j] = point_color
+                    depth_buffer[pixel_i, pixel_j] = point_z
+
+    return image

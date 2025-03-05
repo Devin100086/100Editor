@@ -10,6 +10,7 @@ torch.set_printoptions(precision=2, sci_mode=False)
 np.set_printoptions(precision=2)
 
 from renderer.renderer_wrapper import RendererWrapper
+from renderer.colmap_renderer import ColmapRenderer
 from renderer.gaussian_renderer import GaussianRenderer
 from renderer.editing_renderer import EditingRenderer
 from renderer.fitting_renderer import FittingRenderer
@@ -33,7 +34,8 @@ from widgets.common import (
 from widgets.init import (
     processing_widget,
     style_widget,
-    convert_widget
+    convert_widget,
+    showcolmap_widget
 )
 from widgets.load import (
     capture_widget,
@@ -83,6 +85,8 @@ class Lumina3D(imgui_window.ImguiWindow):
             style_widget.StyleWidget(self),
             processing_widget.ProcessingWidget(self),
             convert_widget.ConverWidget(self),
+            showcolmap_widget.ShowColmapWidget(self),
+            cam_widget.CamWidget(self),
         ]
 
         self.load_widgets = [
@@ -119,6 +123,7 @@ class Lumina3D(imgui_window.ImguiWindow):
         # update_all_the_time = True
 
         renderer = {
+                    "init":ColmapRenderer(),
                     "load":GaussianRenderer(),
                     "train":AttachRenderer(host=host, port=port),
                     "fitting":FittingRenderer(host="127.0.0.1", port=7090),
@@ -126,6 +131,7 @@ class Lumina3D(imgui_window.ImguiWindow):
                    }
         
         update_all_the_time = {
+                               "init":False,       
                                "load":False,
                                "train":True,
                                "fitting":True,
@@ -199,6 +205,17 @@ class Lumina3D(imgui_window.ImguiWindow):
                     widget(expanded)
                     imgui.unindent()
                 imgui.end_tab_item()
+
+                 # Render
+                if self.is_skipping_frames():
+                    pass
+                elif self.args.show_colmap == False:
+                    pass
+                else:
+                    self.renderer.set_args(type="init",**self.args)
+                    result = self.renderer.result
+                    if result is not None:
+                        self.result = result
             
             if imgui.begin_tab_item("load")[0]:
                 for widget in self.load_widgets:
