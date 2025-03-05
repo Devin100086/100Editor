@@ -35,7 +35,8 @@ from widgets.init import (
     processing_widget,
     style_widget,
     convert_widget,
-    showcolmap_widget
+    showcolmap_widget,
+    colmapcam_widget
 )
 from widgets.load import (
     capture_widget,
@@ -86,7 +87,7 @@ class Lumina3D(imgui_window.ImguiWindow):
             processing_widget.ProcessingWidget(self),
             convert_widget.ConverWidget(self),
             showcolmap_widget.ShowColmapWidget(self),
-            cam_widget.CamWidget(self),
+            colmapcam_widget.ColmapCamWidget(self),
         ]
 
         self.load_widgets = [

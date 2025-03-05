@@ -189,7 +189,7 @@ def render_simple(viewpoint_camera, pc: GaussianModel, bg_color: torch.Tensor, s
         "depth": rendered_depth
     }
 
-def render_colamp(pointxyz, pointcolor, resolution, fov_rad, cam_params):
+def render_colmap(pointxyz, pointcolor, resolution, fov_rad, cam_params):
 
     fx = fy = (resolution / 2) / np.tan(fov_rad / 2)
     cx = cy = resolution / 2
@@ -217,7 +217,7 @@ def render_colamp(pointxyz, pointcolor, resolution, fov_rad, cam_params):
     u = u[sorted_indices]
     v = v[sorted_indices]
 
-    image = np.ones((resolution, resolution, 3), dtype=np.float32)
+    image = np.zeros((resolution, resolution, 3), dtype=np.float32)
     depth_buffer = np.full((resolution, resolution), np.inf, dtype=np.float32)
 
     radius = 1.0

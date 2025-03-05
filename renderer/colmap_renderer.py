@@ -6,7 +6,7 @@ import pycolmap
 import torch
 import torch.nn
 
-from gaussiansplatting.gaussian_renderer import render_colamp
+from gaussiansplatting.gaussian_renderer import render_colmap
 from gaussiansplatting.scene import GaussianModel
 from renderer.base_renderer import Renderer
 from lumina3D_utils.dict_utils import EasyDict
@@ -28,7 +28,7 @@ class ColmapRenderer(Renderer):
         resolution,
         cam_params,
         data_source,
-        img_normalize=True,
+        img_normalize=False,
         use_splitscreen=False,
         highlight_border=False,
         slider={},
@@ -44,7 +44,8 @@ class ColmapRenderer(Renderer):
 
         # Render current view
         fov_rad = fov / 360 * 2 * np.pi
-        render = render_colamp(pointxyz, pointcolor, resolution, fov_rad, cam_params.numpy())
+
+        render = render_colmap(pointxyz, pointcolor, resolution, fov_rad, cam_params.numpy())
 
         image = torch.from_numpy(render).permute(2, 0, 1)
         self._return_image(
