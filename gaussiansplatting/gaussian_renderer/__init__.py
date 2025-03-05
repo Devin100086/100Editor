@@ -220,26 +220,20 @@ def render_colmap(pointxyz, pointcolor, resolution, fov_rad, cam_params):
     image = np.zeros((resolution, resolution, 3), dtype=np.float32)
     depth_buffer = np.full((resolution, resolution), np.inf, dtype=np.float32)
 
-    radius = 1.0
+    u_int = np.floor(u).astype(int)
+    v_int = np.floor(v).astype(int)
 
-    for i in range(len(point_cam)):
-        point_z = point_cam[i, 2]
-        point_u = u[i]
-        point_v = v[i]
-        point_color = pointcolor_filtered[i]
+    valid = (u_int >= 0) & (u_int < resolution) & (v_int >= 0) & (v_int < resolution)
+    u_int = u_int[valid]
+    v_int = v_int[valid]
+    point_z = point_cam[valid, 2]
+    point_color = pointcolor_filtered[valid]
 
-        min_i = int(np.floor(point_v - radius))
-        max_i = int(np.ceil(point_v + radius)) + 1
-        min_j = int(np.floor(point_u - radius))
-        max_j = int(np.ceil(point_u + radius)) + 1
-
-        for pixel_i in range(max(0, min_i), min(resolution, max_i)):
-            for pixel_j in range(max(0, min_j), min(resolution, max_j)):
-                pixel_center_u = pixel_j + 0.5
-                pixel_center_v = pixel_i + 0.5
-                distance_squared = (point_u - pixel_center_u)**2 + (point_v - pixel_center_v)**2
-                if distance_squared <= radius**2 and point_z < depth_buffer[pixel_i, pixel_j]:
-                    image[pixel_i, pixel_j] = point_color
-                    depth_buffer[pixel_i, pixel_j] = point_z
+    for i in range(len(u_int)):
+        pixel_i = v_int[i]
+        pixel_j = u_int[i]
+        if point_z[i] < depth_buffer[pixel_i, pixel_j]:
+            image[pixel_i, pixel_j] = point_color[i]
+            depth_buffer[pixel_i, pixel_j] = point_z[i]
 
     return image

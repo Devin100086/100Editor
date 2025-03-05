@@ -7,7 +7,6 @@ import torch
 import torch.nn
 
 from gaussiansplatting.gaussian_renderer import render_colmap
-from gaussiansplatting.scene import GaussianModel
 from renderer.base_renderer import Renderer
 from lumina3D_utils.dict_utils import EasyDict
 
@@ -16,10 +15,9 @@ class ColmapRenderer(Renderer):
     def __init__(self, num_parallel_scenes=16):
         super().__init__()
         self.num_parallel_scenes = num_parallel_scenes
-        self.gaussian_models: List[GaussianModel | None] = [None] * num_parallel_scenes
-        self._current_ply_file_paths: List[str | None] = [None] * num_parallel_scenes
-        self.bg_color = torch.tensor([0, 0, 0], dtype=torch.float32).to("cuda")
-        self._last_num_scenes = 0
+        self.point_xyz: List = [None] * num_parallel_scenes
+        self.point_color: List = [None] * num_parallel_scenes
+        self._current_colmap_file_paths: List = [None] * num_parallel_scenes
 
     def _render_impl(
         self,
@@ -36,11 +34,18 @@ class ColmapRenderer(Renderer):
     ):
         slider = EasyDict(slider)
 
-        recon = pycolmap.Reconstruction(data_source)
-        point_xyz = [point3D.xyz for point3D in recon.points3D.values()]
-        point_color = [point3D.color/255 for point3D in recon.points3D.values()]
-        pointxyz = np.array(point_xyz)
-        pointcolor = np.array(point_color)
+        if len(data_source) == 0:
+            res.error = "Select a colmap folder"
+            return
+        
+        if self._current_colmap_file_paths[0] != data_source:
+            recon = pycolmap.Reconstruction(data_source)
+            self.point_xyz[0] = [point3D.xyz for point3D in recon.points3D.values()]
+            self.point_color[0] = [point3D.color/255 for point3D in recon.points3D.values()]
+            self._current_colmap_file_paths[0] = data_source
+            
+        pointxyz = np.array(self.point_xyz[0])
+        pointcolor = np.array(self.point_color[0])
 
         # Render current view
         fov_rad = fov / 360 * 2 * np.pi
