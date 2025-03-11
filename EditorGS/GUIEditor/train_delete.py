@@ -4,19 +4,21 @@ from tqdm import tqdm
 import torch
 import sys
 import os
-
-import yaml
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from EditorGS.GUIEditor.train_base import BaseTrainer
 from EditorGS.GUIEditor.Guidance.DelGuidance import DelGuidance
 from torchvision.transforms.functional import to_pil_image, to_tensor
+from torchvision.utils import save_image
 from EditorGS.GUIEditor.train_base import *
 from EditorGS.gaussiansplatting.gaussian_renderer import render
 from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
 from PIL import Image
 from EditorGS.GUIEditor.utils import *
 from EditorGS.GUIEditor.Network import EditorNetwork
-from EditorGS.lama.saicinpainting.training.trainers import load_checkpoint
+from threestudio.utils.misc import (
+    dilate_mask,
+    fill_closed_areas,
+)
 
 class DeleteTrainer(BaseTrainer):
     def __init__(self, cfg):
@@ -39,6 +41,9 @@ class DeleteTrainer(BaseTrainer):
         self.fix_holes = True
         self.lang_sam = LangSAMTextSegmentor().to(get_device())
 
+        self.cameara_update_step = 500
+        self.t_max_step = [999, 300, 300, 21]
+
         if self.colmap_dir is not None:
             scene = CamScene(self.colmap_dir, h=512, w=512)
             self.cameras_extent = scene.cameras_extent
@@ -51,33 +56,77 @@ class DeleteTrainer(BaseTrainer):
                                           )
 
         from diffusers import (
-                DDIMScheduler, DiffusionPipeline
+                StableDiffusionControlNetInpaintPipeline,
+                ControlNetModel,
+                DDIMScheduler,
+                StableDiffusionInpaintPipeline
             )
 
-        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu") 
-        train_config_path = os.path.join(".cache/models/big-lama", 'config.yaml')
-        with open(train_config_path, 'r') as f:
-            train_config = OmegaConf.create(yaml.safe_load(f))
-        train_config.training_model.predict_only = True
-        train_config.visualizer.kind = 'noop'
-        checkpoint_path = os.path.join(".cache/models/big-lama", 
-                                'models', 
-                                'best.ckpt')
-        model = load_checkpoint(train_config, checkpoint_path, strict=False, map_location='cpu')
-        model.freeze()
-            
-        self.ctn_inpaint = model
+        # controlnet = ControlNetModel.from_pretrained(
+        #     "lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16
+        # )
+        # pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
+        #     "runwayml/stable-diffusion-v1-5",
+        #     controlnet=controlnet,
+        #     torch_dtype=torch.float16,
+        # )
+        from threestudio.models.guidance.inpaint_guidance import (
+                    inpaintingGuidance,
+                )
+        self.inpainting = inpaintingGuidance(
+                    OmegaConf.create({"min_step_percent": 0.02,
+                                      "max_step_percent": 0.98})
+                )
+        cur_2D_guidance = self.inpainting
+        # pipe = StableDiffusionInpaintPipeline.from_pretrained(
+        #     "stabilityai/stable-diffusion-2-inpainting",
+        #     torch_dtype=torch.float16,
+        # )
+        # pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 
-        mask, _ = self.update_mask(edit_cameras, text_prompt=self.delete_prompt)
+        # pipe.enable_model_cpu_offload()
 
-        origin_frames = self.render_cameras_list(edit_cameras)
+        # self.ctn_inpaint = pipe
+        # self.ctn_inpaint.set_progress_bar_config(disable=True)
+        # self.ctn_inpaint.safety_checker = None
+
+        random.seed(0)  # make sure same views
+        self.n2n_view_index = random.sample(
+            range(0, len(self.colmap_cameras)),
+            min(len(self.colmap_cameras), self.edit_cam_num),
+        )
+        self.view_list = self.n2n_view_index
+        
+        self.update_mask(self.colmap_cameras, text_prompt=self.delete_prompt)
+
+        # origin_frames = self.render_cameras_list(edit_cameras)
+        # num_channels_latents = self.ctn_inpaint.vae.config.latent_channels
+        # shape = (
+        #     1,
+        #     num_channels_latents,
+        #     edit_cameras[0].image_height // self.ctn_inpaint.vae_scale_factor,
+        #     edit_cameras[0].image_height // self.ctn_inpaint.vae_scale_factor,
+        # )
+
+        # latents = torch.zeros(shape, dtype=torch.float16, device="cuda")
+
+        dist_thres = (
+            self.inpaint_scale * self.cameras_extent * self.gaussian.percent_dense
+        )
+        valid_remaining_idx = self.gaussian.get_near_gaussians_by_mask(
+            self.gaussian.mask, dist_thres
+        )
+        # Prune and update mask to valid_remaining_idx
+        self.gaussian.prune_with_mask(new_mask=valid_remaining_idx)
+
+        self.inpaint_2D_mask, origin_frames = self.render_all_view_with_mask(
+            self.colmap_cameras
+        )
 
         self.guidance = DelGuidance(
-            guidance=self.ctn_inpaint,
-            # depth_frames=depth_frames,
-            origin_frames=origin_frames,
+            guidance=cur_2D_guidance,
             gaussian=self.gaussian,
-            text_prompt=self.delete_prompt,
+            text_prompt=self.inpaint_prompt,
             lambda_l1=self.lambda_l1,
             lambda_p=self.lambda_p,
             lambda_anchor_color=self.lambda_anchor_color,
@@ -92,6 +141,8 @@ class DeleteTrainer(BaseTrainer):
         network = EditorNetwork(host="127.0.0.1",port=8084)
         for step in tqdm(range(self.edit_train_steps)):
             network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
+            if step % self.cameara_update_step == 0:
+                self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
             if not view_index_stack:
                 view_index_stack = list(range(len(edit_cameras)))
             view_index = random.choice(view_index_stack)
@@ -104,7 +155,7 @@ class DeleteTrainer(BaseTrainer):
                 rendering,
                 depth_rendering,
                 origin_frames[view_index],
-                (torch.tensor(mask[view_index])/255).to(get_device()),
+                self.inpaint_2D_mask[view_index],
                 view_index,
                 step,
             )
@@ -121,22 +172,59 @@ class DeleteTrainer(BaseTrainer):
             ema_loss_for_log = self.alpha * ema_loss_for_log + (1-self.alpha) * loss.item()
         
         os.makedirs("save", exist_ok=True)
-        self.gaussian.save_ply("save/result1.ply")
+        self.gaussian.save_ply("save/result2.ply")
 
     @torch.no_grad()
-    def predict_depth(self, edit_cameras):
-        depth_frames = []
-        from transformers import pipeline
-        depth_predictor = pipeline(task="depth-estimation", model="depth-anything/depth-anything-V2-Base-hf")
+    def render_all_view_with_mask(self, edit_cameras):
+        inpaint_2D_mask = []
+        origin_frames = []
+
         for _, cam in enumerate(edit_cameras):
             res = self.render(cam)
-            rgb = res["comp_rgb"]
+            rgb, mask = res["comp_rgb"], res["masks"]
+            mask = dilate_mask(mask.to(torch.float32), self.mask_dilate)
+            if self.fix_holes:
+                mask = fill_closed_areas(mask)
+            inpaint_2D_mask.append(mask)
+            origin_frames.append(rgb)
 
-            depth = self.to_tensor(depth_predictor(rgb)["depth"]).unsqueeze(0).permute(0,2,3,1)
+        return inpaint_2D_mask, origin_frames
+    
+    def edit_all_view(self, update_camera=False, global_step=0):
+    
+        self.edited_cams = []
+        if update_camera:
+            self.update_cameras(random_seed = global_step + 1)
+            self.view_list = self.n2n_view_index
 
-            depth_frames.append(depth)
+        cameras = []
+        images = []
+        masks = []
 
-        return depth_frames
+        self.guidance.guidance.max_step = self.t_max_step[min(len(self.t_max_step)-1, global_step// self.cameara_update_step)]
+        with torch.no_grad():
+            for id in self.view_list:
+                cameras.append(self.colmap_cameras[id])
+            sorted_cam_idx = self.sort_the_cameras_idx(cameras)
+            view_sorted = [self.view_list[idx] for idx in sorted_cam_idx]  
+                
+            for id in view_sorted:
+                cur_cam = self.colmap_cameras[id]
+                out_pkg = self.render(cur_cam)
+                out = out_pkg["comp_rgb"]
+                images.append(out)
+                masks.append(self.inpaint_2D_mask[id])
+
+            images = torch.cat(images, dim=0)
+            masks = torch.cat(masks, dim=0)
+
+            edited_images = self.guidance.edit_all(images, masks)
+
+            # save_image(images.permute(0,3,1,2), f'batch_image_{global_step}.png', nrow=4)
+            save_image(edited_images.permute(0, 3, 1, 2), f'batch_image_{global_step}.png', nrow=4)
+            for view_index_tmp in range(len(self.view_list)):
+                self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
+
 
 
 if __name__ == "__main__":
