@@ -12,7 +12,8 @@ python run_main.py
 ## 📃Progress
 1. "Init" Feature
 - [x] [2024/11/7]🎨Build the preliminary framework. 
-- [x] [2024/11/10]🎨Complete "Theme Setting", "Video Processing", "Colmap". 
+- [x] [2024/11/10]🎨Complete "Theme Setting", "Video Processing", "Colmap".
+- [x] [2025/3/13]🎨Showing Sparse point cloud.
 2. "Load" Feature
 - [x] [2024/11/10]🎨Complete "Loading ply file".
 - [x] [2024/11/23]🎨Complete "Adding Camera options and Generating video".
@@ -25,7 +26,7 @@ python run_main.py
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
   - [x] 🎨Optimize the initial model.
-- [ ] ❄️Add Sketch-based 3D Adding.
+- [x] 🎨Add Sketch-based 3D Adding.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
   - [x] 🎨Optimize the initial model.
