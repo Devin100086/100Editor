@@ -80,7 +80,7 @@ def training_fine_adding_command(
 def training_delete_command(gs_source, colmap_dir, inpaint_scale, mask_dilate, edit_cam_num, delete_prompt,
     inpaint_prompt, edit_train_steps, per_editing_step, edit_begin_step, edit_until_step,
     lambda_l1, lambda_p, lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale,
-    lambda_anchor_opacity
+    lambda_anchor_opacity, video
 ):
     process = subprocess.Popen([
         "python",
@@ -101,7 +101,8 @@ def training_delete_command(gs_source, colmap_dir, inpaint_scale, mask_dilate, e
         "--lambda_anchor_color", str(lambda_anchor_color),
         "--lambda_anchor_geo", str(lambda_anchor_geo),
         "--lambda_anchor_scale", str(lambda_anchor_scale),
-        "--lambda_anchor_opacity", str(lambda_anchor_opacity)
+        "--lambda_anchor_opacity", str(lambda_anchor_opacity),
+        "--video", str(video)
     ])
     return process
 

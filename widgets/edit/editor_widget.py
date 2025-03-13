@@ -98,10 +98,11 @@ class EditorWidget(Widget):
 
 
         # deleting
-        self.delete_prompt = "man"
-        self.inpaint_prompt = "wall"
+        self.delete_prompt = "bear"
+        self.inpaint_prompt = ""
         self.inpaint_scale = 1.0
         self.mask_dilate = 15
+        self.video_inpainting = False
 
         self.edit_trainer = None
         self.draw_image = False
@@ -133,9 +134,9 @@ class EditorWidget(Widget):
                     if imgui.radio_button("Text-VideoEditing", self.select_option == 1):
                         self.select_option = 1
                         self.edit_cam_num = 20
+                        self.per_editing_step = 10000
                         self.edit_train_steps = 1000
                         self.edit_until_step = 4000
-                        self.per_editing_step = 10000
                         self.densification_interval = 100
                         self.densify_until_step = 4000
                     imgui.same_line()
@@ -172,6 +173,15 @@ class EditorWidget(Widget):
                         self.edit_until_step = 1000
                         self.densification_interval = 50
                         self.densify_until_step = 1300
+                    imgui.same_line()
+                    if imgui.radio_button("VideoDeleting", self.select_option == 6):
+                        self.select_option = 6
+                        self.edit_cam_num = 16
+                        self.per_editing_step = 10000
+                        self.edit_train_steps = 1500
+                        self.edit_until_step = 4000
+                        self.densification_interval = 100
+                        self.densify_until_step = 4000
                     imgui.separator_text("Parameters")
                     label("Camera Num", viz.label_w)
                     _, self.edit_cam_num = imgui.slider_int("##Camera Num", self.edit_cam_num, 12, 200, format="%d")
@@ -546,6 +556,8 @@ class EditorWidget(Widget):
                     _, self.inpaint_scale = imgui.slider_float("##Inpaint Scale", self.inpaint_scale, 0, 10, format="%.1f")
                     label("Mask Dilate", viz.label_w)
                     _, self.mask_dilate = imgui.slider_int("##Mask Dilate", self.mask_dilate, 1, 30, format="%d")
+                    label("Video", viz.label_w)
+                    _, self.video_inpainting = imgui.checkbox("##Video", self.video_inpainting)
                     if not self.edit3D:
                         if imgui_utils.button("Delete", width=viz.button_w):
                             self.edit3D = True 
@@ -558,7 +570,7 @@ class EditorWidget(Widget):
                                 edit_until_step=self.edit_until_step,lambda_l1=self.lambda_l1,
                                 lambda_p=self.lambda_p,lambda_anchor_color=self.lambda_anchor_color,
                                 lambda_anchor_geo=self.lambda_anchor_geo,lambda_anchor_scale=self.lambda_anchor_scale,
-                                lambda_anchor_opacity=self.lambda_anchor_opacity
+                                lambda_anchor_opacity=self.lambda_anchor_opacity, video = self.video_inpainting,
                             )
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):

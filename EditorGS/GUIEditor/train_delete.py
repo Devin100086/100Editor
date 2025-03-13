@@ -50,7 +50,7 @@ class DeleteTrainer(BaseTrainer):
             self.colmap_cameras = scene.cameras
 
 
-    def delete(self):
+    def delete(self,video):
         edit_cameras = sample_train_camera(self.colmap_cameras,
                                            self.edit_cam_num,
                                           )
@@ -75,7 +75,8 @@ class DeleteTrainer(BaseTrainer):
                 )
         self.inpainting = inpaintingGuidance(
                     OmegaConf.create({"min_step_percent": 0.02,
-                                      "max_step_percent": 0.98})
+                                      "max_step_percent": 0.98,
+                                      "video":video})
                 )
         cur_2D_guidance = self.inpainting
         # pipe = StableDiffusionInpaintPipeline.from_pretrained(
@@ -136,24 +137,23 @@ class DeleteTrainer(BaseTrainer):
             cams=edit_cameras,
         )
 
-        view_index_stack = list(range(len(edit_cameras)))
+        view_index_stack = self.n2n_view_index.copy()
         ema_loss_for_log = 0.0
         network = EditorNetwork(host="127.0.0.1",port=8084)
         for step in tqdm(range(self.edit_train_steps)):
             network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
-            if step % self.cameara_update_step == 0:
+            if step % self.cameara_update_step == 0 and video:
                 self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
             if not view_index_stack:
-                view_index_stack = list(range(len(edit_cameras)))
+                view_index_stack = self.n2n_view_index.copy()
             view_index = random.choice(view_index_stack)
             view_index_stack.remove(view_index)
 
             render_pkg = self.render(edit_cameras[view_index], train=True)
             rendering = render_pkg["comp_rgb"]
-            depth_rendering = render_pkg["depth"]
+            # depth_rendering = render_pkg["depth"]
             loss = self.guidance(
                 rendering,
-                depth_rendering,
                 origin_frames[view_index],
                 self.inpaint_2D_mask[view_index],
                 view_index,
@@ -226,7 +226,6 @@ class DeleteTrainer(BaseTrainer):
                 self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
 
 
-
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--gs_source", type=str, required=True)  # gs ply or obj file?
@@ -248,6 +247,7 @@ if __name__ == "__main__":
     parser.add_argument("--lambda_anchor_opacity", type=float, default=1.0, help="Lambda anchor opacity.")
     parser.add_argument("--inpaint_scale", type=float, default=1.0, help="Inpaint scale.")
     parser.add_argument("--mask_dilate", type=int, default=15, help="Mask dilate.")
+    parser.add_argument("--video", action="store_true", help="Whether to use video.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):
@@ -258,4 +258,4 @@ if __name__ == "__main__":
             anchor_weight_multiplier=1.3,
         )
         trainer.configure_optimizers()
-        trainer.delete()
+        trainer.delete(video=eval(args.video))

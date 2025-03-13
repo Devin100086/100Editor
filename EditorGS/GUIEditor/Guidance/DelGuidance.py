@@ -16,10 +16,9 @@ class DelGuidance:
         self.guidance = guidance # ctn-inpaint guidance
         self.depthPredictor = pipeline(task="depth-estimation", model="depth-anything/depth-anything-V2-Base-hf")
         self.lambda_l1 = lambda_l1
-        # self.per_editing_step = 10
-        # self.edit_begin_step = 0
-        # self.edit_until_step = 1300
-        # self.latents = latents
+        self.per_editing_step = 10
+        self.edit_begin_step = 0
+        self.edit_until_step = 1300
         self.lambda_p = lambda_p
         self.lambda_anchor_color = lambda_anchor_color
         self.lambda_anchor_geo = lambda_anchor_geo
@@ -75,14 +74,16 @@ class DelGuidance:
         self.edit_frames[view_index] = self.to_tensor(out).to("cuda")[None].permute(0,2,3,1) # 1 C H W to 1 H W C
         # self.depth_frames[view_index] = self.to_tensor(self.depthPredictor(out)["depth"]).unsqueeze(0).permute(0,2,3,1)
 
-    def __call__(self, rendering, depth_rendering, image_in, mask_in, view_index, step):
+    def __call__(self, rendering, image_in, mask_in, view_index, step):
         self.gaussian.update_learning_rate(step)
 
-        if view_index not in self.edit_frames:
- 
-            # self.inpaint_with_mask_ctn(image_in, mask_in, view_index)
-            # image_in_pil = to_pil_image(image_in[0].permute(2, 0, 1))
-            # image_in = to_tensor(image_in_pil).to("cuda")[None].permute(0,2,3,1) # 1 C H W to 1 H W C
+        if view_index not in self.edit_frames or (
+                self.per_editing_step > 0
+                and self.edit_begin_step
+                < step
+                < self.edit_until_step
+                and step % self.per_editing_step == 0
+        ):
             self.edit_frames[view_index] = self.guidance(
                 image_in,
                 mask_in.unsqueeze(0).permute(0,2,3,1).to(torch.float32),
