@@ -106,3 +106,11 @@ def training_delete_command(gs_source, colmap_dir, inpaint_scale, mask_dilate, e
     ])
     return process
 
+def showing_colmap_command(data_path):
+    process = subprocess.Popen([
+        "python",
+        "EditorGS/GUIEditor/show_colmap.py",
+        "--data", str(data_path)
+    ])
+    return process
+
