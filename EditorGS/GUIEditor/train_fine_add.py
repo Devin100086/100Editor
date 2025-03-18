@@ -37,6 +37,14 @@ class TrainFineeAdd(BaseTrainer):
         self.densification_interval = cfg.densification_interval
         self.seg_prompt = cfg.seg_prompt
         self.lang_sam = LangSAMTextSegmentor().to(get_device())
+        
+        self.gaussian2 = GaussianModel(
+            sh_degree=0,
+            anchor_weight_init_g0=1.0,
+            anchor_weight_init=0.1,
+            anchor_weight_multiplier=2,
+        )
+        self.gaussian2.load_ply("tmp_add/merge.ply")
 
         self.mask_frames = {}
 

@@ -80,13 +80,6 @@ class BaseTrainer:
             anchor_weight_multiplier=2,
         )
 
-        self.gaussian2 = GaussianModel(
-            sh_degree=0,
-            anchor_weight_init_g0=1.0,
-            anchor_weight_init=0.1,
-            anchor_weight_multiplier=2,
-        )
-        self.gaussian2.load_ply("tmp_add/merge.ply")
         # load
         self.gaussian.load_ply(self.gs_source)
         self.gaussian.max_radii2D = torch.zeros(
