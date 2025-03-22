@@ -1,3 +1,4 @@
+import glfw
 from imgui_bundle import imgui
 import torch
 import numpy as np
@@ -18,14 +19,14 @@ class CamWidget(Widget):
     def __init__(self, viz):
         super().__init__(viz, "Camera")
         self.fov = 45
-        self.radius = 3
+        self.radius = 16
         self.lookat_point = torch.tensor((0.0, 0.0, 0.0))
         self.cam_pos = torch.tensor([0.0, 0.0, 1.0])
         self.up_vector = torch.tensor([0.0, -1.0, 0.0])
         self.forward = torch.tensor([0.0, 0.0, -1.0])
 
         # controls
-        self.pose = EasyDict(yaw=0, pitch=0)
+        self.pose = EasyDict(yaw=3.2, pitch=0)
         self.invert_x = False
         self.invert_y = False
         self.move_speed = 0.02
@@ -121,7 +122,7 @@ class CamWidget(Widget):
                 self.pose.pitch = np.clip(self.pose.pitch, -np.pi / 2, np.pi / 2)
         elif imgui.is_mouse_dragging(1):  # middle mouse button
             # TODO: dragging with the middle mouse button could be used for yet another purpose
-            pass
+            self.viz.args.roate_point = (imgui.get_mouse_pos().x-self.viz.pane_w, imgui.get_mouse_pos().y)
         elif imgui.is_mouse_dragging(2):  # right mouse button
             new_delta = imgui.get_mouse_drag_delta(2)
             if imgui_utils.did_drag_start_in_window(x, y, width, height, new_delta):

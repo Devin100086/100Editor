@@ -90,14 +90,15 @@ class Lumina3D(imgui_window.ImguiWindow):
         self.load_widgets = [
                 load_widget_ply.LoadWidget(self, data_path),
                 cam_widget.CamWidget(self),
-                performance_widget.PerformanceWidget(self),
-                video_widget.VideoWidget(self),
+                performance_widget.PerformanceWidget(self),  
                 capture_widget.CaptureWidget(self),
                 render_widget.RenderWidget(self),
                 edit_widget.EditWidget(self),
                 eval_widget.EvalWidget(self),
                 camvideo_widget.CamvideoWidget(self),
-                loadcam_widget.LoadCameraWidget(self)
+                video_widget.VideoWidget(self),
+                loadcam_widget.LoadCameraWidget(self),
+
         ]
         self.train_widgets = [
                 training_widget.TrainingWidget(self),

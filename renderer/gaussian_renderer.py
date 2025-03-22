@@ -26,6 +26,32 @@ class GaussianRenderer(Renderer):
         self.bg_color = torch.tensor([0, 0, 0], dtype=torch.float32).to("cuda")
         self._last_num_scenes = 0
 
+    def pixel_to_ray(self, pixel, intrinsic, extrinsic):
+        extrinsic = extrinsic.cpu().numpy()
+        u, v = pixel
+        fx, fy = intrinsic[0, 0], intrinsic[1, 1]
+        cx, cy = intrinsic[0, 2], intrinsic[1, 2]
+
+        x = (u - cx) / fx
+        y = (v - cy) / fy
+        z = 1.0
+
+        ray_camera = np.array([x, y, z, 1.0])
+
+        ray_origin = extrinsic[:3, 3]
+        ray_direction = extrinsic[:3, :3] @ ray_camera[:3]
+        ray_direction = ray_direction / np.linalg.norm(ray_direction)
+
+        return ray_origin, ray_direction
+
+    def find_intersection(self, ray_origin, ray_direction, point_cloud):
+        points = point_cloud.cpu().numpy()
+        vectors = points - ray_origin
+        projections = np.dot(vectors, ray_direction)
+        distances = np.linalg.norm(vectors - np.outer(projections, ray_direction), axis=1)
+        nearest_index = np.argmin(distances)
+        return points[nearest_index]
+
     def _render_impl(
         self,
         res,
@@ -45,6 +71,7 @@ class GaussianRenderer(Renderer):
         highlight_border=False,
         save_ply_path=None,
         slider={},
+        roate_point = None,
         **other_args,
     ):
         cam_params = cam_params.to("cuda")
@@ -64,10 +91,13 @@ class GaussianRenderer(Renderer):
             # Load
             if ply_file_path != self._current_ply_file_paths[scene_index]:
                 self.gaussian_models[scene_index] = self._load_model(ply_file_path)
+                center = self.gaussian_models[scene_index]._xyz.mean(dim=0)
+                self.gaussian_models[scene_index]._xyz = self.gaussian_models[scene_index]._xyz - center
                 self._current_ply_file_paths[scene_index] = ply_file_path
 
             # Edit
             gs: GaussianModel = copy.deepcopy(self.gaussian_models[scene_index])
+
             try:
                 exec(self.sanitize_command(edit_text))
             except Exception as e:
@@ -81,6 +111,23 @@ class GaussianRenderer(Renderer):
 
             # Render current view
             fov_rad = fov / 360 * 2 * np.pi
+
+            fx = (resolution / 2) / np.tan(fov_rad / 2)
+            fy = (resolution / 2) / np.tan(fov_rad / 2)
+            cx = resolution / 2
+            cy = resolution / 2
+
+            intrinsic = np.array([
+                [fx,  0, cx],
+                [ 0, fy, cy],
+                [ 0,  0,  1]
+            ])
+
+            if roate_point is not None:
+                ray_origin, ray_direction = self.pixel_to_ray(roate_point, intrinsic, cam_params)
+                intersection_point = self.find_intersection(ray_origin, ray_direction, gs._xyz)
+                gs._xyz = self.gaussian_models[scene_index]._xyz = self.gaussian_models[scene_index]._xyz - torch.from_numpy(intersection_point).to("cuda")
+
             render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, extr=cam_params)
             render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
             if render_alpha:
