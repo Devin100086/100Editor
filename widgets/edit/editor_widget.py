@@ -62,9 +62,11 @@ class EditorWidget(Widget):
         self.guidance_type = ["InstructPix2Pix","ControlNet-Pix2Pix"]
         self.guidance_item = 0
         self.text_prompt = "turn him a clown"
-        self.use_sam = False
-        self.text_videoEditing = False
+        self.text_sam_option = -1
+        self.text_sam_point = False
         self.text_seg_prompt = "face"
+        self.text_videoEditing = False
+        
 
         # mask-edit
         self.mask_prompt = "add a red hat"
@@ -96,14 +98,15 @@ class EditorWidget(Widget):
         self.fine_add_prompt = "a man wear a red hat on head"
         self.fine_seg_prompt = "hat"
 
-
+        #"A rectangular clean slate"
         # deleting
         self.delete_prompt = "bear"
-        self.inpaint_prompt = ""
+        self.inpaint_prompt = "A large stone slab with a rectangular base on top, surrounded by a natural outdoor setting with trees, greenery, and dirt paths."
         self.inpaint_scale = 1.0
         self.mask_dilate = 15
         self.video_inpainting = False
 
+        self.sam_points = []
         self.edit_trainer = None
         self.draw_image = False
         self.edit3D = False
@@ -176,11 +179,11 @@ class EditorWidget(Widget):
                     imgui.same_line()
                     if imgui.radio_button("VideoDeleting", self.select_option == 6):
                         self.select_option = 6
-                        self.edit_cam_num = 16
+                        self.edit_cam_num = 8
                         self.per_editing_step = 10000
                         self.edit_train_steps = 1500
                         self.edit_until_step = 4000
-                        self.densification_interval = 100
+                        self.densification_interval = 50
                         self.densify_until_step = 4000
                     imgui.separator_text("Parameters")
                     label("Camera Num", viz.label_w)
@@ -225,9 +228,26 @@ class EditorWidget(Widget):
                     self.text_change = True if imgui.is_item_active() else False
                     label("Video", viz.label_w)
                     _, self.text_videoEditing = imgui.checkbox("##Video", self.text_videoEditing)
-                    label("Use SAM", viz.label_w)
-                    _, self.use_sam = imgui.checkbox("##use sam", self.use_sam)
-                    if self.use_sam:
+
+                    if imgui.radio_button("No Sam", self.text_sam_option == -1):
+                        self.text_sam_option = -1 
+                    imgui.same_line()
+                    if imgui.radio_button("Use SAM2", self.text_sam_option == 0):
+                        self.text_sam_option = 0 
+                    imgui.same_line()
+                    if imgui.radio_button("Use Lang-sam", self.text_sam_option == 1):
+                        self.text_sam_option = 1
+
+                    if self.text_sam_option == 0:
+                        label("Sam point", viz.label_w)
+                        _, self.text_sam_point = imgui.checkbox("##Sam point", self.text_sam_point)
+                        if self.text_sam_point:
+                            if imgui.get_mouse_pos().x > self.viz.pane_w and imgui.is_mouse_clicked(0):
+                                self.sam_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                        if imgui_utils.button("clean SAM", width=viz.button_w):
+                            self.sam_points = []
+
+                    if self.text_sam_option == 1:
                         label("Seg prompt", viz.label_w)
                         _, self.text_seg_prompt = imgui.input_text("##seg prompt", self.text_seg_prompt, 256)
 
@@ -597,6 +617,7 @@ class EditorWidget(Widget):
         viz.args.points = self.points
         viz.args.current_color = self.current_color
         viz.args.line_width = self.line_width
+        viz.args.sam_points = self.sam_points
         
     def handle_mouse_input(self):
         if glfw.get_mouse_button(self.viz._glfw_window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS:

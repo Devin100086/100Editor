@@ -15,6 +15,10 @@ from gaussiansplatting.scene import GaussianModel
 from gaussiansplatting.scene.cameras import CustomCam
 from renderer.base_renderer import Renderer
 from lumina3D_utils.dict_utils import EasyDict
+from torchvision.transforms.functional import to_pil_image
+
+from sam2.build_sam import build_sam2
+from sam2.sam2_image_predictor import SAM2ImagePredictor
 
 
 class GaussianRenderer(Renderer):
@@ -25,6 +29,10 @@ class GaussianRenderer(Renderer):
         self._current_ply_file_paths: List[str | None] = [None] * num_parallel_scenes
         self.bg_color = torch.tensor([0, 0, 0], dtype=torch.float32).to("cuda")
         self._last_num_scenes = 0
+
+        checkpoint = ".cache/models/sam2/sam2.1_hiera_large.pt"
+        model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
+        self.sam_predictor = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint))
 
     def pixel_to_ray(self, pixel, intrinsic, extrinsic):
         extrinsic = extrinsic.cpu().numpy()
@@ -51,6 +59,60 @@ class GaussianRenderer(Renderer):
         distances = np.linalg.norm(vectors - np.outer(projections, ray_direction), axis=1)
         nearest_index = np.argmin(distances)
         return points[nearest_index]
+    
+    def add_green_star(self, image, center, size=20, alpha=0.8):
+        image = image.clone().float()
+        
+        mask = torch.zeros(image.shape[1], image.shape[2], dtype=torch.float32)
+        
+        x0, y0 = center
+        r = size / 2  
+        inner_r = r * 0.382  
+        
+        points = []
+        for i in range(5):
+            outer_angle = i * 72 * np.pi / 180
+            x_outer = int(x0 + r * np.cos(outer_angle))
+            y_outer = int(y0 - r * np.sin(outer_angle))
+            
+            inner_angle = (i * 72 + 36) * np.pi / 180
+            x_inner = int(x0 + inner_r * np.cos(inner_angle))
+            y_inner = int(y0 - inner_r * np.sin(inner_angle))
+            
+            points.append((x_outer, y_outer))
+            points.append((x_inner, y_inner))
+        
+        def fill_polygon(mask, points):
+            min_x = max(0, min(p[0] for p in points))
+            max_x = min(image.shape[1], max(p[0] for p in points))
+            min_y = max(0, min(p[1] for p in points))
+            max_y = min(image.shape[2], max(p[1] for p in points))
+            
+            for y in range(min_y, max_y + 1):
+                for x in range(min_x, max_x + 1):
+                    if point_in_polygon(x, y, points):
+                        mask[y, x] = 1.0
+        
+        def point_in_polygon(x, y, points):
+            inside = False
+            for i in range(len(points)):
+                j = (i - 1) % len(points)
+                xi, yi = points[i]
+                xj, yj = points[j]
+                if ((yi > y) != (yj > y)) and \
+                (x < (xj - xi) * (y - yi) / (yj - yi + 1e-10) + xi):
+                    inside = not inside
+            return inside
+        
+        fill_polygon(mask, points)
+        
+        green_star = torch.zeros_like(image)
+        green_star[1] = mask 
+        
+        output = image + alpha * green_star
+        output = torch.clamp(output, 0, 1)
+        
+        return output
 
     def _render_impl(
         self,
@@ -72,6 +134,7 @@ class GaussianRenderer(Renderer):
         save_ply_path=None,
         slider={},
         roate_point = None,
+        sam_points = [],
         **other_args,
     ):
         cam_params = cam_params.to("cuda")
@@ -135,7 +198,22 @@ class GaussianRenderer(Renderer):
             elif render_depth:
                 images.append(render["depth"] / render["depth"].max())
             else:
-                images.append(render["render"])
+                if sam_points != []:
+                    self.sam_predictor.set_image(to_pil_image(render["render"]))
+                    sam_points = np.array(sam_points)
+                    sam_points *= np.array([render_cam.image_height, render_cam.image_width])
+                    masks, scores, _ = self.sam_predictor.predict(point_coords=sam_points, point_labels=np.array([1] * len(sam_points)))
+                    max_index = np.argmax(scores)
+                    best_mask = masks[max_index]
+                    image = render["render"]
+                    red_mask = torch.zeros_like(image)
+                    red_mask[0] = torch.from_numpy(best_mask)
+                    for sam_point in sam_points:
+                        image = self.add_green_star(image, sam_point)
+                    image = image + 0.5 * red_mask
+                    images.append(image)
+                else:
+                    images.append(render["render"])
 
             # Save ply
             if save_ply_path is not None:

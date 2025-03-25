@@ -39,7 +39,6 @@ class ShowColmapWidget(Widget):
 
         viz.args.data_source = self.data_source
         viz.args.resolution = self.resolution
-        # viz.args.show_colmap = self.showing_colmap
 
     def _select_folder(self):
         root = tk.Tk()
