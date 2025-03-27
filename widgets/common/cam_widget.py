@@ -120,7 +120,7 @@ class CamWidget(Widget):
                 self.pose.yaw += x_dir * delta.x * self.rotate_speed * 0.1
                 self.pose.pitch += y_dir * delta.y * self.rotate_speed * 0.1
                 self.pose.pitch = np.clip(self.pose.pitch, -np.pi / 2, np.pi / 2)
-        elif imgui.is_mouse_dragging(1):  # middle mouse button
+        elif imgui.is_mouse_clicked(1):  # middle mouse button
             # TODO: dragging with the middle mouse button could be used for yet another purpose
             self.viz.args.roate_point = (imgui.get_mouse_pos().x-self.viz.pane_w, imgui.get_mouse_pos().y)
         elif imgui.is_mouse_dragging(2):  # right mouse button
