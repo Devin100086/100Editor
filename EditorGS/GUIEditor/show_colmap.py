@@ -26,8 +26,8 @@ def draw_colmap_geometries(data_path):
     vis = o3d.visualization.Visualizer()
     vis.create_window(width=1280, height=720)
     # add axis
-    axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.5)
-    vis.add_geometry(axis)
+    # axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.5)
+    # vis.add_geometry(axis)
 
     # add points
     pointxyz = []
