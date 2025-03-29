@@ -1,16 +1,18 @@
 from argparse import ArgumentParser
+import pickle
 from omegaconf import OmegaConf
 from tqdm import tqdm
 import torch
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# from gaussiansplatting.gaussian_renderer import render_simple
 from EditorGS.GUIEditor.train_base import BaseTrainer
 from EditorGS.GUIEditor.Guidance.DelGuidance import DelGuidance
 from torchvision.transforms.functional import to_pil_image, to_tensor
 from torchvision.utils import save_image
 from EditorGS.GUIEditor.train_base import *
-from EditorGS.gaussiansplatting.gaussian_renderer import render
+from EditorGS.gaussiansplatting.gaussian_renderer import render, render_simple
 from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
 from PIL import Image
 from EditorGS.GUIEditor.utils import *
@@ -19,6 +21,8 @@ from threestudio.utils.misc import (
     dilate_mask,
     fill_closed_areas,
 )
+from threestudio.utils.camera import unproject, pixel_to_3d, project_3d_to_2d
+import copy
 
 class DeleteTrainer(BaseTrainer):
     def __init__(self, cfg):
@@ -38,29 +42,40 @@ class DeleteTrainer(BaseTrainer):
         self.inpaint_scale = cfg.inpaint_scale
         self.colmap_dir = cfg.colmap_dir
         self.mask_dilate  = cfg.mask_dilate
+        self.sam_type = cfg.sam_type
+        self.sam_points = np.load(cfg.sam_points)
         self.fix_holes = True
         self.lang_sam = LangSAMTextSegmentor().to(get_device())
 
         self.cameara_update_step = 500
         self.t_max_step = [999, 300, 300, 21]
+        self.sam2_checkpoint = "./.cache/models/sam2/sam2.1_hiera_large.pt"
+        self.sam2_model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
+
+        with open(args.camera, 'rb') as f:
+            self.cam  = pickle.load(f)
 
         if self.colmap_dir is not None:
             scene = CamScene(self.colmap_dir, h=512, w=512)
             self.cameras_extent = scene.cameras_extent
             self.colmap_cameras = scene.cameras
 
-
     def delete(self,video):
         edit_cameras = sample_train_camera(self.colmap_cameras,
                                            self.edit_cam_num,
                                           )
+        # for cam in self.colmap_cameras:
+        #     rgb = self.render(cam, train=True)["comp_rgb"]
+        #     rgb[rgb != 0] = 1
+        #     print(rgb)
 
-        from diffusers import (
-                StableDiffusionControlNetInpaintPipeline,
-                ControlNetModel,
-                DDIMScheduler,
-                StableDiffusionInpaintPipeline
-            )
+
+        # from diffusers import (
+        #         StableDiffusionControlNetInpaintPipeline,
+        #         ControlNetModel,
+        #         DDIMScheduler,
+        #         StableDiffusionInpaintPipeline
+        #     )
 
         # controlnet = ControlNetModel.from_pretrained(
         #     "lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16
@@ -70,15 +85,24 @@ class DeleteTrainer(BaseTrainer):
         #     controlnet=controlnet,
         #     torch_dtype=torch.float16,
         # )
-        from threestudio.models.guidance.inpaint_guidance import (
-                    inpaintingGuidance,
-                )
-        self.inpainting = inpaintingGuidance(
-                    OmegaConf.create({"min_step_percent": 0.02,
-                                      "max_step_percent": 0.98,
-                                      "video":video})
-                )
-        cur_2D_guidance = self.inpainting
+        # from threestudio.models.guidance.brushnet_guidance import (
+        #             BrushNetGuidance
+        #         )
+        # from threestudio.models.guidance.inpaint_guidance import (
+        #             inpaintingGuidance
+        #         )
+        
+        # self.inpainting = inpaintingGuidance(
+        #             OmegaConf.create({"min_step_percent": 0.02,
+        #                               "max_step_percent": 0.98,
+        #                               "video":video})
+        #         )
+        # self.inpainting = BrushNetGuidance(
+        #             OmegaConf.create({"min_step_percent": 0.02,
+        #                               "max_step_percent": 0.98,
+        #                               "video":video,})
+        #         )
+        cur_2D_guidance = None
         # pipe = StableDiffusionInpaintPipeline.from_pretrained(
         #     "stabilityai/stable-diffusion-2-inpainting",
         #     torch_dtype=torch.float16,
@@ -97,10 +121,27 @@ class DeleteTrainer(BaseTrainer):
             min(len(self.colmap_cameras), self.edit_cam_num),
         )
         self.view_list = self.n2n_view_index
-        
-        self.update_mask(self.colmap_cameras, text_prompt=self.delete_prompt)
+        if self.sam_type == 0:
+            self.masks, _ = self.update_mask(self.colmap_cameras, text_prompt=self.delete_prompt)
+        elif self.sam_type == 1:
+            # self.cam.FoVx = fov / 360 * 2 * np.pi
+            gaussian_copy = copy.deepcopy(self.gaussian)
+            center = gaussian_copy._xyz.mean(dim=0)
+            gaussian_copy._xyz = gaussian_copy._xyz - center
+            points3d = []
+            for i, sam_point in enumerate(self.sam_points):
+                depth = render(self.cam, gaussian_copy, self.pipe ,self.background_tensor)[
+                    "depth_3dgs"
+                ]
+                # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
+                depth = (1/depth).detach().cpu().numpy()
+                sam_point = sam_point * np.array([self.cam.image_width, self.cam.image_height])
+                unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
+                # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
+                points3d.append(unprojected_points3d+center.detach().cpu().numpy())
+            self.update_sam_mask_with_point_prompt(self.colmap_cameras, points3d)
 
-        # origin_frames = self.render_cameras_list(edit_cameras)
+        origin_frames = self.render_cameras_list(self.colmap_cameras)
         # num_channels_latents = self.ctn_inpaint.vae.config.latent_channels
         # shape = (
         #     1,
@@ -128,13 +169,16 @@ class DeleteTrainer(BaseTrainer):
             guidance=cur_2D_guidance,
             gaussian=self.gaussian,
             text_prompt=self.inpaint_prompt,
+            per_editing_step=self.per_editing_step,
+            edit_begin_step=self.edit_begin_step,
+            edit_until_step=self.edit_until_step,
             lambda_l1=self.lambda_l1,
             lambda_p=self.lambda_p,
             lambda_anchor_color=self.lambda_anchor_color,
             lambda_anchor_geo=self.lambda_anchor_geo,
             lambda_anchor_scale=self.lambda_anchor_scale,
             lambda_anchor_opacity=self.lambda_anchor_opacity,
-            cams=edit_cameras,
+            cams=self.colmap_cameras,
         )
 
         view_index_stack = self.n2n_view_index.copy()
@@ -144,13 +188,13 @@ class DeleteTrainer(BaseTrainer):
             network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
             if step % self.cameara_update_step == 0 and video:
                 self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
+
             if not view_index_stack:
                 view_index_stack = self.n2n_view_index.copy()
             view_index = random.choice(view_index_stack)
             view_index_stack.remove(view_index)
 
-            render_pkg = self.render(edit_cameras[view_index], train=True)
-            rendering = render_pkg["comp_rgb"]
+            rendering = self.render(self.colmap_cameras[view_index], train=True)["comp_rgb"]
             # depth_rendering = render_pkg["depth"]
             loss = self.guidance(
                 rendering,
@@ -185,7 +229,7 @@ class DeleteTrainer(BaseTrainer):
             mask = dilate_mask(mask.to(torch.float32), self.mask_dilate)
             if self.fix_holes:
                 mask = fill_closed_areas(mask)
-            inpaint_2D_mask.append(mask)
+            inpaint_2D_mask.append(mask.to(torch.float32))
             origin_frames.append(rgb)
 
         return inpaint_2D_mask, origin_frames
@@ -213,7 +257,8 @@ class DeleteTrainer(BaseTrainer):
                 out_pkg = self.render(cur_cam)
                 out = out_pkg["comp_rgb"]
                 images.append(out)
-                masks.append(self.inpaint_2D_mask[id])
+                mask = self.inpaint_2D_mask[id].to(torch.float32)
+                masks.append(mask)
 
             images = torch.cat(images, dim=0)
             masks = torch.cat(masks, dim=0)
@@ -247,7 +292,10 @@ if __name__ == "__main__":
     parser.add_argument("--lambda_anchor_opacity", type=float, default=1.0, help="Lambda anchor opacity.")
     parser.add_argument("--inpaint_scale", type=float, default=1.0, help="Inpaint scale.")
     parser.add_argument("--mask_dilate", type=int, default=15, help="Mask dilate.")
-    parser.add_argument("--video", action="store_true", help="Whether to use video.")
+    parser.add_argument("--video", type=str, default="False", help="video.")
+    parser.add_argument("--sam_type", type=int, default=0, help="sam type.")
+    parser.add_argument("--sam_points", type=str, default=0, help="the path of the sam points.")
+    parser.add_argument("--camera", type=str, default="tmd_delete/camera.pkl", help="camera.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):
@@ -257,5 +305,6 @@ if __name__ == "__main__":
             anchor_weight_init=0.1,
             anchor_weight_multiplier=1.3,
         )
+
         trainer.configure_optimizers()
         trainer.delete(video=eval(args.video))

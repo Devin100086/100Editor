@@ -20,3 +20,4 @@ fine_add_cache/
 *.pth
 tmp_*/
 shap_e_model_cache/
+LeftRefill/pretrained_models/

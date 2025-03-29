@@ -66,6 +66,7 @@ class EditorWidget(Widget):
         self.text_sam_point = False
         self.text_seg_prompt = "face"
         self.text_videoEditing = False
+        self.text_sam_points = []
         
 
         # mask-edit
@@ -100,13 +101,15 @@ class EditorWidget(Widget):
 
         #"A rectangular clean slate"
         # deleting
-        self.delete_prompt = "bear"
+        self.delete_prompt = "tractor"
         self.inpaint_prompt = "A large stone slab with a rectangular base on top, surrounded by a natural outdoor setting with trees, greenery, and dirt paths."
         self.inpaint_scale = 1.0
         self.mask_dilate = 15
         self.video_inpainting = False
+        self.delete_sam_option = 0
+        self.delete_sam_point = False
+        self.delete_sam_points = []
 
-        self.sam_points = []
         self.edit_trainer = None
         self.draw_image = False
         self.edit3D = False
@@ -172,10 +175,10 @@ class EditorWidget(Widget):
                         self.select_option = 5
                         self.edit_cam_num = 48
                         self.per_editing_step = 10
-                        self.edit_train_steps = 1500
+                        self.edit_train_steps = 2000
                         self.edit_until_step = 1000
                         self.densification_interval = 50
-                        self.densify_until_step = 1300
+                        self.densify_until_step = 4000
                     imgui.same_line()
                     if imgui.radio_button("VideoDeleting", self.select_option == 6):
                         self.select_option = 6
@@ -217,6 +220,8 @@ class EditorWidget(Widget):
                     imgui.end_tab_item()
 
                 if imgui.begin_tab_item("text")[0]:
+                    if self.delete_sam_points != []:
+                        self.delete_sam_points = []
                     label("guidance type", viz.label_w)
                     _, self.guidance_item = imgui.combo(
                         "##guidance type",                
@@ -243,9 +248,9 @@ class EditorWidget(Widget):
                         _, self.text_sam_point = imgui.checkbox("##Sam point", self.text_sam_point)
                         if self.text_sam_point:
                             if imgui.get_mouse_pos().x > self.viz.pane_w and imgui.is_mouse_clicked(0):
-                                self.sam_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                                self.text_sam_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
                         if imgui_utils.button("clean SAM", width=viz.button_w):
-                            self.sam_points = []
+                            self.text_sam_points = []
 
                     if self.text_sam_option == 1:
                         label("Seg prompt", viz.label_w)
@@ -290,6 +295,7 @@ class EditorWidget(Widget):
                 
                 if imgui.begin_tab_item("mask")[0]:
                     self.points = []
+                    self.sam_points = []
                     if imgui.button("clear"):
                         self.rec_start = None
                         self.rec_end = None
@@ -371,6 +377,7 @@ class EditorWidget(Widget):
                 if imgui.begin_tab_item("add")[0]:
                     self.rec_start = None
                     self.rec_end = None
+                    self.sam_points = []
                     label("Add Option", viz.label_w)
                     if imgui.radio_button("Sketch", self.editing_option == 0):
                         self.editing_option = 0
@@ -568,8 +575,26 @@ class EditorWidget(Widget):
                     imgui.end_tab_item()
 
                 if imgui.begin_tab_item("delete")[0]:
-                    label("Seg Prompt", viz.label_w)
-                    _, self.delete_prompt = imgui.input_text("##Seg Prompt", self.delete_prompt, 256)
+                    if self.text_sam_points != []:
+                        self.text_sam_points = []
+                    if imgui.radio_button("Use Lang-sam", self.delete_sam_option == 0):
+                        self.delete_sam_option = 0 
+                    imgui.same_line()
+                    if imgui.radio_button("Use SAM2", self.delete_sam_option == 1):
+                        self.delete_sam_option = 1
+
+                    if self.delete_sam_option == 0:
+                        label("Seg Prompt", viz.label_w)
+                        _, self.delete_prompt = imgui.input_text("##Seg Prompt", self.delete_prompt, 256)
+                    elif self.delete_sam_option == 1:
+                        label("Sam point", viz.label_w)
+                        _, self.delete_sam_point = imgui.checkbox("##Sam point", self.delete_sam_point)
+                        if self.delete_sam_point:
+                            if imgui.get_mouse_pos().x > self.viz.pane_w and imgui.is_mouse_clicked(0):
+                                self.delete_sam_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                        if imgui_utils.button("clean SAM", width=viz.button_w):
+                            self.delete_sam_points = []
+
                     label("Inpaint Prompt", viz.label_w)
                     _, self.inpaint_prompt = imgui.input_text("##Inpaint Prompt", self.inpaint_prompt, 256)
                     label("Inpaint Scale", viz.label_w)
@@ -581,6 +606,14 @@ class EditorWidget(Widget):
                     if not self.edit3D:
                         if imgui_utils.button("Delete", width=viz.button_w):
                             self.edit3D = True 
+                            np.save("tmp_delete/point2D.npy", np.array(self.delete_sam_points))
+                            origin = Image.fromarray(viz.result.image).convert("RGB")
+                            R = viz.extr.inverse()[:3, :3].T.numpy()
+                            T = viz.extr.inverse()[:3, 3].numpy()
+                            fov_rad = viz.fov / 360 * 2 * np.pi
+                            cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
+                            with open(f'tmp_delete/camera.pkl', 'wb') as f:
+                                pickle.dump(cam, f)  
                             self.edit_trainer = training_delete_command(
                                 gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
                                 inpaint_scale=self.inpaint_scale,mask_dilate=self.mask_dilate,
@@ -591,6 +624,8 @@ class EditorWidget(Widget):
                                 lambda_p=self.lambda_p,lambda_anchor_color=self.lambda_anchor_color,
                                 lambda_anchor_geo=self.lambda_anchor_geo,lambda_anchor_scale=self.lambda_anchor_scale,
                                 lambda_anchor_opacity=self.lambda_anchor_opacity, video = self.video_inpainting,
+                                sam_type = self.delete_sam_option, sam_points = "tmp_delete/point2D.npy",
+                                camera = "tmp_delete/camera.pkl",
                             )
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
@@ -617,7 +652,12 @@ class EditorWidget(Widget):
         viz.args.points = self.points
         viz.args.current_color = self.current_color
         viz.args.line_width = self.line_width
-        viz.args.sam_points = self.sam_points
+        if self.text_sam_points != []:
+            viz.args.sam_points = self.text_sam_points
+        elif self.delete_sam_points != []:
+            viz.args.sam_points = self.delete_sam_points
+        else:
+            viz.args.sam_points = []
         
     def handle_mouse_input(self):
         if glfw.get_mouse_button(self.viz._glfw_window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS:

@@ -4,6 +4,7 @@ from EditorGS.gaussiansplatting.utils.graphics_utils import fov2focal
 from EditorGS.gaussiansplatting.scene.cameras import Simple_Camera
 import torch.nn.functional as F
 from threestudio.utils.typing import *
+import numpy as np
 
 
 def camera_ray_sample_points(
@@ -148,3 +149,52 @@ def get_point_depth(points3d, camera: Simple_Camera):
     points3d_camera = torch.einsum("ij,bj->bi", R, points3d) + T[None, ...]
     depth = points3d_camera[..., 2:]
     return depth
+
+def pixel_to_3d(pixel, camera, depth):
+    extrinsic = camera.extr.cpu().numpy() if hasattr(camera.extr, 'cpu') else camera.extr
+    
+    fx = fov2focal(camera.FoVx, camera.image_width)
+    fy = fov2focal(camera.FoVy, camera.image_height)
+    
+    cx = camera.image_width / 2
+    cy = camera.image_height / 2
+    
+    u, v = pixel
+    
+    x_cam = (u - cx) / fx * depth
+    y_cam = (v - cy) / fy * depth
+    z_cam = depth
+    
+    point_camera = np.array([x_cam, y_cam, z_cam, 1.0]) 
+    
+    if extrinsic.shape == (4, 4):
+        point_world = extrinsic @ point_camera
+    else:
+        point_world = np.vstack([extrinsic, [0, 0, 0, 1]]) @ point_camera 
+    
+    return point_world[:3]
+
+def project_3d_to_2d(point_3d, camera):
+
+    extrinsic = camera.world_view_transform.inverse().T
+    # extrinsic = camera.extr.cpu().numpy() if hasattr(camera.extr, 'cpu') else camera.extr
+    
+    if point_3d.shape[-1] == 3:
+        point_camera = point_3d = np.concatenate([point_3d, np.ones(1)])
+    
+    fx = fov2focal(camera.FoVx, camera.image_width)
+    fy = fov2focal(camera.FoVy, camera.image_height)
+    cx = camera.image_width / 2
+    cy = camera.image_height / 2
+    
+    if extrinsic.shape == (4, 4):
+        point_camera = np.linalg.inv(extrinsic.cpu().numpy()) @ point_3d
+    else:
+        extrinsic_4x4 = np.eye(4)
+        extrinsic_4x4[:3, :] = extrinsic.cpu().numpy()
+        point_camera = np.linalg.inv(extrinsic_4x4) @ point_3d
+    
+    x = (point_camera[0] / point_camera[2]) * fx + cx
+    y = (point_camera[1] / point_camera[2]) * fy + cy
+    
+    return np.array([x, y])
