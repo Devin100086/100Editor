@@ -9,6 +9,7 @@ from torchvision.transforms.functional import to_pil_image, to_tensor
 from EditorGS.gaussiansplatting.scene.cameras import Simple_Camera
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import sys
+import gc
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"gaussiansplatting"))
 from EditorGS.gaussiansplatting.scene import GaussianModel
@@ -345,10 +346,10 @@ class BaseTrainer:
             point2d = []
             cur_cam = cam
             assert len(points3ds) > 0
-            # points2ds = project_3d_to_2d(points3ds, cur_cam)
-            for points3d in points3ds:
-                point2d.append(project_3d_to_2d(points3d, cur_cam)) 
-            points2ds = np.array(point2d)
+            points2ds = project_3d_to_2d(points3ds, cur_cam)
+            # for points3d in points3ds:
+            #     point2d.append(project_3d_to_2d(points3d, cur_cam)) 
+            # points2ds = np.array(point2d)
             img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)[
                 "render"
             ]
@@ -377,6 +378,8 @@ class BaseTrainer:
         self.gaussian.set_mask(selected_mask)
         self.gaussian.apply_grad_mask(selected_mask)
         del sam2_predictor
+        gc.collect()    
+        torch.cuda.empty_cache()
 
         return masks, selected_mask
 

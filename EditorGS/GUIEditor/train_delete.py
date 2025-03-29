@@ -139,6 +139,8 @@ class DeleteTrainer(BaseTrainer):
                 unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
                 # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
                 points3d.append(unprojected_points3d+center.detach().cpu().numpy())
+            
+            points3d = np.array(points3d)
             self.update_sam_mask_with_point_prompt(self.colmap_cameras, points3d)
 
         origin_frames = self.render_cameras_list(self.colmap_cameras)

@@ -1,4 +1,5 @@
 import copy
+import math
 import os
 import traceback
 from typing import List
@@ -16,6 +17,7 @@ from gaussiansplatting.scene.cameras import CustomCam
 from renderer.base_renderer import Renderer
 from lumina3D_utils.dict_utils import EasyDict
 from torchvision.transforms.functional import to_pil_image
+import torch.nn.functional as F
 
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
@@ -34,31 +36,25 @@ class GaussianRenderer(Renderer):
         model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
         self.sam_predictor = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint))
 
-    def pixel_to_ray(self, pixel, intrinsic, extrinsic):
-        extrinsic = extrinsic.cpu().numpy()
+    def pixel_to_3d(self, pixel, intrinsic, extrinsic, depth):
+        intrinsic = intrinsic.cpu().numpy() if hasattr(intrinsic, 'cpu') else intrinsic
+        extrinsic = extrinsic.cpu().numpy() if hasattr(extrinsic, 'cpu') else extrinsic
+        
         u, v = pixel
         fx, fy = intrinsic[0, 0], intrinsic[1, 1]
         cx, cy = intrinsic[0, 2], intrinsic[1, 2]
-
-        x = (u - cx) / fx
-        y = (v - cy) / fy
-        z = 1.0
-
-        ray_camera = np.array([x, y, z, 1.0])
-
-        ray_origin = extrinsic[:3, 3]
-        ray_direction = extrinsic[:3, :3] @ ray_camera[:3]
-        ray_direction = ray_direction / np.linalg.norm(ray_direction)
-
-        return ray_origin, ray_direction
-
-    def find_intersection(self, ray_origin, ray_direction, point_cloud):
-        points = point_cloud.cpu().numpy()
-        vectors = points - ray_origin
-        projections = np.dot(vectors, ray_direction)
-        distances = np.linalg.norm(vectors - np.outer(projections, ray_direction), axis=1)
-        nearest_index = np.argmin(distances)
-        return points[nearest_index]
+        
+        x_cam = (u - cx) / fx * depth
+        y_cam = (v - cy) / fy * depth
+        z_cam = depth
+        point_camera = np.array([x_cam, y_cam, z_cam, 1.0]) 
+        
+        if extrinsic.shape == (4, 4):
+            point_world = extrinsic @ point_camera
+        else:
+            point_world = np.vstack([extrinsic, [0, 0, 0, 1]]) @ point_camera 
+        
+        return point_world[:3]
     
     def add_green_star(self, image, center, size=20, alpha=0.8):
         image = image.clone().float()
@@ -187,9 +183,10 @@ class GaussianRenderer(Renderer):
             ])
 
             if roate_point is not None:
-                ray_origin, ray_direction = self.pixel_to_ray(roate_point, intrinsic, cam_params)
-                intersection_point = self.find_intersection(ray_origin, ray_direction, gs._xyz)
-                gs._xyz = self.gaussian_models[scene_index]._xyz = self.gaussian_models[scene_index]._xyz - torch.from_numpy(intersection_point).to("cuda")
+                render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, extr=cam_params)
+                render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
+                intersection_point = self.pixel_to_3d(roate_point, intrinsic, cam_params, render["depth"].cpu().numpy()[0][int(roate_point[1]),int(roate_point[0])])
+                gs._xyz = self.gaussian_models[scene_index]._xyz = self.gaussian_models[scene_index]._xyz - torch.from_numpy(intersection_point).to("cuda").to(torch.float32)
 
             render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, extr=cam_params)
             render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))

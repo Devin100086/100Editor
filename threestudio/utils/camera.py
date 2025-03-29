@@ -174,27 +174,72 @@ def pixel_to_3d(pixel, camera, depth):
     
     return point_world[:3]
 
-def project_3d_to_2d(point_3d, camera):
+# def project_3d_to_2d(point_3d, camera):
 
+#     extrinsic = camera.world_view_transform.inverse().T
+#     # extrinsic = camera.extr.cpu().numpy() if hasattr(camera.extr, 'cpu') else camera.extr
+    
+#     if point_3d.shape[-1] == 3:
+#         point_camera = point_3d = np.concatenate([point_3d, np.ones(1)])
+    
+#     fx = fov2focal(camera.FoVx, camera.image_width)
+#     fy = fov2focal(camera.FoVy, camera.image_height)
+#     cx = camera.image_width / 2
+#     cy = camera.image_height / 2
+    
+#     if extrinsic.shape == (4, 4):
+#         point_camera = np.linalg.inv(extrinsic.cpu().numpy()) @ point_3d
+#     else:
+#         extrinsic_4x4 = np.eye(4)
+#         extrinsic_4x4[:3, :] = extrinsic.cpu().numpy()
+#         point_camera = np.linalg.inv(extrinsic_4x4) @ point_3d
+    
+#     x = (point_camera[0] / point_camera[2]) * fx + cx
+#     y = (point_camera[1] / point_camera[2]) * fy + cy
+    
+#     return np.array([x, y])
+
+def project_3d_to_2d(points_3d, camera):
+    # 处理输入点并转换为齐次坐标
+    points_3d = np.asarray(points_3d)
+    if points_3d.ndim == 1:
+        points_3d = points_3d.reshape(1, 3)
+    
+    # 添加齐次坐标维度
+    if points_3d.shape[1] == 3:
+        homogeneous = np.ones((points_3d.shape[0], 1))
+        points_homogeneous = np.hstack([points_3d, homogeneous])
+    else:
+        points_homogeneous = points_3d
+
+    # 获取并处理外参矩阵
     extrinsic = camera.world_view_transform.inverse().T
-    # extrinsic = camera.extr.cpu().numpy() if hasattr(camera.extr, 'cpu') else camera.extr
+    if hasattr(extrinsic, 'cpu'):
+        extrinsic = extrinsic.cpu().numpy()
     
-    if point_3d.shape[-1] == 3:
-        point_camera = point_3d = np.concatenate([point_3d, np.ones(1)])
-    
+    # 构建4x4外参矩阵
+    if extrinsic.shape == (4, 4):
+        extrinsic_4x4 = extrinsic
+    else:
+        extrinsic_4x4 = np.eye(4)
+        extrinsic_4x4[:3, :] = extrinsic[:3]  # 假设外参提供前三行
+
+    # 计算世界到相机的变换矩阵
+    world_to_cam = np.linalg.inv(extrinsic_4x4)
+
+    # 转换所有点到相机坐标系
+    points_camera = (world_to_cam @ points_homogeneous.T).T
+
+    # 获取相机内参
     fx = fov2focal(camera.FoVx, camera.image_width)
     fy = fov2focal(camera.FoVy, camera.image_height)
     cx = camera.image_width / 2
     cy = camera.image_height / 2
-    
-    if extrinsic.shape == (4, 4):
-        point_camera = np.linalg.inv(extrinsic.cpu().numpy()) @ point_3d
-    else:
-        extrinsic_4x4 = np.eye(4)
-        extrinsic_4x4[:3, :] = extrinsic.cpu().numpy()
-        point_camera = np.linalg.inv(extrinsic_4x4) @ point_3d
-    
-    x = (point_camera[0] / point_camera[2]) * fx + cx
-    y = (point_camera[1] / point_camera[2]) * fy + cy
-    
-    return np.array([x, y])
+
+    # 投影计算（带防零除保护）
+    z = points_camera[:, 2]
+    z = np.where(z == 0, 1e-10, z)  # 避免除以零
+    x = (points_camera[:, 0] / z) * fx + cx
+    y = (points_camera[:, 1] / z) * fy + cy
+
+    return np.column_stack((x, y))
