@@ -252,6 +252,7 @@ class GaussianRenderer(Renderer):
                     image = image + 0.5 * red_mask
                     images.append(image)
                 else:
+                    self.point3d = []
                     images.append(render["render"])
 
             # Save ply
