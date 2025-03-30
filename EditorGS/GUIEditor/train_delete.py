@@ -142,6 +142,8 @@ class DeleteTrainer(BaseTrainer):
             
             points3d = np.array(points3d)
             self.update_sam_mask_with_point_prompt(self.colmap_cameras, points3d)
+            del gaussian_copy
+            torch.cuda.empty_cache()
 
         origin_frames = self.render_cameras_list(self.colmap_cameras)
         # num_channels_latents = self.ctn_inpaint.vae.config.latent_channels
