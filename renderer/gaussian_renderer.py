@@ -35,6 +35,44 @@ class GaussianRenderer(Renderer):
         checkpoint = ".cache/models/sam2/sam2.1_hiera_large.pt"
         model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
         self.sam_predictor = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint))
+        self.point3d = []
+    
+    def project_3d_to_2d(self, points_3d, intrinsic, extrinsic):
+        extrinsic = extrinsic.cpu().numpy() if hasattr(extrinsic, 'cpu') else extrinsic
+        intrinsic = intrinsic.cpu().numpy() if hasattr(intrinsic, 'cpu') else intrinsic
+
+        points_3d = np.asarray(points_3d)
+        if points_3d.ndim == 1:
+            points_3d = points_3d.reshape(1, 3)
+        
+        if points_3d.shape[1] == 3:
+            homogeneous = np.ones((points_3d.shape[0], 1))
+            points_homogeneous = np.hstack([points_3d, homogeneous])
+        else:
+            points_homogeneous = points_3d
+
+        if hasattr(extrinsic, 'cpu'):
+            extrinsic = extrinsic.cpu().numpy()
+        
+        if extrinsic.shape == (4, 4):
+            extrinsic_4x4 = extrinsic
+        else:
+            extrinsic_4x4 = np.eye(4)
+            extrinsic_4x4[:3, :] = extrinsic[:3]
+
+        world_to_cam = np.linalg.inv(extrinsic_4x4)
+
+        points_camera = (world_to_cam @ points_homogeneous.T).T
+
+        fx, fy = intrinsic[0, 0], intrinsic[1, 1]
+        cx, cy = intrinsic[0, 2], intrinsic[1, 2]
+
+        z = points_camera[:, 2]
+        z = np.where(z == 0, 1e-10, z)
+        x = (points_camera[:, 0] / z) * fx + cx
+        y = (points_camera[:, 1] / z) * fy + cy
+
+        return np.column_stack((x, y))
 
     def pixel_to_3d(self, pixel, intrinsic, extrinsic, depth):
         intrinsic = intrinsic.cpu().numpy() if hasattr(intrinsic, 'cpu') else intrinsic
@@ -198,7 +236,11 @@ class GaussianRenderer(Renderer):
                 if sam_points != []:
                     self.sam_predictor.set_image(to_pil_image(render["render"]))
                     sam_points = np.array(sam_points)
-                    sam_points *= np.array([render_cam.image_height, render_cam.image_width])
+                    if len(self.point3d) > 0:
+                        sam_points[:len(self.point3d)] = self.project_3d_to_2d(self.point3d, intrinsic, cam_params)
+                    for i in range(len(self.point3d),len(sam_points)):
+                        sam_points[i] *= np.array([render_cam.image_height, render_cam.image_width])
+                        self.point3d.append(self.pixel_to_3d(sam_points[i], intrinsic, cam_params, render["depth"].cpu().numpy()[0][int(sam_points[i][1]),int(sam_points[i][0])]))
                     masks, scores, _ = self.sam_predictor.predict(point_coords=sam_points, point_labels=np.array([1] * len(sam_points)))
                     max_index = np.argmax(scores)
                     best_mask = masks[max_index]
