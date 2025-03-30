@@ -25,6 +25,7 @@ python run_main.py
 - [x] 🎨Add Text-driven 3D Editing.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
+  - [x] 🎨Add SAM2.
   - [x] 🎨Optimize the initial model.
 - [x] 🎨Add Sketch-based 3D Adding.
   - [x] 🎨Add the GUI.
@@ -36,6 +37,7 @@ python run_main.py
 - [ ] ❄️Add 3D Deleting.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
+  - [x] 🎨Add SAM2.
   - [ ] 🧊Optimize the initial model.  
 5. "Other" Feature
 - [x] [2024/11/18]🎨Add fitting one single image.
