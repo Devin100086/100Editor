@@ -1,9 +1,9 @@
 #!/bin/bash
 
-DATASET_Path="/home/wucunqi/Desktop/datasets/face"
+DATASET_PATH="/home/wucunqi/Desktop/datasets/face"
 
 if [ ! -z "$1" ]; then
-    DATASET_Path="$1"
+    DATASET_PATH="$1"
 fi
 
-python trainer/origin/train.py -s ${DATASET_Path}
+python trainer/origin/train.py -s ${DATASET_PATH}
