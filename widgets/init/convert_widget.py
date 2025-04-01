@@ -13,6 +13,7 @@ import GPUtil
 import torch
 import cv2
 from tkinter import filedialog
+from lumina3D_utils.command_utils import colmap_reconstruction
 
 class Monitor(Thread):
     def __init__(self, delay):
@@ -37,12 +38,13 @@ class ConverWidget(Widget):
         self.root= os.getcwd()
         self.source_path = "choose your data path..."
         self.colmap_progress = 0.0
-        self.use_gpu = 0
-        self.gpu_items = [str(i) for i in range(torch.cuda.device_count())]
+        self.use_gpu = True
         self.items = self.list_runs_and_colmap()
         self.gpu_monitor = Monitor(0.5)
         self.cuda_version = torch.version.cuda
         self.colmap_status = "waiting..."
+        self.colmap_rec = None
+        self.colmap = True
     
     def close(self):
         self.gpu_monitor.stop()
@@ -73,14 +75,17 @@ class ConverWidget(Widget):
             imgui.same_line() 
             imgui.text(f"colmap path: {self.colmap_executable}")
             imgui.set_next_item_width(viz.button_w)
-            changed, self.use_gpu = imgui.combo(
-                "choose gpu",
-                self.use_gpu,
-                self.gpu_items
-            )
+
+            changed, self.use_gpu = imgui.checkbox("Use GPU", self.use_gpu)
+
             if imgui_utils.button("colmap", width=viz.button_w):
+                self.colmap = False
                 self.colmap_progress = 0.0
-                self.colmap_process()
+                self.colmap_rec = self.colmap_process()
+            
+            if self.colmap_rec!= None and self.colmap_rec.poll() is not None:
+                self.colmap_status = "finish!"
+
             imgui.same_line()
             imgui.text(f"{self.colmap_status}")
 
@@ -108,65 +113,7 @@ class ConverWidget(Widget):
         return sorted(self.items)
     
     def colmap_process(self):
-        camera = "OPENCV"
-        colmap_command = '"{}"'.format(self.colmap_executable) if self.colmap_executable != "Default" else "colmap"
-
-        os.makedirs(self.source_path + "/distorted/sparse", exist_ok=True)
-        ## Feature extraction
-        feat_extracton_cmd = colmap_command + " feature_extractor "\
-            "--database_path " + self.source_path + "/distorted/database.db \
-            --image_path " + self.source_path + "/input \
-            --ImageReader.single_camera 1 \
-            --ImageReader.camera_model " + camera + " \
-            --SiftExtraction.use_gpu " + str(self.gpu_items[self.use_gpu])
-        exit_code = os.system(feat_extracton_cmd)
-        
-        if exit_code != 0:
-            logging.error(f"Feature extraction failed with code {exit_code}. Exiting.")
-            exit(exit_code)
-
-        ## Feature matching
-        feat_matching_cmd = colmap_command + " exhaustive_matcher \
-            --database_path " + self.source_path + "/distorted/database.db \
-            --SiftMatching.use_gpu " + str(self.gpu_items[self.use_gpu])
-        exit_code = os.system(feat_matching_cmd)
-        if exit_code != 0:
-            logging.error(f"Feature matching failed with code {exit_code}. Exiting.")
-            exit(exit_code)
-
-        ### Bundle adjustment
-        # The default Mapper tolerance is unnecessarily large,
-        # decreasing it speeds up bundle adjustment steps.
-        mapper_cmd = (colmap_command + " mapper \
-            --database_path " + self.source_path + "/distorted/database.db \
-            --image_path "  + self.source_path + "/input \
-            --output_path "  + self.source_path + "/distorted/sparse \
-            --Mapper.ba_global_function_tolerance=0.000001")
-        exit_code = os.system(mapper_cmd)
-        if exit_code != 0:
-            logging.error(f"Mapper failed with code {exit_code}. Exiting.")
-            exit(exit_code)
-
-        ### Image undistortion
-        ## We need to undistort our images into ideal pinhole intrinsics.
-        img_undist_cmd = (colmap_command + " image_undistorter \
-            --image_path " + self.source_path + "/input \
-            --input_path " + self.source_path + "/distorted/sparse/0 \
-            --output_path " + self.source_path + "\
-            --output_type COLMAP")
-        exit_code = os.system(img_undist_cmd)
-        if exit_code != 0:
-            logging.error(f"Mapper failed with code {exit_code}. Exiting.")
-            exit(exit_code)
-
-        files = os.listdir(self.source_path + "/sparse")
-        os.makedirs(self.source_path + "/sparse/0", exist_ok=True)
-        # Copy each file from the source directory to the destination directory
-        for file in files:
-            if file == '0':
-                continue
-            source_file = os.path.join(self.source_path, "sparse", file)
-            destination_file = os.path.join(self.source_path, "sparse", "0", file)
-            shutil.move(source_file, destination_file)
-
-        self.colmap_status = "finish!"
+        if self.colmap_executable == "Default":
+            return colmap_reconstruction(self.source_path, "", self.use_gpu)
+        else:
+            return colmap_reconstruction(self.source_path, self.colmap_executable, self.use_gpu)

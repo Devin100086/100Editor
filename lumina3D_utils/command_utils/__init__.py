@@ -117,3 +117,15 @@ def showing_colmap_command(data_path):
     ])
     return process
 
+def colmap_reconstruction(source_path, colmap_executable, use_gpu):
+    gpu = 1 if use_gpu == True else 0
+    process = subprocess.Popen([
+        "python",
+        "EditorGS/gaussiansplatting/convert.py",
+        "-s",str(source_path),
+        "--colmap_executable",str(colmap_executable),
+        "--gpu", str(gpu)
+    ])
+    return process
+
+
