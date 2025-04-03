@@ -1,4 +1,6 @@
 from argparse import ArgumentParser
+import copy
+import pickle
 from omegaconf import OmegaConf
 from tqdm import tqdm
 import sys
@@ -10,6 +12,7 @@ from EditorGS.GUIEditor.Guidance.EditGuidance import EditGuidance
 from EditorGS.gaussiansplatting.gaussian_renderer import render
 from EditorGS.GUIEditor.utils import *
 from EditorGS.GUIEditor.Network import EditorNetwork
+from threestudio.utils.camera import pixel_to_3d
 
 from torchvision.utils import save_image
 
@@ -33,7 +36,11 @@ class EditTrainer(BaseTrainer):
         self.cameara_update_step = 500
         self.use_masked_image = False
 
-    def edit(self, use_sam, seg_prompt, video):
+        self.sam_points = np.load(cfg.sam_points)
+        with open(args.camera, 'rb') as f:
+            self.cam  = pickle.load(f)
+
+    def edit(self, sam_option, seg_prompt, video):
         # edit_cameras = sample_train_camera(self.colmap_cameras,
         #                                    self.edit_cam_num,
         #                                   )
@@ -73,9 +80,31 @@ class EditTrainer(BaseTrainer):
         )
         self.view_list = self.n2n_view_index
 
-        if use_sam:
+        if sam_option == -1:
+            pass
+        elif sam_option == 0:
             self.masks, _ = self.update_mask(self.colmap_cameras, text_prompt=seg_prompt)
-
+        elif sam_option == 1:
+            gaussian_copy = copy.deepcopy(self.gaussian)
+            center = gaussian_copy._xyz.mean(dim=0)
+            gaussian_copy._xyz = gaussian_copy._xyz - center
+            points3d = []
+            for i, sam_point in enumerate(self.sam_points):
+                depth = render(self.cam, gaussian_copy, self.pipe ,self.background_tensor)[
+                    "depth_3dgs"
+                ]
+                # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
+                depth = (1/depth).detach().cpu().numpy()
+                sam_point = sam_point * np.array([self.cam.image_width, self.cam.image_height])
+                unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
+                # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
+                points3d.append(unprojected_points3d+center.detach().cpu().numpy())
+            
+            points3d = np.array(points3d)
+            self.update_sam_mask_with_point_prompt(self.colmap_cameras, points3d)
+            del gaussian_copy
+            torch.cuda.empty_cache()
+        
         self.guidance = EditGuidance(
             guidance=cur_2D_guidance,
             gaussian=self.gaussian,
@@ -182,9 +211,17 @@ if __name__ == "__main__":
     parser.add_argument("--lambda_anchor_geo", type=float, default=1.0, help="Lambda anchor geo.")
     parser.add_argument("--lambda_anchor_scale", type=float, default=1.0, help="Lambda anchor scale.")
     parser.add_argument("--lambda_anchor_opacity", type=float, default=1.0, help="Lambda anchor opacity.")
-    parser.add_argument("--use_sam", type=str, default="False", help="Use Sam.")
+    parser.add_argument("--sam_option", type=int, default=-1, help="Sam Option.")
     parser.add_argument("--seg_prompt", type=str, default="face", help="seg Prompt.")
+    parser.add_argument("--gs_lr_scaler", type=float, default=1.0, help="Initial learning rate scaler for GS.")
+    parser.add_argument("--gs_lr_end_scaler", type=float, default=1.0, help="Final learning rate scaler for GS.")
+    parser.add_argument("--color_lr_scaler", type=float, default=3.0, help="Learning rate scaler for color.")
+    parser.add_argument("--opacity_lr_scaler", type=float, default=2.0, help="Learning rate scaler for opacity.")
+    parser.add_argument("--scaling_lr_scaler", type=float, default=2.0, help="Learning rate scaler for scaling.")
+    parser.add_argument("--rotation_lr_scaler", type=float, default=2.0, help="Learning rate scaler for rotation.")
     parser.add_argument("--video", type=str, default="False", help="video.")
+    parser.add_argument("--sam_points", type=str, default=0, help="the path of the sam points.")
+    parser.add_argument("--camera", type=str, default="tmd_delete/camera.pkl", help="camera.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):
@@ -195,4 +232,4 @@ if __name__ == "__main__":
             anchor_weight_multiplier=1.3,
         )
         trainer.configure_optimizers()
-        trainer.edit(use_sam=eval(args.use_sam), seg_prompt=args.seg_prompt, video=eval(args.video))
+        trainer.edit(sam_option=args.sam_option, seg_prompt=args.seg_prompt, video=eval(args.video))

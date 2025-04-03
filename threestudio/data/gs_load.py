@@ -206,6 +206,7 @@ class GSLoadDataModuleConfig:
     light_sample_strategy: str = "dreamfusion"
     batch_uniform_azimuth: bool = True
     progressive_until: int = 0  # progressive ranges for elevation, azimuth, r, fovy
+    use_original_resolution: bool = False
 
 
 class GSLoadIterableDataset(IterableDataset, Updateable):
@@ -338,6 +339,10 @@ class GS_load(pl.LightningDataModule):
         from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
         super().__init__()
         self.cfg = parse_structured(GSLoadDataModuleConfig, cfg)
+        if self.cfg.use_original_resolution:
+            self.cfg.height = self.cfg.eval_height
+            self.cfg.width = self.cfg.eval_width
+            
         self.train_scene = CamScene(
             self.cfg.source, h=self.cfg.height, w=self.cfg.width
         )

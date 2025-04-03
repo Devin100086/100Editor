@@ -43,22 +43,15 @@ class DeleteTrainer(BaseTrainer):
         self.colmap_dir = cfg.colmap_dir
         self.mask_dilate  = cfg.mask_dilate
         self.sam_type = cfg.sam_type
-        self.sam_points = np.load(cfg.sam_points)
         self.fix_holes = True
         self.lang_sam = LangSAMTextSegmentor().to(get_device())
 
         self.cameara_update_step = 500
         self.t_max_step = [999, 300, 300, 21]
-        self.sam2_checkpoint = "./.cache/models/sam2/sam2.1_hiera_large.pt"
-        self.sam2_model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
 
+        self.sam_points = np.load(cfg.sam_points)
         with open(args.camera, 'rb') as f:
             self.cam  = pickle.load(f)
-
-        if self.colmap_dir is not None:
-            scene = CamScene(self.colmap_dir, h=512, w=512)
-            self.cameras_extent = scene.cameras_extent
-            self.colmap_cameras = scene.cameras
 
     def delete(self,video):
         edit_cameras = sample_train_camera(self.colmap_cameras,
@@ -294,6 +287,12 @@ if __name__ == "__main__":
     parser.add_argument("--lambda_anchor_geo", type=float, default=1.0, help="Lambda anchor geo.")
     parser.add_argument("--lambda_anchor_scale", type=float, default=1.0, help="Lambda anchor scale.")
     parser.add_argument("--lambda_anchor_opacity", type=float, default=1.0, help="Lambda anchor opacity.")
+    parser.add_argument("--gs_lr_scaler", type=float, default=1.0, help="Initial learning rate scaler for GS.")
+    parser.add_argument("--gs_lr_end_scaler", type=float, default=1.0, help="Final learning rate scaler for GS.")
+    parser.add_argument("--color_lr_scaler", type=float, default=3.0, help="Learning rate scaler for color.")
+    parser.add_argument("--opacity_lr_scaler", type=float, default=2.0, help="Learning rate scaler for opacity.")
+    parser.add_argument("--scaling_lr_scaler", type=float, default=2.0, help="Learning rate scaler for scaling.")
+    parser.add_argument("--rotation_lr_scaler", type=float, default=2.0, help="Learning rate scaler for rotation.")
     parser.add_argument("--inpaint_scale", type=float, default=1.0, help="Inpaint scale.")
     parser.add_argument("--mask_dilate", type=int, default=15, help="Mask dilate.")
     parser.add_argument("--video", type=str, default="False", help="video.")

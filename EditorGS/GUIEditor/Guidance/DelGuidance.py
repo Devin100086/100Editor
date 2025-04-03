@@ -7,18 +7,19 @@ from torchvision.transforms import ToTensor
 
 from threestudio.models.prompt_processors.stable_diffusion_prompt_processor import StableDiffusionPromptProcessor
 from transformers import pipeline
+from PIL import Image
 # Diffusion model (cached) + prompts + edited_frames + training config
 
 class DelGuidance:
-    def __init__(self, guidance, gaussian, text_prompt,
+    def __init__(self, guidance, gaussian, text_prompt,per_editing_step,edit_begin_step, edit_until_step,
                  lambda_l1, lambda_p, lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,
                  cams):
         self.guidance = guidance # ctn-inpaint guidance
         self.depthPredictor = pipeline(task="depth-estimation", model="depth-anything/depth-anything-V2-Base-hf")
         self.lambda_l1 = lambda_l1
-        self.per_editing_step = 10
-        self.edit_begin_step = 0
-        self.edit_until_step = 1300
+        self.per_editing_step = per_editing_step
+        self.edit_begin_step = edit_begin_step
+        self.edit_until_step = edit_until_step
         self.lambda_p = lambda_p
         self.lambda_anchor_color = lambda_anchor_color
         self.lambda_anchor_geo = lambda_anchor_geo
@@ -42,7 +43,6 @@ class DelGuidance:
         self.to_tensor = ToTensor()
 
 
-
     @torch.no_grad()
     def inpaint_with_mask_ctn(self, image_in, mask_in, view_index) -> None:
         image_in_pil = to_pil_image(image_in[0].permute(2, 0, 1)) # 1, H, W, C to C, H, W
@@ -59,36 +59,34 @@ class DelGuidance:
             image = torch.from_numpy(image)
             return image
 
-        control_image = make_inpaint_condition(image_in_pil, mask_in_pil).to("cuda")
-        generator = torch.Generator(device="cuda").manual_seed(0)
-        out = self.guidance(
-            self.text_prompt,
-            num_inference_steps=20,
-            generator=generator,
-            eta=1.0,
-            image=image_in_pil,
-            mask_image=mask_in_pil,
-            control_image=control_image,
-        ).images[0]
+        from LeftRefill.run import predict
 
+        source = {"image":image_in_pil, "mask":mask_in_pil}
+        reference = Image.open("EditorGS/image2.png")
+        out = predict(source, reference, 25, 1, 2.5, 124241)[0]
+        # control_image = make_inpaint_condition(image_in_pil, mask_in_pil).to("cuda")
+        # generator = torch.Generator(device="cuda").manual_seed(0)
+        # out = self.guidance(
+        #     self.text_prompt,
+        #     num_inference_steps=20,
+        #     generator=generator,
+        #     eta=1.0,
+        #     image=image_in_pil,
+        #     mask_image=mask_in_pil,
+        #     control_image=control_image,
+        # ).images[0]
+        # out.save(f"image_{view_index}.png")
         self.edit_frames[view_index] = self.to_tensor(out).to("cuda")[None].permute(0,2,3,1) # 1 C H W to 1 H W C
         # self.depth_frames[view_index] = self.to_tensor(self.depthPredictor(out)["depth"]).unsqueeze(0).permute(0,2,3,1)
 
     def __call__(self, rendering, image_in, mask_in, view_index, step):
         self.gaussian.update_learning_rate(step)
 
-        if view_index not in self.edit_frames or (
-                self.per_editing_step > 0
-                and self.edit_begin_step
-                < step
-                < self.edit_until_step
-                and step % self.per_editing_step == 0
-        ):
-            self.edit_frames[view_index] = self.guidance(
-                image_in,
-                mask_in.unsqueeze(0).permute(0,2,3,1).to(torch.float32),
-                self.text_prompt,
-            )["edit_images"]
+        if view_index not in self.edit_frames:
+            # self.inpaint_with_mask_ctn(image_in, mask_in, view_index)
+            # mask = mask_in.unsqueeze(0).permute(0, 2, 3, 1).repeat(1,1,1,3).float().to(rendering.device)
+            # rgb = image_in * (1-mask)
+            self.inpaint_with_mask_ctn(image_in, mask_in, view_index)
 
         gt_image = self.edit_frames[view_index]
 
@@ -128,11 +126,19 @@ class DelGuidance:
     def edit_all(self, frames, masks):
         
         # nerf2nerf loss
+        mask = masks.unsqueeze(-1).repeat(1,1,1,3).float().to(frames.device)
+        rgb = frames * (1-mask)
+
         result = self.guidance(
-            frames,
-            masks.unsqueeze(-1).to(torch.float32),
-            self.text_prompt,
+            rgb,
+            mask,
+            self.prompt_utils,
         )
+        # result = self.guidance(
+        #     frames,
+        #     masks.unsqueeze(-1).float().to(frames.device),
+        #     self.text_prompt,
+        # )
         gt_image = result["edit_images"].detach().clone()
 
         return gt_image

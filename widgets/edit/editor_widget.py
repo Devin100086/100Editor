@@ -57,6 +57,13 @@ class EditorWidget(Widget):
         self.densify_until_step = 1300
         self.cameara_update_step = 500
         self.densification_interval = 50
+
+        self.gs_lr_scaler = 1.0
+        self.gs_lr_end_scaler = 1.0
+        self.color_lr_scaler = 3.0
+        self.opacity_lr_scaler = 2.0
+        self.scaling_lr_scaler = 2.0
+        self.rotation_lr_scaler = 2.0
         
         # text-edit
         self.guidance_type = ["InstructPix2Pix","ControlNet-Pix2Pix"]
@@ -189,34 +196,56 @@ class EditorWidget(Widget):
                         self.densification_interval = 50
                         self.densify_until_step = 4000
                     imgui.separator_text("Parameters")
-                    label("Camera Num", viz.label_w)
-                    _, self.edit_cam_num = imgui.slider_int("##Camera Num", self.edit_cam_num, 12, 200, format="%d")
-                    label("Total Step", viz.label_w)
-                    _, self.edit_train_steps = imgui.slider_int("##Total Step", self.edit_train_steps, 0, 5000, format="%d")
-                    label("Camera Update Step", viz.label_w)
-                    _, self.cameara_update_step = imgui.slider_int("##Camera Update Step", self.cameara_update_step, 0, 5000, format="%d")
-                    label("Lambda L1", viz.label_w)
-                    _, self.lambda_l1 = imgui.slider_int("##Lambda L1", self.lambda_l1, 0, 100, format="%d")
-                    label("Lambda Perceptual", viz.label_w)
-                    _, self.lambda_p = imgui.slider_int("##Lambda Perceptual", self.lambda_p, 0, 100, format="%d")
-                    label("Lambda Anchor Color", viz.label_w)
-                    _, self.lambda_anchor_color = imgui.slider_int("##Lambda Anchor Color", self.lambda_anchor_color, 0, 500, format="%d")
-                    label("Lambda Anchor Geo", viz.label_w)
-                    _, self.lambda_anchor_geo = imgui.slider_int("##Lambda Anchor Geo", self.lambda_anchor_geo, 0, 500, format="%d")
-                    label("Lambda Anchor Scale", viz.label_w)
-                    _, self.lambda_anchor_scale = imgui.slider_int("##Lambda Anchor Scale", self.lambda_anchor_scale, 0, 500, format="%d")
-                    label("Lambda Anchor Opacity", viz.label_w)
-                    _, self.lambda_anchor_opacity = imgui.slider_int("##Lambda Anchor Opacity", self.lambda_anchor_opacity, 0, 500, format="%d")
-                    label("Edit Until Step", viz.label_w)
-                    _, self.edit_until_step = imgui.slider_int("##Edit Until Step", self.edit_until_step, 0, 5000, format="%d")
-                    label("Edit Begining", viz.label_w)
-                    _, self.edit_begin_step = imgui.slider_int("##Edit Begining", self.edit_begin_step, 0, 5000, format="%d")
-                    label("Edit Interval", viz.label_w)
-                    _, self.per_editing_step = imgui.slider_int("##Edit Interval", self.per_editing_step, 4, 12000, format="%d")
-                    label("Densification Interval", viz.label_w)
-                    _, self.densification_interval = imgui.slider_int("##Densification Interval", self.densification_interval, 1, 200, format="%d")
-                    label("Densification Until Step", viz.label_w)
-                    _, self.densify_until_step = imgui.slider_int("##Densification Until Step", self.densify_until_step, 0, 5000, format="%d")
+
+                    if imgui.tree_node("Editing Training"):
+                        label("Camera Num", viz.label_w_large)
+                        _, self.edit_cam_num = imgui.slider_int("##Camera Num", self.edit_cam_num, 12, 200, format="%d")
+                        label("Total Step", viz.label_w_large)
+                        _, self.edit_train_steps = imgui.slider_int("##Total Step", self.edit_train_steps, 0, 5000, format="%d")
+                        label("Camera Update Step", viz.label_w_large)
+                        _, self.cameara_update_step = imgui.slider_int("##Camera Update Step", self.cameara_update_step, 0, 5000, format="%d")
+                        label("Edit Until Step", viz.label_w_large)
+                        _, self.edit_until_step = imgui.slider_int("##Edit Until Step", self.edit_until_step, 0, 5000, format="%d")
+                        label("Edit Begining", viz.label_w_large)
+                        _, self.edit_begin_step = imgui.slider_int("##Edit Begining", self.edit_begin_step, 0, 5000, format="%d")
+                        label("Edit Interval", viz.label_w_large)
+                        _, self.per_editing_step = imgui.slider_int("##Edit Interval", self.per_editing_step, 4, 12000, format="%d")
+                        label("Densification Interval", viz.label_w_large)
+                        _, self.densification_interval = imgui.slider_int("##Densification Interval", self.densification_interval, 1, 200, format="%d")
+                        label("Densification Until Step", viz.label_w_large)
+                        _, self.densify_until_step = imgui.slider_int("##Densification Until Step", self.densify_until_step, 0, 5000, format="%d")
+                        imgui.tree_pop()
+                    
+                    if imgui.tree_node("Loss Weight"):
+                        label("Lambda L1", viz.label_w_large)
+                        _, self.lambda_l1 = imgui.slider_int("##Lambda L1", self.lambda_l1, 0, 100, format="%d")
+                        label("Lambda Perceptual", viz.label_w_large)
+                        _, self.lambda_p = imgui.slider_int("##Lambda Perceptual", self.lambda_p, 0, 100, format="%d")
+                        label("Lambda Anchor Color", viz.label_w_large)
+                        _, self.lambda_anchor_color = imgui.slider_int("##Lambda Anchor Color", self.lambda_anchor_color, 0, 500, format="%d")
+                        label("Lambda Anchor Geo", viz.label_w_large)
+                        _, self.lambda_anchor_geo = imgui.slider_int("##Lambda Anchor Geo", self.lambda_anchor_geo, 0, 500, format="%d")
+                        label("Lambda Anchor Scale", viz.label_w_large)
+                        _, self.lambda_anchor_scale = imgui.slider_int("##Lambda Anchor Scale", self.lambda_anchor_scale, 0, 500, format="%d")
+                        label("Lambda Anchor Opacity", viz.label_w_large)
+                        _, self.lambda_anchor_opacity = imgui.slider_int("##Lambda Anchor Opacity", self.lambda_anchor_opacity, 0, 500, format="%d")
+                        imgui.tree_pop()
+                    
+                    if imgui.tree_node("LR weight"):
+                        label("GS LR Scaler", viz.label_w_large)
+                        _, self.gs_lr_scaler = imgui.slider_float("##GS LR Scaler", self.gs_lr_scaler, 0.0, 5.0, format="%.1f")
+                        label("GS LR End Scaler", viz.label_w_large)
+                        _, self.gs_lr_end_scaler = imgui.slider_float("##GS LR End Scaler", self.gs_lr_end_scaler, 0.0, 5.0, format="%.1f")
+                        label("Color LR Scaler", viz.label_w_large)
+                        _, self.color_lr_scaler = imgui.slider_float("##Color LR Scaler", self.color_lr_scaler, 0.0, 5.0, format="%.1f")
+                        label("Opacity LR Scaler", viz.label_w_large)
+                        _, self.opacity_lr_scaler = imgui.slider_float("##Opacity LR Scaler", self.opacity_lr_scaler, 0.0, 5.0, format="%.1f")
+                        label("Scaling LR Scaler", viz.label_w_large)
+                        _, self.scaling_lr_scaler = imgui.slider_float("##Scaling LR Scaler", self.scaling_lr_scaler, 0.0, 5.0, format="%.1f")
+                        label("Rotation LR Scaler", viz.label_w_large)
+                        _, self.rotation_lr_scaler = imgui.slider_float("##Rotation LR Scaler", self.rotation_lr_scaler, 0.0, 5.0, format="%.1f")
+                        imgui.tree_pop()
+                   
                     imgui.end_tab_item()
 
                 if imgui.begin_tab_item("text")[0]:
@@ -237,28 +266,37 @@ class EditorWidget(Widget):
                     if imgui.radio_button("No Sam", self.text_sam_option == -1):
                         self.text_sam_option = -1 
                     imgui.same_line()
-                    if imgui.radio_button("Use SAM2", self.text_sam_option == 0):
-                        self.text_sam_option = 0 
+                    if imgui.radio_button("Use Lang-sam", self.text_sam_option == 0):
+                        self.text_sam_option = 0
                     imgui.same_line()
-                    if imgui.radio_button("Use Lang-sam", self.text_sam_option == 1):
-                        self.text_sam_option = 1
+                    if imgui.radio_button("Use SAM2", self.text_sam_option == 1):
+                        self.text_sam_option = 1 
 
                     if self.text_sam_option == 0:
+                        label("Seg prompt", viz.label_w)
+                        _, self.text_seg_prompt = imgui.input_text("##seg prompt", self.text_seg_prompt, 256)
+
+                    if self.text_sam_option == 1:
                         label("Sam point", viz.label_w)
                         _, self.text_sam_point = imgui.checkbox("##Sam point", self.text_sam_point)
                         if self.text_sam_point:
                             if imgui.get_mouse_pos().x > self.viz.pane_w and imgui.is_mouse_clicked(0):
                                 self.text_sam_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                        imgui.same_line()
                         if imgui_utils.button("clean SAM", width=viz.button_w):
                             self.text_sam_points = []
-
-                    if self.text_sam_option == 1:
-                        label("Seg prompt", viz.label_w)
-                        _, self.text_seg_prompt = imgui.input_text("##seg prompt", self.text_seg_prompt, 256)
 
                     if not self.edit3D:
                         if imgui_utils.button("Edit", width=viz.button_w):
                             self.edit3D = True
+                            np.save("tmp_edit/point2D.npy", np.array(self.text_sam_points))
+                            origin = Image.fromarray(viz.result.image).convert("RGB")
+                            R = viz.extr.inverse()[:3, :3].T.numpy()
+                            T = viz.extr.inverse()[:3, 3].numpy()
+                            fov_rad = viz.fov / 360 * 2 * np.pi
+                            cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
+                            with open(f'tmp_edit/camera.pkl', 'wb') as f:
+                                pickle.dump(cam, f)  
                             self.edit_trainer = training_text_adding_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
                                                                              edit_cam_num=self.edit_cam_num,guidance_type=self.guidance_type[self.guidance_item],
                                                                              text_prompt=self.text_prompt,edit_train_steps=self.edit_train_steps,
@@ -266,8 +304,12 @@ class EditorWidget(Widget):
                                                                              edit_until_step=self.edit_until_step,lambda_l1=self.lambda_l1,
                                                                              lambda_p=self.lambda_p,lambda_anchor_color=self.lambda_anchor_color,
                                                                              lambda_anchor_geo=self.lambda_anchor_geo,lambda_anchor_scale=self.lambda_anchor_scale,
-                                                                             lambda_anchor_opacity=self.lambda_anchor_opacity,use_sam=self.use_sam,
-                                                                             seg_prompt=self.text_seg_prompt,text_videoEditing=self.text_videoEditing)
+                                                                             lambda_anchor_opacity=self.lambda_anchor_opacity,sam_option=self.text_sam_option,
+                                                                             seg_prompt=self.text_seg_prompt,text_videoEditing=self.text_videoEditing,
+                                                                             gs_lr_scaler = self.gs_lr_scaler, gs_lr_end_scaler = self.gs_lr_end_scaler, 
+                                                                             color_lr_scaler = self.color_lr_scaler,  opacity_lr_scaler = self.opacity_lr_scaler, 
+                                                                             scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler, 
+                                                                             sam_points = "tmp_edit/point2D.npy",camera = "tmp_edit/camera.pkl")
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
                             self.edit3D = False
@@ -624,6 +666,9 @@ class EditorWidget(Widget):
                                 lambda_p=self.lambda_p,lambda_anchor_color=self.lambda_anchor_color,
                                 lambda_anchor_geo=self.lambda_anchor_geo,lambda_anchor_scale=self.lambda_anchor_scale,
                                 lambda_anchor_opacity=self.lambda_anchor_opacity, video = self.video_inpainting,
+                                gs_lr_scaler = self.gs_lr_scaler, gs_lr_end_scaler = self.gs_lr_end_scaler, 
+                                color_lr_scaler = self.color_lr_scaler,  opacity_lr_scaler = self.opacity_lr_scaler, 
+                                scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler,
                                 sam_type = self.delete_sam_option, sam_points = "tmp_delete/point2D.npy",
                                 camera = "tmp_delete/camera.pkl",
                             )

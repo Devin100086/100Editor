@@ -41,6 +41,7 @@ from threestudio.utils.camera import camera_ray_sample_points, project, unprojec
 from argparse import ArgumentParser
 from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
 from transformers import pipeline
+from tqdm import tqdm
 
 
 class BaseTrainer:
@@ -51,13 +52,13 @@ class BaseTrainer:
         self.edit_train_steps = None if cfg.edit_train_steps==-1 else cfg.edit_train_steps
 
         # Camera
-        self.gs_lr_scaler = 3.0
+        self.gs_lr_scaler = cfg.gs_lr_scaler
+        self.color_lr_scaler = cfg.color_lr_scaler
+        self.opacity_lr_scaler = cfg.opacity_lr_scaler
+        self.scaling_lr_scaler = cfg.scaling_lr_scaler
+        self.rotation_lr_scaler = cfg.rotation_lr_scaler
+        self.gs_lr_end_scaler = cfg.gs_lr_end_scaler
         self.lr_final_scaler = 2.0
-        self.color_lr_scaler = 3.0
-        self.opacity_lr_scaler = 2.0
-        self.scaling_lr_scaler = 2.0
-        self.rotation_lr_scaler = 2.0
-        self.gs_lr_end_scaler = 2.0
         self.densify_until_step = 1500
         self.densification_interval = 50
         self.max_densify_percent = 0.01
@@ -121,6 +122,8 @@ class BaseTrainer:
         self.system_need_update = False
         self.inpaint_again = True
         self.scale_depth = True
+
+        self.save_mask_tmp =  os.path.join(os.path.dirname(cfg.sam_points),"mask")
 
     @torch.no_grad()
     def render_cameras_list(self, edit_cameras):
@@ -311,7 +314,7 @@ class BaseTrainer:
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
         kernel =  np.ones((5,5),np.uint8)
 
-        for i,cam in enumerate(edit_cameras):
+        for cam in tqdm(edit_cameras):
             cur_cam = cam
             this_frame = render(
                 cur_cam, self.gaussian, self.pipe, self.background_tensor
@@ -335,29 +338,26 @@ class BaseTrainer:
     def update_sam_mask_with_point_prompt(
         self, edit_cameras, points3ds=None
     ):
+        os.system(f"rm -rf {self.save_mask_tmp}/*")
         from sam2.build_sam import build_sam2
         from sam2.sam2_image_predictor import SAM2ImagePredictor
-        sam2_predictor = SAM2ImagePredictor(build_sam2(self.sam2_model_cfg, self.sam2_checkpoint))
+        sam2_checkpoint = "./.cache/models/sam2/sam2.1_hiera_large.pt"
+        sam2_model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
+        sam2_predictor = SAM2ImagePredictor(build_sam2(sam2_model_cfg, sam2_checkpoint))
         points3ds = points3ds if points3ds is not None else self.points3d
         masks = []
         weights = torch.zeros_like(self.gaussian._opacity)
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
-        for i, cam in enumerate(edit_cameras):
-            point2d = []
+        for cam in tqdm(edit_cameras):
             cur_cam = cam
             assert len(points3ds) > 0
             points2ds = project_3d_to_2d(points3ds, cur_cam)
-            # for points3d in points3ds:
-            #     point2d.append(project_3d_to_2d(points3d, cur_cam)) 
-            # points2ds = np.array(point2d)
             img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)[
                 "render"
             ]
             sam2_predictor.set_image(
                 np.asarray(to_pil_image(img.cpu())),
             )
-            # print(points2ds)
-            # points2ds = points2ds[None,:]
             mask, _, _ = sam2_predictor.predict(
                 point_coords= points2ds,
                 point_labels=np.array([1] * points2ds.shape[0], dtype=np.int64),
@@ -365,8 +365,8 @@ class BaseTrainer:
                 multimask_output=False,
             )
             mask = torch.from_numpy(mask).to(torch.bool).to(get_device())
-            os.makedirs("tmp_delete/mask", exist_ok=True)
-            torchvision.utils.save_image(mask.unsqueeze(0).to(torch.float16), f"tmp_delete/mask/mask_{i}" + ".png")
+            os.makedirs(self.save_mask_tmp, exist_ok=True)
+            torchvision.utils.save_image(mask.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cam.image_name}" + ".png")
             self.gaussian.apply_weights(
                 cur_cam, weights, weights_cnt, mask.to(torch.float32)
             )

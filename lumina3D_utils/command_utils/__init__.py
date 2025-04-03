@@ -7,7 +7,9 @@ import subprocess
 def training_text_adding_command(
     gs_source, colmap_dir, edit_cam_num, guidance_type, text_prompt, edit_train_steps,
     per_editing_step, edit_begin_step, edit_until_step, lambda_l1, lambda_p,
-    lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,use_sam, seg_prompt, text_videoEditing
+    lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,
+    sam_option, seg_prompt, text_videoEditing, gs_lr_scaler, gs_lr_end_scaler, color_lr_scaler, 
+    opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler, sam_points, camera,
 ):
     process = subprocess.Popen([
         "python",
@@ -27,8 +29,16 @@ def training_text_adding_command(
         "--lambda_anchor_geo", str(lambda_anchor_geo),
         "--lambda_anchor_scale", str(lambda_anchor_scale),
         "--lambda_anchor_opacity", str(lambda_anchor_opacity),
-        "--use_sam",str(use_sam),
+        "--sam_option",str(sam_option),
+        "--sam_points", str(sam_points),
         "--seg_prompt",str(seg_prompt),
+        "--gs_lr_scaler", str(gs_lr_scaler),
+        "--gs_lr_end_scaler", str(gs_lr_end_scaler),
+        "--color_lr_scaler", str(color_lr_scaler),
+        "--opacity_lr_scaler", str(opacity_lr_scaler),
+        "--scaling_lr_scaler", str(scaling_lr_scaler),
+        "--rotation_lr_scaler", str(rotation_lr_scaler),
+        "--camera", str(camera),
         "--video",str(text_videoEditing)
     ])
     return process
@@ -80,7 +90,8 @@ def training_fine_adding_command(
 def training_delete_command(gs_source, colmap_dir, inpaint_scale, mask_dilate, edit_cam_num, delete_prompt,
     inpaint_prompt, edit_train_steps, per_editing_step, edit_begin_step, edit_until_step,
     lambda_l1, lambda_p, lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale,
-    lambda_anchor_opacity, video, sam_type, sam_points, camera
+    lambda_anchor_opacity, video, sam_type, sam_points, camera, gs_lr_scaler, gs_lr_end_scaler, color_lr_scaler, 
+    opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler
 ):
     process = subprocess.Popen([
         "python",
@@ -104,6 +115,12 @@ def training_delete_command(gs_source, colmap_dir, inpaint_scale, mask_dilate, e
         "--lambda_anchor_geo", str(lambda_anchor_geo),
         "--lambda_anchor_scale", str(lambda_anchor_scale),
         "--lambda_anchor_opacity", str(lambda_anchor_opacity),
+        "--gs_lr_scaler", str(gs_lr_scaler),
+        "--gs_lr_end_scaler", str(gs_lr_end_scaler),
+        "--color_lr_scaler", str(color_lr_scaler),
+        "--opacity_lr_scaler", str(opacity_lr_scaler),
+        "--scaling_lr_scaler", str(scaling_lr_scaler),
+        "--rotation_lr_scaler", str(rotation_lr_scaler),
         "--video", str(video),
         "--camera", str(camera),
     ])
