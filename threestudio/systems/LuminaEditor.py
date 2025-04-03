@@ -99,7 +99,7 @@ class LuminaEditor(BaseLift3DSystem):
             weights = torch.zeros_like(self.gaussian._opacity)
             weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
             threestudio.info(f"Segmentation with prompt: {self.cfg.seg_prompt}")
-            for id in tqdm(self.view_list):
+            for id in tqdm(range(self.trainer.datamodule.train_dataset.total_view_num)):
                 cur_path = os.path.join(mask_cache_dir, "{:0>4d}.png".format(id))
                 cur_path_viz = os.path.join(
                     mask_cache_dir, "viz_{:0>4d}.png".format(id)
