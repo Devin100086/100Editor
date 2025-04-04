@@ -4,13 +4,14 @@ python launch.py \
     trainer.max_steps=1000 \
     data.max_view_num=20 \
     system.prompt_processor.prompt="Turn him into a clown" \
+    system.seg_prompt="face" \
     system.per_editing_step=100000 \
     system.max_densify_percent=0.01 \
     system.anchor_weight_init_g0=0.05 \
     system.anchor_weight_init=0.1 \
     system.anchor_weight_multiplier=1.3 \
-    system.gs_lr_scaler=1 \
-    system.gs_final_lr_scaler=1 \
+    system.gs_lr_scaler=0.01 \
+    system.gs_final_lr_scaler=0.01 \
     system.color_lr_scaler=1 \
     system.opacity_lr_scaler=1 \
     system.scaling_lr_scaler=1 \

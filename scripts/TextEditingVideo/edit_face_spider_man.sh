@@ -4,6 +4,8 @@ python launch.py \
     trainer.max_steps=1000 \
     data.max_view_num=20 \
     system.prompt_processor.prompt="Turn him into a spider man with Mask" \
+    system.clip_prompt_origin="man" \
+    system.clip_prompt_target="spider man" \
     system.per_editing_step=100000 \
     system.max_densify_percent=0.01 \
     system.anchor_weight_init_g0=0.05 \

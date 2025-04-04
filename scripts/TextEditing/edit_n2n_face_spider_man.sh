@@ -3,6 +3,8 @@ python launch.py \
     --train --gpu 0 \
     trainer.max_steps=1000 \
     system.prompt_processor.prompt="turn him into a spider man with mark" \
+    system.clip_prompt_origin="man" \
+    system.clip_prompt_target="spider man" \
     system.max_densify_percent=0.01 \
     system.anchor_weight_init_g0=0.05 \
     system.anchor_weight_init=0.1 \
@@ -21,5 +23,7 @@ python launch.py \
     system.densify_from_iter=100 \
     system.densify_until_iter=801 \
     system.densification_interval=100 \
+    system.gs_source="/home/wucunqi/Desktop/results/face/3DGS+depth/point_cloud/iteration_7000/point_cloud.ply" \
     data.source="/home/wucunqi/Desktop/results/face" \
-    system.gs_source="/home/wucunqi/Desktop/results/face/3DGS+depth/point_cloud/iteration_7000/point_cloud.ply"
+    trainer.val_check_interval=500 \
+    
