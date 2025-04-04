@@ -1,8 +1,8 @@
 #!/bin/bash
 
-GS_SOURCE="/home/wucunqi/Desktop/results/face/3DGS+depth/point_cloud/iteration_7000/point_cloud.ply"
-COLMAP_DIR="/home/wucunqi/Desktop/datasets/face/"
-SAVE_DIR="save/render_origin"
+GS_SOURCE="/home/wucunqi/Desktop/results/face/edit/Hulk/save/last.ply"
+COLMAP_DIR="/home/wucunqi/Desktop/results/face/"
+SAVE_DIR="save/render_edited"
 
 rm -rf ${SAVE_DIR}/*
 
@@ -15,7 +15,7 @@ if [ ! -z "$2" ]; then
 fi
 
 if [ ! -z "$3" ]; then
-    COLMAP_DIR="$3"
+    SAVE_DIR="$3"
 fi
 
 python EditorGS/GUIEditor/render.py --gs_source ${GS_SOURCE} --colmap_dir ${COLMAP_DIR} --save_dir ${SAVE_DIR} 
