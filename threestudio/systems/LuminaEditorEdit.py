@@ -11,6 +11,7 @@ from threestudio.utils.clip_metrics import ClipSimilarity
 import cv2
 
 from threestudio.systems.LuminaEditor import LuminaEditor
+from torchvision.utils import save_image
 
 @threestudio.register("gsedit-system-edit")
 class LuminaEditor_Edit(LuminaEditor):
@@ -64,6 +65,7 @@ class LuminaEditor_Edit(LuminaEditor):
         cameras = []
         images = []
         original_frames = []
+        masks = []
         t_max_step = self.cfg.added_noise_schedule
         self.guidance.max_step = t_max_step[min(len(t_max_step)-1, self.true_global_step//self.cfg.camera_update_per_step)]
         with torch.no_grad():
@@ -88,6 +90,9 @@ class LuminaEditor_Edit(LuminaEditor):
                 if self.cfg.use_masked_image:
                     out = out * out_pkg["masks"].unsqueeze(-1)
                 images.append(out)
+                mask = self.masks[id].unsqueeze(0)
+                mask = self.gaussian_blur(mask)
+                masks.append(mask)
                 assert os.path.exists(original_image_path)
                 cached_image = cv2.cvtColor(cv2.imread(original_image_path), cv2.COLOR_BGR2RGB)
                 self.origin_frames[id] = torch.tensor(
@@ -95,6 +100,7 @@ class LuminaEditor_Edit(LuminaEditor):
                 )[None]
                 original_frames.append(self.origin_frames[id])
             images = torch.cat(images, dim=0)
+            masks = torch.cat(masks, dim=0) # B H W C
             original_frames = torch.cat(original_frames, dim=0)
 
             edited_images = self.guidance(
@@ -103,8 +109,8 @@ class LuminaEditor_Edit(LuminaEditor):
                 self.prompt_processor(),
                 cams = cams_sorted,
             )
-
-            # save_image(edited_images['edit_images'].permute(0,3,1,2), f'batch_image_{global_step}.png', nrow=4)
+            edited_images['edit_images'] = edited_images['edit_images'] * masks + (1-masks) * original_frames
+            save_image(edited_images['edit_images'].permute(0,3,1,2), f'batch_image_{global_step}.png', nrow=4)
             for view_index_tmp in range(len(self.view_list)):
                 self.edit_frames[view_sorted[view_index_tmp]] = edited_images['edit_images'][view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
 
@@ -145,7 +151,12 @@ class LuminaEditor_Edit(LuminaEditor):
         batch_index = batch["index"]
         if isinstance(batch_index, int):
             batch_index = [batch_index]
+        if self.cfg.video:
+            for img_index, cur_index in enumerate(batch_index):
+                if cur_index not in self.edit_frames:
+                    batch_index[img_index] = self.view_list[img_index]
         out = self(batch, local=self.cfg.local_edit)
+
 
         images = out["comp_rgb"]
 
@@ -156,11 +167,11 @@ class LuminaEditor_Edit(LuminaEditor):
             gt_images = []
             for img_index, cur_index in enumerate(batch_index):
                 if cur_index not in self.edit_frames or (
-                        self.cfg.per_editing_step > 0
-                        and self.cfg.edit_begin_step
-                        < self.global_step
-                        < self.cfg.edit_until_step
-                        and self.global_step % self.cfg.per_editing_step == 0 
+                    self.cfg.per_editing_step > 0
+                    and self.cfg.edit_begin_step
+                    < self.global_step
+                    < self.cfg.edit_until_step
+                    and self.global_step % self.cfg.per_editing_step == 0 
                 ):
                     result = self.guidance(
                         images[img_index][None],
@@ -169,6 +180,7 @@ class LuminaEditor_Edit(LuminaEditor):
                     )
 
                     self.edit_frames[cur_index] = result["edit_images"].detach().clone()
+
                     # print("edited image index", cur_index)
 
                 gt_images.append(self.edit_frames[cur_index])

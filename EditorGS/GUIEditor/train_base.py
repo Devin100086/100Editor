@@ -64,6 +64,7 @@ class BaseTrainer:
         self.max_densify_percent = 0.01
         self.min_opacity = 0.005
         self.alpha = 0.99
+        self.mask_thres = 0.5
         # training cfg
 
         self.use_sam = False
@@ -328,7 +329,7 @@ class BaseTrainer:
             self.gaussian.apply_weights(cur_cam, weights, weights_cnt, mask)
 
         weights /= weights_cnt + 1e-7
-        selected_mask = weights > 0.5
+        selected_mask = weights > self.mask_thres
         selected_mask = selected_mask[:, 0]
         self.gaussian.set_mask(selected_mask)
         self.gaussian.apply_grad_mask(selected_mask)
@@ -373,7 +374,7 @@ class BaseTrainer:
             masks.append(mask)
 
         weights /= weights_cnt + 1e-7
-        selected_mask = weights > 0.5
+        selected_mask = weights > self.mask_thres
         selected_mask = selected_mask[:, 0]
         self.gaussian.set_mask(selected_mask)
         self.gaussian.apply_grad_mask(selected_mask)
