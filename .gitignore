@@ -21,3 +21,4 @@ fine_add_cache/
 tmp_*/
 shap_e_model_cache/
 LeftRefill/pretrained_models/
+*.pt

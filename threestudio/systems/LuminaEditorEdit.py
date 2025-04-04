@@ -5,6 +5,7 @@ from tqdm import tqdm
 import torch
 import threestudio
 import os
+import torch.nn.functional as F
 
 from threestudio.utils.typing import *
 from threestudio.utils.clip_metrics import ClipSimilarity
@@ -90,9 +91,9 @@ class LuminaEditor_Edit(LuminaEditor):
                 if self.cfg.use_masked_image:
                     out = out * out_pkg["masks"].unsqueeze(-1)
                 images.append(out)
-                mask = self.masks[id].unsqueeze(0)
-                mask = self.gaussian_blur(mask)
-                masks.append(mask)
+                # mask = self.masks[id].permute(0, 3, 1, 2)
+                # mask = self.gaussian_blur(mask)
+                # masks.append(mask)
                 assert os.path.exists(original_image_path)
                 cached_image = cv2.cvtColor(cv2.imread(original_image_path), cv2.COLOR_BGR2RGB)
                 self.origin_frames[id] = torch.tensor(
@@ -100,7 +101,8 @@ class LuminaEditor_Edit(LuminaEditor):
                 )[None]
                 original_frames.append(self.origin_frames[id])
             images = torch.cat(images, dim=0)
-            masks = torch.cat(masks, dim=0) # B H W C
+            # masks = torch.cat(masks, dim=0)
+            # masks = masks.permute(0, 2, 3, 1) # B H W C
             original_frames = torch.cat(original_frames, dim=0)
 
             edited_images = self.guidance(
@@ -109,7 +111,7 @@ class LuminaEditor_Edit(LuminaEditor):
                 self.prompt_processor(),
                 cams = cams_sorted,
             )
-            edited_images['edit_images'] = edited_images['edit_images'] * masks + (1-masks) * original_frames
+            # edited_images['edit_images'] = edited_images['edit_images'] * masks + (1-masks) * original_frames
             save_image(edited_images['edit_images'].permute(0,3,1,2), f'batch_image_{global_step}.png', nrow=4)
             for view_index_tmp in range(len(self.view_list)):
                 self.edit_frames[view_sorted[view_index_tmp]] = edited_images['edit_images'][view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
@@ -261,5 +263,19 @@ class LuminaEditor_Edit(LuminaEditor):
                 total_cos += abs(cos_sim.item())
         print(self.cfg.clip_prompt_origin, self.cfg.clip_prompt_target, total_cos / len(self.view_list))
         self.log("train/clip_sim", total_cos / len(self.view_list))
+    
+    def gaussian_blur(self, mask, kernel_size=21, sigma=1.0):
+    
+        x = torch.arange(-kernel_size // 2 + 1., kernel_size // 2 + 1.)
+        x = torch.exp(-x**2 / (2 * sigma**2))
+        kernel1d = x / x.sum()
+        kernel2d = kernel1d[:, None] * kernel1d[None, :]
+        kernel2d = kernel2d.expand(mask.size(1), 1, kernel_size, kernel_size)
+        kernel2d = kernel2d.to(mask.device)
+
+  
+        blurred_mask = F.conv2d(mask, kernel2d, padding=kernel_size // 2, groups=mask.size(1))
+        return blurred_mask
+
     
 
