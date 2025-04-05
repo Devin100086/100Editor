@@ -35,7 +35,8 @@ class GaussianRenderer(Renderer):
         checkpoint = ".cache/models/sam2/sam2.1_hiera_large.pt"
         model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
         self.sam_predictor = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint))
-        self.point3d = []
+        self.positive_point3d = []
+        self.negative_point3d = []
     
     def project_3d_to_2d(self, points_3d, intrinsic, extrinsic):
         extrinsic = extrinsic.cpu().numpy() if hasattr(extrinsic, 'cpu') else extrinsic
@@ -94,7 +95,7 @@ class GaussianRenderer(Renderer):
         
         return point_world[:3]
     
-    def add_green_star(self, image, center, size=20, alpha=0.8):
+    def add_star(self, image, center, size=20, alpha=0.8, type="positive"):
         image = image.clone().float()
         
         mask = torch.zeros(image.shape[1], image.shape[2], dtype=torch.float32)
@@ -140,10 +141,13 @@ class GaussianRenderer(Renderer):
         
         fill_polygon(mask, points)
         
-        green_star = torch.zeros_like(image)
-        green_star[1] = mask 
+        star = torch.zeros_like(image)
+        if type == "positive":
+            star[1] = mask
+        elif type == "negative":
+            star[0] = mask 
         
-        output = image + alpha * green_star
+        output = image + alpha * star
         output = torch.clamp(output, 0, 1)
         
         return output
@@ -168,7 +172,8 @@ class GaussianRenderer(Renderer):
         save_ply_path=None,
         slider={},
         roate_point = None,
-        sam_points = [],
+        sam_positive_points = [],
+        sam_negative_points = [],
         **other_args,
     ):
         cam_params = cam_params.to("cuda")
@@ -233,26 +238,54 @@ class GaussianRenderer(Renderer):
             elif render_depth:
                 images.append(render["depth"] / render["depth"].max())
             else:
-                if sam_points != []:
+                if sam_positive_points != [] or sam_negative_points != []:
                     self.sam_predictor.set_image(to_pil_image(render["render"]))
-                    sam_points = np.array(sam_points)
-                    if len(self.point3d) > 0:
-                        sam_points[:len(self.point3d)] = self.project_3d_to_2d(self.point3d, intrinsic, cam_params)
-                    for i in range(len(self.point3d),len(sam_points)):
-                        sam_points[i] *= np.array([render_cam.image_height, render_cam.image_width])
-                        self.point3d.append(self.pixel_to_3d(sam_points[i], intrinsic, cam_params, render["depth"].cpu().numpy()[0][int(sam_points[i][1]),int(sam_points[i][0])]))
-                    masks, scores, _ = self.sam_predictor.predict(point_coords=sam_points, point_labels=np.array([1] * len(sam_points)))
+                    sam_positive_points = np.array(sam_positive_points)
+                    sam_negative_points = np.array(sam_negative_points)
+
+                    # positive points
+                    if len(self.positive_point3d) > 0:
+                        sam_positive_points[:len(self.positive_point3d)] = self.project_3d_to_2d(self.positive_point3d, intrinsic, cam_params)
+                    for i in range(len(self.positive_point3d),len(sam_positive_points)):
+                        sam_positive_points[i] *= np.array([render_cam.image_height, render_cam.image_width])
+                        self.positive_point3d.append(self.pixel_to_3d(sam_positive_points[i], intrinsic, cam_params,
+                                                                      render["depth"].cpu().numpy()[0][int(sam_positive_points[i][1]),int(sam_positive_points[i][0])]))
+                    
+                    # negetive points
+                    if len(self.negative_point3d) > 0:
+                        sam_negative_points[:len(self.negative_point3d)] = self.project_3d_to_2d(self.negative_point3d, intrinsic, cam_params)
+                    for i in range(len(self.negative_point3d),len(sam_negative_points)):
+                        sam_negative_points[i] *= np.array([render_cam.image_height, render_cam.image_width])
+                        self.negative_point3d.append(self.pixel_to_3d(sam_negative_points[i], intrinsic, cam_params,
+                                                                      render["depth"].cpu().numpy()[0][int(sam_negative_points[i][1]),int(sam_negative_points[i][0])]))
+                    sam_positive_points = np.empty((0,2)) if sam_positive_points.shape[0] == 0 else sam_positive_points
+                    sam_negative_points = np.empty((0,2)) if sam_negative_points.shape[0] == 0 else sam_negative_points
+                    positive_label = np.empty((0), dtype=np.int64) if sam_positive_points.shape[0] == 0 else np.array([1] * sam_positive_points.shape[0], dtype=np.int64) 
+                    negative_label = np.empty((0), dtype=np.int64) if sam_negative_points.shape[0] == 0 else np.array([0] * sam_negative_points.shape[0], dtype=np.int64)
+                    
+                    point_coords = np.concatenate((sam_positive_points, sam_negative_points), axis=0)
+                    point_labels = np.concatenate((positive_label, negative_label), axis=0) 
+
+                    masks, scores, _ = self.sam_predictor.predict(point_coords=point_coords, 
+                                                                  point_labels=point_labels)
                     max_index = np.argmax(scores)
                     best_mask = masks[max_index]
                     image = render["render"]
                     red_mask = torch.zeros_like(image)
                     red_mask[0] = torch.from_numpy(best_mask)
-                    for sam_point in sam_points:
-                        image = self.add_green_star(image, sam_point)
+
+                    # Add green stars
+                    for sam_point in sam_positive_points:
+                        image = self.add_star(image, sam_point, type="positive")
+                    # Add red stars
+                    for sam_point in sam_negative_points:
+                        image = self.add_star(image, sam_point, type="negative")
+
                     image = image + 0.5 * red_mask
                     images.append(image)
                 else:
-                    self.point3d = []
+                    self.positive_point3d = []
+                    self.negative_point3d = []
                     images.append(render["render"])
 
             # Save ply

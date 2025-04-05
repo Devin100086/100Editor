@@ -69,12 +69,12 @@ class EditorWidget(Widget):
         self.guidance_type = ["InstructPix2Pix","ControlNet-Pix2Pix"]
         self.guidance_item = 0
         self.text_prompt = "turn him a clown"
-        self.text_sam_option = -1
-        self.text_sam_point = False
+        self.text_sam_option = 0
+        self.text_point_option = 0
         self.text_seg_prompt = "face"
         self.text_videoEditing = False
-        self.text_sam_points = []
-        
+        self.text_sam_positive_points = []
+        self.text_sam_negative_points = []
 
         # mask-edit
         self.mask_prompt = "add a red hat"
@@ -263,33 +263,51 @@ class EditorWidget(Widget):
                     label("Video", viz.label_w)
                     _, self.text_videoEditing = imgui.checkbox("##Video", self.text_videoEditing)
 
-                    if imgui.radio_button("No Sam", self.text_sam_option == -1):
-                        self.text_sam_option = -1 
-                    imgui.same_line()
-                    if imgui.radio_button("Use Lang-sam", self.text_sam_option == 0):
-                        self.text_sam_option = 0
-                    imgui.same_line()
-                    if imgui.radio_button("Use SAM2", self.text_sam_option == 1):
-                        self.text_sam_option = 1 
+                    # if imgui.radio_button("No Sam", self.text_sam_option == -1):
+                    #     self.text_sam_option = -1 
+                    # imgui.same_line()
+                    # if imgui.radio_button("Use Lang-sam", self.text_sam_option == 0):
+                    #     self.text_sam_option = 0
+                    # imgui.same_line()
+                    # if imgui.radio_button("Use SAM2", self.text_sam_option == 1):
+                    #     self.text_sam_option = 1 
+                    label("Sam Type", viz.label_w)
+                    _, self.text_sam_option = imgui.combo(
+                        "##SAM Type", 
+                        self.text_sam_option, 
+                        ["No Sam", "Lang-sam", "SAM2"]  
+                    )
 
-                    if self.text_sam_option == 0:
+                    if self.text_sam_option == 1:
                         label("Seg prompt", viz.label_w)
                         _, self.text_seg_prompt = imgui.input_text("##seg prompt", self.text_seg_prompt, 256)
 
-                    if self.text_sam_option == 1:
-                        label("Sam point", viz.label_w)
-                        _, self.text_sam_point = imgui.checkbox("##Sam point", self.text_sam_point)
-                        if self.text_sam_point:
+                    if self.text_sam_option == 2:
+                        if imgui.radio_button("No Points", self.text_point_option == 0):
+                            self.text_point_option = 0
+                        imgui.same_line()
+                        if imgui.radio_button("Positive Point", self.text_point_option == 1):
+                            self.text_point_option = 1
+                        imgui.same_line()
+                        if imgui.radio_button("Negative Point", self.text_point_option == 2):
+                            self.text_point_option = 2
+                        imgui.same_line()
+                        if self.text_point_option == 1 or self.text_point_option == 2:
                             if imgui.get_mouse_pos().x > self.viz.pane_w and imgui.is_mouse_clicked(0):
-                                self.text_sam_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                                if self.text_point_option == 1:
+                                    self.text_sam_positive_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                                elif self.text_point_option == 2:
+                                    self.text_sam_negative_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
                         imgui.same_line()
                         if imgui_utils.button("clean SAM", width=viz.button_w):
-                            self.text_sam_points = []
+                            self.text_sam_positive_points = []
+                            self.text_sam_negative_points = []
 
                     if not self.edit3D:
                         if imgui_utils.button("Edit", width=viz.button_w):
                             self.edit3D = True
-                            np.save("tmp_edit/point2D.npy", np.array(self.text_sam_points))
+                            np.save("tmp_edit/sam2_positive_points.npy", np.array(self.text_sam_positive_points))
+                            np.save("tmp_edit/sam2_negative_points.npy", np.array(self.text_sam_negative_points))
                             origin = Image.fromarray(viz.result.image).convert("RGB")
                             R = viz.extr.inverse()[:3, :3].T.numpy()
                             T = viz.extr.inverse()[:3, 3].numpy()
@@ -309,7 +327,8 @@ class EditorWidget(Widget):
                                                                              gs_lr_scaler = self.gs_lr_scaler, gs_lr_end_scaler = self.gs_lr_end_scaler, 
                                                                              color_lr_scaler = self.color_lr_scaler,  opacity_lr_scaler = self.opacity_lr_scaler, 
                                                                              scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler, 
-                                                                             sam_points = "tmp_edit/point2D.npy",camera = "tmp_edit/camera.pkl")
+                                                                             positive_sam_points = "tmp_edit/sam2_positive_points.npy", negative_sam_points = "tmp_edit/sam2_negative_points.npy",
+                                                                             camera = "tmp_edit/camera.pkl")
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
                             self.edit3D = False
@@ -697,8 +716,9 @@ class EditorWidget(Widget):
         viz.args.points = self.points
         viz.args.current_color = self.current_color
         viz.args.line_width = self.line_width
-        if self.text_sam_points != []:
-            viz.args.sam_points = self.text_sam_points
+        if self.text_sam_positive_points != [] or self.text_sam_negative_points != []:
+            viz.args.sam_positive_points = self.text_sam_positive_points
+            viz.args.sam_negative_points = self.text_sam_negative_points
         elif self.delete_sam_points != []:
             viz.args.sam_points = self.delete_sam_points
         else:
