@@ -76,7 +76,8 @@ class BaseTrainer:
         self.seg_scale = True
         self.seg_scale_end = False
         # from original system
-        self.points3d = []
+        self.positive_points3d = []
+        self.negative_points3d = []
         self.gaussian = GaussianModel(
             sh_degree=0,
             anchor_weight_init_g0=1.0,
@@ -124,7 +125,7 @@ class BaseTrainer:
         self.inpaint_again = True
         self.scale_depth = True
 
-        self.save_mask_tmp =  os.path.join(os.path.dirname(cfg.sam_points),"mask")
+        self.save_mask_tmp =  os.path.join(os.path.dirname(cfg.positive_sam_points),"mask")
 
     @torch.no_grad()
     def render_cameras_list(self, edit_cameras):
@@ -337,7 +338,7 @@ class BaseTrainer:
         return masks, selected_mask
     
     def update_sam_mask_with_point_prompt(
-        self, edit_cameras, points3ds=None
+        self, edit_cameras, positive_points3d=None, negative_points3d=None
     ):
         os.system(f"rm -rf {self.save_mask_tmp}/*")
         from sam2.build_sam import build_sam2
@@ -345,23 +346,34 @@ class BaseTrainer:
         sam2_checkpoint = "./.cache/models/sam2/sam2.1_hiera_large.pt"
         sam2_model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
         sam2_predictor = SAM2ImagePredictor(build_sam2(sam2_model_cfg, sam2_checkpoint))
-        points3ds = points3ds if points3ds is not None else self.points3d
+        positive_points3d = positive_points3d if positive_points3d is not None else self.positive_points3d
+        negative_points3d = negative_points3d if negative_points3d is not None else self.negative_points3d
         masks = []
         weights = torch.zeros_like(self.gaussian._opacity)
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
         for cam in tqdm(edit_cameras):
             cur_cam = cam
-            assert len(points3ds) > 0
-            points2ds = project_3d_to_2d(points3ds, cur_cam)
+            assert len(positive_points3d) > 0
+            positive_points2ds = project_3d_to_2d(positive_points3d, cur_cam)
+            negative_points2ds = project_3d_to_2d(negative_points3d, cur_cam)
             img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)[
                 "render"
             ]
             sam2_predictor.set_image(
                 np.asarray(to_pil_image(img.cpu())),
             )
+
+            positive_points2ds = np.empty((0,2)) if positive_points2ds.shape[0] == 0 else positive_points2ds
+            negative_points2ds = np.empty((0,2)) if negative_points2ds.shape[0] == 0 else negative_points2ds
+            positive_label = np.empty((0), dtype=np.int64) if positive_points2ds.shape[0] == 0 else np.array([1] * positive_points2ds.shape[0], dtype=np.int64) 
+            negative_label = np.empty((0), dtype=np.int64) if negative_points2ds.shape[0] == 0 else np.array([0] * negative_points2ds.shape[0], dtype=np.int64)
+            
+            point_coords = np.concatenate((positive_points2ds, negative_points2ds), axis=0)
+            point_labels = np.concatenate((positive_label, negative_label), axis=0) 
+            
             mask, _, _ = sam2_predictor.predict(
-                point_coords= points2ds,
-                point_labels=np.array([1] * points2ds.shape[0], dtype=np.int64),
+                point_coords= point_coords,
+                point_labels=point_labels,
                 box=None,
                 multimask_output=False,
             )
