@@ -118,7 +118,7 @@ class EditTrainer(BaseTrainer):
             
             positive_points3d = np.array(positive_points3d)
             negative_points3d = np.array(negative_points3d)
-            self.update_sam_mask_with_point_prompt(self.colmap_cameras, positive_points3d, negative_points3d)
+            self.masks, _ = self.update_sam_mask_with_point_prompt(self.colmap_cameras, positive_points3d, negative_points3d)
             del gaussian_copy
             torch.cuda.empty_cache()
         
@@ -182,6 +182,7 @@ class EditTrainer(BaseTrainer):
         cameras = []
         images = []
         origin_frames = []
+        masks = []
 
         self.guidance.guidance.max_step = self.t_max_step[min(len(self.t_max_step)-1, global_step// self.cameara_update_step)]
         with torch.no_grad():
@@ -197,12 +198,19 @@ class EditTrainer(BaseTrainer):
                 if self.use_masked_image:
                     out = out * out_pkg["masks"].unsqueeze(-1)
                 images.append(out)
+                mask = self.masks[id].unsqueeze(0)
+                mask = self.gaussian_blur(mask)
+                masks.append(mask)
                 origin_frames.append(self.origin_frames[id])
 
             images = torch.cat(images, dim=0)
+            masks = torch.cat(masks, dim=0)
+            masks = masks.permute(0, 2, 3, 1) # B H W C
             origin_frames = torch.cat(origin_frames, dim=0)
 
             edited_images = self.guidance.edit_all(images, origin_frames)
+
+            edited_images = edited_images * masks + (1-masks) * origin_frames
 
             # save_image(images.permute(0,3,1,2), f'batch_image_{global_step}.png', nrow=4)
             save_image(edited_images.permute(0, 3, 1, 2), f'batch_image_{global_step}.png', nrow=4)

@@ -68,7 +68,7 @@ class EditorWidget(Widget):
         # text-edit
         self.guidance_type = ["InstructPix2Pix","ControlNet-Pix2Pix"]
         self.guidance_item = 0
-        self.text_prompt = "turn him a clown"
+        self.text_prompt = "Turn the sculpture into ice sculpture"
         self.text_sam_option = 0
         self.text_point_option = 0
         self.text_seg_prompt = "face"
@@ -114,8 +114,10 @@ class EditorWidget(Widget):
         self.mask_dilate = 15
         self.video_inpainting = False
         self.delete_sam_option = 0
-        self.delete_sam_point = False
-        self.delete_sam_points = []
+        self.delete_point_option = 0
+        self.delete_sam_positive_points = []
+        self.delete_sam_negative_points = []
+
 
         self.edit_trainer = None
         self.draw_image = False
@@ -249,8 +251,11 @@ class EditorWidget(Widget):
                     imgui.end_tab_item()
 
                 if imgui.begin_tab_item("text")[0]:
-                    if self.delete_sam_points != []:
-                        self.delete_sam_points = []
+                    if self.delete_sam_positive_points != [] or self.delete_sam_negative_points != []:
+                        self.delete_sam_positive_points = []
+                        self.delete_sam_negative_points = []
+                        
+                    imgui.separator_text("Parameters")
                     label("guidance type", viz.label_w)
                     _, self.guidance_item = imgui.combo(
                         "##guidance type",                
@@ -263,14 +268,7 @@ class EditorWidget(Widget):
                     label("Video", viz.label_w)
                     _, self.text_videoEditing = imgui.checkbox("##Video", self.text_videoEditing)
 
-                    # if imgui.radio_button("No Sam", self.text_sam_option == -1):
-                    #     self.text_sam_option = -1 
-                    # imgui.same_line()
-                    # if imgui.radio_button("Use Lang-sam", self.text_sam_option == 0):
-                    #     self.text_sam_option = 0
-                    # imgui.same_line()
-                    # if imgui.radio_button("Use SAM2", self.text_sam_option == 1):
-                    #     self.text_sam_option = 1 
+                    imgui.separator_text("SAM Option")
                     label("Sam Type", viz.label_w)
                     _, self.text_sam_option = imgui.combo(
                         "##SAM Type", 
@@ -298,7 +296,6 @@ class EditorWidget(Widget):
                                     self.text_sam_positive_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
                                 elif self.text_point_option == 2:
                                     self.text_sam_negative_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
-                        imgui.same_line()
                         if imgui_utils.button("clean SAM", width=viz.button_w):
                             self.text_sam_positive_points = []
                             self.text_sam_negative_points = []
@@ -636,26 +633,11 @@ class EditorWidget(Widget):
                     imgui.end_tab_item()
 
                 if imgui.begin_tab_item("delete")[0]:
-                    if self.text_sam_points != []:
-                        self.text_sam_points = []
-                    if imgui.radio_button("Use Lang-sam", self.delete_sam_option == 0):
-                        self.delete_sam_option = 0 
-                    imgui.same_line()
-                    if imgui.radio_button("Use SAM2", self.delete_sam_option == 1):
-                        self.delete_sam_option = 1
+                    if self.text_sam_positive_points != [] or self.text_sam_negative_points != []:
+                        self.text_sam_positive_points = []
+                        self.text_sam_negative_points = []
 
-                    if self.delete_sam_option == 0:
-                        label("Seg Prompt", viz.label_w)
-                        _, self.delete_prompt = imgui.input_text("##Seg Prompt", self.delete_prompt, 256)
-                    elif self.delete_sam_option == 1:
-                        label("Sam point", viz.label_w)
-                        _, self.delete_sam_point = imgui.checkbox("##Sam point", self.delete_sam_point)
-                        if self.delete_sam_point:
-                            if imgui.get_mouse_pos().x > self.viz.pane_w and imgui.is_mouse_clicked(0):
-                                self.delete_sam_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
-                        if imgui_utils.button("clean SAM", width=viz.button_w):
-                            self.delete_sam_points = []
-
+                    imgui.separator_text("Parameters")
                     label("Inpaint Prompt", viz.label_w)
                     _, self.inpaint_prompt = imgui.input_text("##Inpaint Prompt", self.inpaint_prompt, 256)
                     label("Inpaint Scale", viz.label_w)
@@ -664,10 +646,45 @@ class EditorWidget(Widget):
                     _, self.mask_dilate = imgui.slider_int("##Mask Dilate", self.mask_dilate, 1, 30, format="%d")
                     label("Video", viz.label_w)
                     _, self.video_inpainting = imgui.checkbox("##Video", self.video_inpainting)
+                    
+                    imgui.separator_text("SAM Option")
+                    label("Sam Type", viz.label_w)
+                    _, self.delete_sam_option = imgui.combo(
+                        "##SAM Type", 
+                        self.delete_sam_option, 
+                        ["Lang-sam", "SAM2"]  
+                    )
+
+                    if self.delete_sam_option == 0:
+                        label("Seg Prompt", viz.label_w)
+                        _, self.delete_prompt = imgui.input_text("##Seg Prompt", self.delete_prompt, 256)
+                    elif self.delete_sam_option == 1:
+                        if imgui.radio_button("No Points", self.delete_point_option == 0):
+                            self.delete_point_option = 0
+                        imgui.same_line()
+                        if imgui.radio_button("Positive Point", self.delete_point_option == 1):
+                            self.delete_point_option = 1
+                        imgui.same_line()
+                        if imgui.radio_button("Negative Point", self.delete_point_option == 2):
+                            self.delete_point_option = 2
+                        imgui.same_line()
+
+                        if self.delete_point_option == 1 or self.delete_point_option == 2:
+                            if imgui.get_mouse_pos().x > self.viz.pane_w and imgui.is_mouse_clicked(0):
+                                if self.delete_point_option == 1:
+                                    self.delete_sam_positive_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                                elif self.delete_point_option == 2:
+                                    self.delete_sam_negative_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+
+                        if imgui_utils.button("clean SAM", width=viz.button_w):
+                            self.delete_sam_positive_points = []
+                            self.delete_sam_negative_points = []
+
                     if not self.edit3D:
                         if imgui_utils.button("Delete", width=viz.button_w):
                             self.edit3D = True 
-                            np.save("tmp_delete/point2D.npy", np.array(self.delete_sam_points))
+                            np.save("tmp_delete/sam2_positive_points.npy", np.array(self.text_sam_positive_points))
+                            np.save("tmp_delete/sam2_negative_points.npy", np.array(self.text_sam_negative_points))
                             origin = Image.fromarray(viz.result.image).convert("RGB")
                             R = viz.extr.inverse()[:3, :3].T.numpy()
                             T = viz.extr.inverse()[:3, 3].numpy()
@@ -688,14 +705,15 @@ class EditorWidget(Widget):
                                 gs_lr_scaler = self.gs_lr_scaler, gs_lr_end_scaler = self.gs_lr_end_scaler, 
                                 color_lr_scaler = self.color_lr_scaler,  opacity_lr_scaler = self.opacity_lr_scaler, 
                                 scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler,
-                                sam_type = self.delete_sam_option, sam_points = "tmp_delete/point2D.npy",
-                                camera = "tmp_delete/camera.pkl",
+                                sam_type = self.delete_sam_option, positive_sam_points = "tmp_delete/sam2_positive_points.npy", 
+                                negative_sam_points = "tmp_delete/sam2_negative_points.npy", camera = "tmp_delete/camera.pkl",
                             )
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
                             self.edit3D = False
                             self.edit_trainer.terminate()
                             self.edit_trainer.wait()
+
                     imgui.end_tab_item()
             imgui.end_tab_bar()   
 
@@ -719,10 +737,12 @@ class EditorWidget(Widget):
         if self.text_sam_positive_points != [] or self.text_sam_negative_points != []:
             viz.args.sam_positive_points = self.text_sam_positive_points
             viz.args.sam_negative_points = self.text_sam_negative_points
-        elif self.delete_sam_points != []:
-            viz.args.sam_points = self.delete_sam_points
+        elif self.delete_sam_positive_points != [] or self.delete_sam_negative_points != []:
+            viz.args.sam_positive_points = self.delete_sam_positive_points
+            viz.args.sam_negative_points = self.delete_sam_negative_points
         else:
-            viz.args.sam_points = []
+            viz.args.sam_positive_points = []
+            viz.args.sam_negative_points = []
         
     def handle_mouse_input(self):
         if glfw.get_mouse_button(self.viz._glfw_window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS:

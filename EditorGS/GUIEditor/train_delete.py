@@ -50,6 +50,8 @@ class DeleteTrainer(BaseTrainer):
         self.t_max_step = [999, 300, 300, 21]
 
         self.sam_points = np.load(cfg.sam_points)
+        self.positive_sam_points = np.load(cfg.positive_sam_points)
+        self.negative_sam_points = np.load(cfg.negative_sam_points)
         with open(args.camera, 'rb') as f:
             self.cam  = pickle.load(f)
 
@@ -121,8 +123,11 @@ class DeleteTrainer(BaseTrainer):
             gaussian_copy = copy.deepcopy(self.gaussian)
             center = gaussian_copy._xyz.mean(dim=0)
             gaussian_copy._xyz = gaussian_copy._xyz - center
-            points3d = []
-            for i, sam_point in enumerate(self.sam_points):
+            positive_points3d = []
+            negative_points3d = []
+
+            # positive
+            for i, sam_point in enumerate(self.positive_sam_points):
                 depth = render(self.cam, gaussian_copy, self.pipe ,self.background_tensor)[
                     "depth_3dgs"
                 ]
@@ -131,10 +136,23 @@ class DeleteTrainer(BaseTrainer):
                 sam_point = sam_point * np.array([self.cam.image_width, self.cam.image_height])
                 unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
                 # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
-                points3d.append(unprojected_points3d+center.detach().cpu().numpy())
+                positive_points3d.append(unprojected_points3d+center.detach().cpu().numpy())
             
-            points3d = np.array(points3d)
-            self.update_sam_mask_with_point_prompt(self.colmap_cameras, points3d)
+            # negative
+            for i, sam_point in enumerate(self.negative_sam_points):
+                depth = render(self.cam, gaussian_copy, self.pipe ,self.background_tensor)[
+                    "depth_3dgs"
+                ]
+                # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
+                depth = (1/depth).detach().cpu().numpy()
+                sam_point = sam_point * np.array([self.cam.image_width, self.cam.image_height])
+                unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
+                # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
+                negative_points3d.append(unprojected_points3d+center.detach().cpu().numpy())
+
+            positive_points3d = np.array(positive_points3d)
+            negative_points3d = np.array(negative_points3d)
+            self.update_sam_mask_with_point_prompt(self.colmap_cameras, positive_points3d, negative_points3d)
             del gaussian_copy
             torch.cuda.empty_cache()
 
@@ -297,6 +315,8 @@ if __name__ == "__main__":
     parser.add_argument("--mask_dilate", type=int, default=15, help="Mask dilate.")
     parser.add_argument("--video", type=str, default="False", help="video.")
     parser.add_argument("--sam_type", type=int, default=0, help="sam type.")
+    parser.add_argument("--positive_sam_points", type=str, default="/", help="the path of the positive sam points.")
+    parser.add_argument("--negative_sam_points", type=str, default="/", help="the path of the negative sam points.")
     parser.add_argument("--sam_points", type=str, default=0, help="the path of the sam points.")
     parser.add_argument("--camera", type=str, default="tmd_delete/camera.pkl", help="camera.")
 

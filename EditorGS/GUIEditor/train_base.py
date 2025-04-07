@@ -5,6 +5,7 @@ import torch
 import numpy as np
 import os
 import torchvision
+import torch.nn.functional as F
 from torchvision.transforms.functional import to_pil_image, to_tensor
 from EditorGS.gaussiansplatting.scene.cameras import Simple_Camera
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
@@ -354,8 +355,8 @@ class BaseTrainer:
         for cam in tqdm(edit_cameras):
             cur_cam = cam
             assert len(positive_points3d) > 0
-            positive_points2ds = project_3d_to_2d(positive_points3d, cur_cam)
-            negative_points2ds = project_3d_to_2d(negative_points3d, cur_cam)
+            positive_points2ds = project_3d_to_2d(positive_points3d, cur_cam) if len(positive_points3d) > 0 else np.empty((0,2))
+            negative_points2ds = project_3d_to_2d(negative_points3d, cur_cam) if len(negative_points3d) > 0 else np.empty((0,2))
             img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)[
                 "render"
             ]
@@ -377,7 +378,7 @@ class BaseTrainer:
                 box=None,
                 multimask_output=False,
             )
-            mask = torch.from_numpy(mask).to(torch.bool).to(get_device())
+            mask = torch.from_numpy(mask).to(get_device())
             os.makedirs(self.save_mask_tmp, exist_ok=True)
             torchvision.utils.save_image(mask.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cam.image_name}" + ".png")
             self.gaussian.apply_weights(
@@ -429,3 +430,16 @@ class BaseTrainer:
             range(0, len(self.colmap_cameras)),
             min(len(self.colmap_cameras), 16),
         )
+
+    def gaussian_blur(self, mask, kernel_size=21, sigma=1.0):
+    
+        x = torch.arange(-kernel_size // 2 + 1., kernel_size // 2 + 1.)
+        x = torch.exp(-x**2 / (2 * sigma**2))
+        kernel1d = x / x.sum()
+        kernel2d = kernel1d[:, None] * kernel1d[None, :]
+        kernel2d = kernel2d.expand(mask.size(1), 1, kernel_size, kernel_size)
+        kernel2d = kernel2d.to(mask.device)
+
+  
+        blurred_mask = F.conv2d(mask, kernel2d, padding=kernel_size // 2, groups=mask.size(1))
+        return blurred_mask
