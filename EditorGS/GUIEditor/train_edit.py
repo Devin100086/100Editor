@@ -198,7 +198,11 @@ class EditTrainer(BaseTrainer):
                 if self.use_masked_image:
                     out = out * out_pkg["masks"].unsqueeze(-1)
                 images.append(out)
-                mask = self.masks[id].unsqueeze(0)
+                if isinstance(self.masks[id], np.ndarray):
+                    mask = torch.from_numpy(self.masks[id]/255).unsqueeze(0)
+                    mask = mask.to(torch.float32).to(get_device())
+                else:
+                    mask = self.masks[id].unsqueeze(0)
                 mask = self.gaussian_blur(mask)
                 masks.append(mask)
                 origin_frames.append(self.origin_frames[id])
