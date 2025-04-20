@@ -43,7 +43,9 @@ python run_main.py
 - [x] [2024/11/18]🎨Add fitting one single image.
 - [x] [2024/11/23]🎨Add ema loss option.
 6. System Command
-- [x] [2025/2/22]🎨Provide the System command about fine-adding
+- [x] [2025/2/22]🎨Provide the System command about fine-adding, Text-Editing, Deleting
+- [x] 🎨Provide the System command about rendering from 3DGS.
+- [x] 🎨Provide the System command about evaluation from 3DGS.
 
 
 
