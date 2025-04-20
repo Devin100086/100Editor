@@ -140,6 +140,10 @@ class EditTrainer(BaseTrainer):
         )
         view_index_stack = self.n2n_view_index.copy()
         ema_loss_for_log = 0.0
+
+        Renderings1 = []
+        Renderings2 = []
+
         network = EditorNetwork(host="127.0.0.1",port=8084)
         for step in tqdm(range(self.edit_train_steps)):
             network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
@@ -152,6 +156,11 @@ class EditTrainer(BaseTrainer):
             view_index_stack.remove(view_index)
 
             rendering = self.render(self.colmap_cameras[view_index], train=True)["comp_rgb"]
+            # if (step+1) % 250 == 0:
+            #     image1 = self.render(self.colmap_cameras[37])["comp_rgb"]
+            #     image2 = self.render(self.colmap_cameras[29])["comp_rgb"]
+            #     Renderings1.append(image1.permute(0,3,1,2).cpu())
+            #     Renderings2.append(image2.permute(0,3,1,2).cpu())
             
             loss = self.guidance(rendering, view_index, step)
 
@@ -169,6 +178,10 @@ class EditTrainer(BaseTrainer):
             else:
                 ema_loss_for_log = self.alpha * ema_loss_for_log + (1-self.alpha) * loss.item()
         
+        # Renderings1 = torch.cat(Renderings1, dim=0)
+        # Renderings2 = torch.cat(Renderings2, dim=0)
+        # save_image(Renderings1, f"batch_image1_{self.edit_train_steps}.png", nrow=Renderings1.shape[0])
+        # save_image(Renderings2, f"batch_image2_{self.edit_train_steps}.png", nrow=Renderings2.shape[0])
         os.makedirs("save", exist_ok=True)
         self.gaussian.save_ply("save/result1.ply")
     
@@ -249,6 +262,7 @@ if __name__ == "__main__":
     parser.add_argument("--scaling_lr_scaler", type=float, default=2.0, help="Learning rate scaler for scaling.")
     parser.add_argument("--rotation_lr_scaler", type=float, default=2.0, help="Learning rate scaler for rotation.")
     parser.add_argument("--video", type=str, default="False", help="video.")
+    parser.add_argument("--use_original_resolution", type=str, default="False", help="use original resolution.")
     parser.add_argument("--positive_sam_points", type=str, default="/", help="the path of the positive sam points.")
     parser.add_argument("--negative_sam_points", type=str, default="/", help="the path of the negative sam points.")
     parser.add_argument("--camera", type=str, default="tmd_delete/camera.pkl", help="camera.")

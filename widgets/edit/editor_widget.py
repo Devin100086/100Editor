@@ -68,11 +68,12 @@ class EditorWidget(Widget):
         # text-edit
         self.guidance_type = ["InstructPix2Pix","ControlNet-Pix2Pix"]
         self.guidance_item = 0
-        self.text_prompt = "Turn the sculpture into ice sculpture"
+        self.text_prompt = "Turn him into Harry Potter"
         self.text_sam_option = 0
         self.text_point_option = 0
         self.text_seg_prompt = "face"
         self.text_videoEditing = False
+        self.use_original_resolution = False
         self.text_sam_positive_points = []
         self.text_sam_negative_points = []
 
@@ -144,7 +145,7 @@ class EditorWidget(Widget):
                         self.edit_until_step = 1000
                         self.per_editing_step = 10
                         self.densification_interval = 50
-                        self.densify_until_step = 1300
+                        self.densify_until_step = 1500
                     imgui.same_line()
                     if imgui.radio_button("Text-VideoEditing", self.select_option == 1):
                         self.select_option = 1
@@ -267,6 +268,8 @@ class EditorWidget(Widget):
                     self.text_change = True if imgui.is_item_active() else False
                     label("Video", viz.label_w)
                     _, self.text_videoEditing = imgui.checkbox("##Video", self.text_videoEditing)
+                    label("Original Resolution", viz.label_w)
+                    _, self.use_original_resolution = imgui.checkbox("##Use Original Resolution", self.use_original_resolution)
 
                     imgui.separator_text("SAM Option")
                     label("Sam Type", viz.label_w)
@@ -325,7 +328,7 @@ class EditorWidget(Widget):
                                                                              color_lr_scaler = self.color_lr_scaler,  opacity_lr_scaler = self.opacity_lr_scaler, 
                                                                              scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler, 
                                                                              positive_sam_points = "tmp_edit/sam2_positive_points.npy", negative_sam_points = "tmp_edit/sam2_negative_points.npy",
-                                                                             camera = "tmp_edit/camera.pkl")
+                                                                             camera = "tmp_edit/camera.pkl", use_original_resolution = self.use_original_resolution)
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
                             self.edit3D = False

@@ -11,13 +11,16 @@ from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
 
 from torchvision.utils import save_image
 
-def render_cameras_list(gaussian, colmap_dir, save_dir):
+def render_cameras_list(gaussian, colmap_dir, save_dir, use_original_resolution):
     parser = ArgumentParser(description="Training script parameters")
     pipe = PipelineParams(parser)
     background_tensor = torch.tensor(
             [0, 0, 0], dtype=torch.float32, device="cuda"
         )
-    scene = CamScene(colmap_dir, h=512, w=512)
+    if use_original_resolution != 0:
+        scene = CamScene(colmap_dir, h=-1, w=-1)
+    else:
+        scene = CamScene(colmap_dir, h=512, w=512)
     colmap_cameras = scene.cameras
 
     os.makedirs(save_dir, exist_ok=True)
@@ -33,6 +36,7 @@ if __name__ == "__main__":
     parser.add_argument("--gs_source", type=str, required=True)  # gs ply or obj file?
     parser.add_argument("--colmap_dir", type=str, required=True)
     parser.add_argument("--save_dir", type=str, default="save/")
+    parser.add_argument("--use_original_resolution", type=int, default=0)
 
     args = parser.parse_args()
     gaussian = GaussianModel(
@@ -46,7 +50,7 @@ if __name__ == "__main__":
         (gaussian.get_xyz.shape[0]), device="cuda"
     )
     print("🚀Start rendering...")
-    render_cameras_list(gaussian, args.colmap_dir, args.save_dir)
+    render_cameras_list(gaussian, args.colmap_dir, args.save_dir, args.use_original_resolution)
     print("🌟Finish rendering!")
     
     

@@ -102,8 +102,12 @@ class BaseTrainer:
         self.ctn_inpaint = None
         self.ctn_ip2p = None
         self.training = False
+        use_original_resolution = eval(cfg.use_original_resolution) 
         if self.colmap_dir is not None:
-            scene = CamScene(self.colmap_dir, h=512, w=512)
+            if use_original_resolution:
+                scene = CamScene(self.colmap_dir, h=-1, w=-1)
+            else:
+                scene = CamScene(self.colmap_dir, h=512, w=512)
             self.cameras_extent = scene.cameras_extent
             self.colmap_cameras = scene.cameras
 
