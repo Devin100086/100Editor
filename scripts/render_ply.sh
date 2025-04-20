@@ -1,7 +1,7 @@
 #!/bin/bash
 
 GS_SOURCE="outputs/edit-n2n/Turn_him_into_Dwayne_The_Rock_Johnson@20250415-103449/save/last.ply"
-COLMAP_DIR="/home/wucunqi/Desktop/results//"
+COLMAP_DIR="/home/wucunqi/Desktop/results/face"
 SAVE_DIR="save/render_edited"
 USE_ORIGIN=0
 
