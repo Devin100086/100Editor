@@ -39,7 +39,6 @@ from threestudio.utils.transform import (
 from threestudio.utils.sam import LangSAMTextSegmentor
 from threestudio.utils.camera import camera_ray_sample_points, project, unproject, project_3d_to_2d
 
-from argparse import ArgumentParser
 from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
 from transformers import pipeline
 from tqdm import tqdm

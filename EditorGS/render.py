@@ -1,12 +1,13 @@
-from argparse import ArgumentParser
+import torch
 from tqdm import tqdm
 import sys
 import os
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from EditorGS.GUIEditor.train_base import *
+from argparse import ArgumentParser
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from EditorGS.gaussiansplatting.scene import GaussianModel
 from EditorGS.gaussiansplatting.gaussian_renderer import render
-from EditorGS.GUIEditor.utils import *
+from EditorGS.gaussiansplatting.arguments import PipelineParams
+from EditorGS.gaussiansplatting.gaussian_renderer import render
 from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
 
 from torchvision.utils import save_image
@@ -51,6 +52,6 @@ if __name__ == "__main__":
     )
     print("🚀Start rendering...")
     render_cameras_list(gaussian, args.colmap_dir, args.save_dir, args.use_original_resolution)
-    print("🌟Finish rendering!")
+    print(f"🌟Finish rendering! Renderings are saved in {args.save_dir}")
     
     

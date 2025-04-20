@@ -1,11 +1,13 @@
 import argparse
-import tqdm
+from tqdm import tqdm
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from EditorGS.GUIEditor.train_base import *
+from argparse import ArgumentParser
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from EditorGS.gaussiansplatting.scene import GaussianModel
 from EditorGS.gaussiansplatting.gaussian_renderer import render
-from EditorGS.GUIEditor.utils import *
+from EditorGS.gaussiansplatting.arguments import PipelineParams
+from EditorGS.gaussiansplatting.gaussian_renderer import render
 from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
 from threestudio.utils.clip_metrics import *
 
@@ -26,7 +28,6 @@ def metric(orign_gaussian, edited_gaussian, colmap_dir, use_original_resolution,
     clip_metrics = ClipSimilarity().to(orign_gaussian.get_xyz.device)
     total_sim_direction = 0
     total_sim = 0
-    
     with torch.no_grad():
         for cam in tqdm(colmap_cameras):
             origin_render_pkg = render(cam, origin_gaussian, pipe, background_tensor)
