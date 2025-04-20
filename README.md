@@ -21,24 +21,24 @@ python run_main.py
 - [x] [2024/11/15]🎨Add the visualization of training parameters.
 - [x] [2024/11/16]🎨Add gsplat framework.
 - [x] [2024/11/23]🎨Add ema loss option.
-4. ❄️"Edit" Feature
+4. 🎨"Edit" Feature
 - [x] 🎨Add Text-driven 3D Editing.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
-  - [x] 🎨Add SAM2.
+  - [x] 🎨Add SAM2 (positive points and negative points).
   - [x] 🎨Optimize the initial model.
 - [x] 🎨Add Sketch-based 3D Adding.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
   - [x] 🎨Optimize the initial model.
-- [x] ❄️Add Mask-based 3D Adding.
+- [x] 🎨Add Mask-based 3D Adding.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
-- [ ] ❄️Add 3D Deleting.
+- [x] 🎨Add 3D Deleting.
   - [x] 🎨Add the GUI.
   - [x] 🎨Add model inference.
-  - [x] 🎨Add SAM2.
-  - [ ] 🧊Optimize the initial model.  
+  - [x] 🎨Add SAM2 (positive points and negative points).
+  - [x] 🎨Optimize the initial model.  
 5. "Other" Feature
 - [x] [2024/11/18]🎨Add fitting one single image.
 - [x] [2024/11/23]🎨Add ema loss option.
