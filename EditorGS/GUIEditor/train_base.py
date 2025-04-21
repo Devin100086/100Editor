@@ -20,6 +20,7 @@ from EditorGS.gaussiansplatting.arguments import (
     OptimizationParams,
 )
 from threestudio.utils.typing import *
+from threestudio.utils.clip_metrics import *
 from threestudio.utils.transform import rotate_gaussians
 from threestudio.utils.dpt import DPT
 from argparse import ArgumentParser
@@ -431,7 +432,7 @@ class BaseTrainer:
         random.seed(random_seed)
         self.n2n_view_index = random.sample(
             range(0, len(self.colmap_cameras)),
-            min(len(self.colmap_cameras), 16),
+            min(len(self.colmap_cameras), self.edit_cam_num),
         )
 
     def gaussian_blur(self, mask, kernel_size=21, sigma=1.0):
@@ -446,3 +447,17 @@ class BaseTrainer:
   
         blurred_mask = F.conv2d(mask, kernel2d, padding=kernel_size // 2, groups=mask.size(1))
         return blurred_mask
+
+    def compute_clip(self, clip_prompt_origin = "a photo of a face of a man", clip_prompt_target = "a photo of a face of hulk"):
+        clip_metrics = ClipSimilarity().to(self.gaussian.get_xyz.device)
+        total_cos = 0
+        total_sim = 0
+        with torch.no_grad():
+            for id, cam in enumerate(self.colmap_cameras):
+                cur_cam = cam
+                out = self.render(cur_cam, train=False)["comp_rgb"]
+                _, sim, cos_sim, _ = clip_metrics(self.origin_frames[id].permute(0, 3, 1, 2), out.permute(0, 3, 1, 2),
+                                                clip_prompt_origin, clip_prompt_target)
+                total_cos += abs(cos_sim.item())
+                total_sim += abs(sim.item())
+        print(clip_prompt_origin, clip_prompt_target, "cos:", total_cos / len(self.colmap_cameras), "sim:", total_sim / len(self.colmap_cameras))

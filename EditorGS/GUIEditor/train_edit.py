@@ -148,7 +148,7 @@ class EditTrainer(BaseTrainer):
         for step in tqdm(range(self.edit_train_steps)):
             network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
             if step % self.cameara_update_step == 0 and video:
-                self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
+                self.edit_all_view(sam_option, update_camera= step >= self.cameara_update_step, global_step=step)
 
             if not view_index_stack:
                 view_index_stack = self.n2n_view_index.copy()
@@ -185,7 +185,7 @@ class EditTrainer(BaseTrainer):
         os.makedirs("save", exist_ok=True)
         self.gaussian.save_ply("save/result1.ply")
     
-    def edit_all_view(self, update_camera=False, global_step=0):
+    def edit_all_view(self, sam_option, update_camera=False, global_step=0):
     
         self.edited_cams = []
         if update_camera:
@@ -202,6 +202,7 @@ class EditTrainer(BaseTrainer):
             for id in self.view_list:
                 cameras.append(self.colmap_cameras[id])
             sorted_cam_idx = self.sort_the_cameras_idx(cameras)
+            # sorted_cam_idx = range(len(cameras))
             view_sorted = [self.view_list[idx] for idx in sorted_cam_idx]  
                 
             for id in view_sorted:
@@ -211,18 +212,22 @@ class EditTrainer(BaseTrainer):
                 if self.use_masked_image:
                     out = out * out_pkg["masks"].unsqueeze(-1)
                 images.append(out)
-                if isinstance(self.masks[id], np.ndarray):
-                    mask = torch.from_numpy(self.masks[id]/255).unsqueeze(0)
-                    mask = mask.to(torch.float32).to(get_device())
-                else:
-                    mask = self.masks[id].unsqueeze(0)
-                mask = self.gaussian_blur(mask)
-                masks.append(mask)
+                if sam_option != 0:
+                    if isinstance(self.masks[id], np.ndarray):
+                        mask = torch.from_numpy(self.masks[id]/255).unsqueeze(0)
+                        mask = mask.to(torch.float32).to(get_device())
+                    else:
+                        mask = self.masks[id].unsqueeze(0)
+                    mask = self.gaussian_blur(mask)
+                    masks.append(mask)
                 origin_frames.append(self.origin_frames[id])
 
             images = torch.cat(images, dim=0)
-            masks = torch.cat(masks, dim=0)
-            masks = masks.permute(0, 2, 3, 1) # B H W C
+            if sam_option != 0:
+                masks = torch.cat(masks, dim=0)
+                masks = masks.permute(0, 2, 3, 1) # B H W C
+            else:
+                masks = torch.ones_like(images)
             origin_frames = torch.cat(origin_frames, dim=0)
 
             edited_images = self.guidance.edit_all(images, origin_frames)
