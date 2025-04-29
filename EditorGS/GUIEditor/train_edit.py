@@ -39,6 +39,8 @@ class EditTrainer(BaseTrainer):
         self.positive_sam_points = np.load(cfg.positive_sam_points)
         self.negative_sam_points = np.load(cfg.negative_sam_points)
 
+        self.roate_point = list(map(float, cfg.center_point[1:-1].split(',')))
+
         with open(args.camera, 'rb') as f:
             self.cam  = pickle.load(f)
 
@@ -90,6 +92,11 @@ class EditTrainer(BaseTrainer):
             gaussian_copy = copy.deepcopy(self.gaussian)
             center = gaussian_copy._xyz.mean(dim=0)
             gaussian_copy._xyz = gaussian_copy._xyz - center
+            intersection_point = 0
+            
+            intersection_point = np.array(self.roate_point)
+            gaussian_copy._xyz = gaussian_copy._xyz - torch.from_numpy(intersection_point).to(gaussian_copy._xyz.device).to(torch.float32)
+
             positive_points3d = []
             negative_points3d = []
             # positive
@@ -102,7 +109,7 @@ class EditTrainer(BaseTrainer):
                 sam_point = sam_point * np.array([self.cam.image_width, self.cam.image_height])
                 unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
                 # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
-                positive_points3d.append(unprojected_points3d+center.detach().cpu().numpy())
+                positive_points3d.append(unprojected_points3d+center.detach().cpu().numpy()+intersection_point)
             
             # negative
             for i, sam_point in enumerate(self.negative_sam_points):
@@ -114,7 +121,7 @@ class EditTrainer(BaseTrainer):
                 sam_point = sam_point * np.array([self.cam.image_width, self.cam.image_height])
                 unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
                 # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
-                negative_points3d.append(unprojected_points3d+center.detach().cpu().numpy())
+                negative_points3d.append(unprojected_points3d+center.detach().cpu().numpy()+intersection_point)
             
             positive_points3d = np.array(positive_points3d)
             negative_points3d = np.array(negative_points3d)
@@ -271,6 +278,7 @@ if __name__ == "__main__":
     parser.add_argument("--positive_sam_points", type=str, default="/", help="the path of the positive sam points.")
     parser.add_argument("--negative_sam_points", type=str, default="/", help="the path of the negative sam points.")
     parser.add_argument("--camera", type=str, default="tmd_delete/camera.pkl", help="camera.")
+    parser.add_argument("--center_point", type=str, help="center point.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):

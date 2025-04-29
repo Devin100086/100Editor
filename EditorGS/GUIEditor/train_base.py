@@ -461,3 +461,4 @@ class BaseTrainer:
                 total_cos += abs(cos_sim.item())
                 total_sim += abs(sim.item())
         print(clip_prompt_origin, clip_prompt_target, "cos:", total_cos / len(self.colmap_cameras), "sim:", total_sim / len(self.colmap_cameras))
+        return total_sim / len(self.colmap_cameras), total_cos / len(self.colmap_cameras)

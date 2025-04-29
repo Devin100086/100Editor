@@ -37,6 +37,7 @@ class GaussianRenderer(Renderer):
         self.sam_predictor = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint))
         self.positive_point3d = []
         self.negative_point3d = []
+        self.center_point = np.array([0,0,0]).astype('float64')
     
     def project_3d_to_2d(self, points_3d, intrinsic, extrinsic):
         extrinsic = extrinsic.cpu().numpy() if hasattr(extrinsic, 'cpu') else extrinsic
@@ -230,6 +231,7 @@ class GaussianRenderer(Renderer):
                 render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
                 intersection_point = self.pixel_to_3d(roate_point, intrinsic, cam_params, render["depth"].cpu().numpy()[0][int(roate_point[1]),int(roate_point[0])])
                 gs._xyz = self.gaussian_models[scene_index]._xyz = self.gaussian_models[scene_index]._xyz - torch.from_numpy(intersection_point).to("cuda").to(torch.float32)
+                self.center_point += intersection_point
 
             render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, extr=cam_params)
             render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
@@ -301,6 +303,7 @@ class GaussianRenderer(Renderer):
         )
 
         res.mean_xyz = torch.mean(gs.get_xyz, dim=0)
+        res.center_point = self.center_point.tolist()
         res.std_xyz = torch.std(gs.get_xyz)
         if len(eval_text) > 0:
             res.eval = eval(eval_text)

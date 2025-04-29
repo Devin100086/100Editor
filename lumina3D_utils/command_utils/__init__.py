@@ -9,7 +9,8 @@ def training_text_adding_command(
     per_editing_step, edit_begin_step, edit_until_step, lambda_l1, lambda_p,
     lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,
     sam_option, seg_prompt, text_videoEditing, gs_lr_scaler, gs_lr_end_scaler, color_lr_scaler, 
-    opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler, camera, positive_sam_points, negative_sam_points, use_original_resolution
+    opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler, camera, positive_sam_points, negative_sam_points, use_original_resolution,
+    center_point
 ):
     process = subprocess.Popen([
         "python",
@@ -40,6 +41,7 @@ def training_text_adding_command(
         "--scaling_lr_scaler", str(scaling_lr_scaler),
         "--rotation_lr_scaler", str(rotation_lr_scaler),
         "--camera", str(camera),
+        "--center_point", str(center_point),
         "--video",str(text_videoEditing),
         "--use_original_resolution", str(use_original_resolution)
     ])
