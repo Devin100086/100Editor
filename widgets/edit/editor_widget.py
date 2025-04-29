@@ -311,6 +311,7 @@ class EditorWidget(Widget):
                             origin = Image.fromarray(viz.result.image).convert("RGB")
                             R = viz.extr.inverse()[:3, :3].T.numpy()
                             T = viz.extr.inverse()[:3, 3].numpy()
+                            center_point = viz.result.center_point
                             fov_rad = viz.fov / 360 * 2 * np.pi
                             cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
                             with open(f'tmp_edit/camera.pkl', 'wb') as f:
@@ -328,7 +329,8 @@ class EditorWidget(Widget):
                                                                              color_lr_scaler = self.color_lr_scaler,  opacity_lr_scaler = self.opacity_lr_scaler, 
                                                                              scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler, 
                                                                              positive_sam_points = "tmp_edit/sam2_positive_points.npy", negative_sam_points = "tmp_edit/sam2_negative_points.npy",
-                                                                             camera = "tmp_edit/camera.pkl", use_original_resolution = self.use_original_resolution)
+                                                                             camera = "tmp_edit/camera.pkl", use_original_resolution = self.use_original_resolution,
+                                                                             center_point = center_point)
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
                             self.edit3D = False
