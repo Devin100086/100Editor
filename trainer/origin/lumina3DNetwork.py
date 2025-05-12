@@ -25,6 +25,7 @@ class Lumina3DNetwork:
         self.addr = None
         print(f"Creating Lumina3D network connector for host={host} and port={port}")
         self.stop_at_value = -1
+        self.bg_color = None
 
     def try_connect(self):
         try:

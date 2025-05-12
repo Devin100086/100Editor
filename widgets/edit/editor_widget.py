@@ -73,7 +73,7 @@ class EditorWidget(Widget):
         self.text_point_option = 0
         self.text_seg_prompt = "face"
         self.text_videoEditing = False
-        self.use_original_resolution = False
+        self.edit_use_original_resolution = False
         self.text_sam_positive_points = []
         self.text_sam_negative_points = []
 
@@ -118,6 +118,7 @@ class EditorWidget(Widget):
         self.delete_point_option = 0
         self.delete_sam_positive_points = []
         self.delete_sam_negative_points = []
+        self.delete_use_original_resolution = False
 
 
         self.edit_trainer = None
@@ -266,10 +267,10 @@ class EditorWidget(Widget):
                     label("prompt", viz.label_w)
                     _, self.text_prompt = imgui.input_text("##Prompt", self.text_prompt, 256)
                     self.text_change = True if imgui.is_item_active() else False
-                    label("Video", viz.label_w)
-                    _, self.text_videoEditing = imgui.checkbox("##Video", self.text_videoEditing)
+                    # label("Video", viz.label_w)
+                    # _, self.text_videoEditing = imgui.checkbox("##Video", self.text_videoEditing)
                     label("Original Resolution", viz.label_w)
-                    _, self.use_original_resolution = imgui.checkbox("##Use Original Resolution", self.use_original_resolution)
+                    _, self.edit_use_original_resolution = imgui.checkbox("##Use Original Resolution", self.edit_use_original_resolution)
 
                     imgui.separator_text("SAM Option")
                     label("Sam Type", viz.label_w)
@@ -329,7 +330,7 @@ class EditorWidget(Widget):
                                                                              color_lr_scaler = self.color_lr_scaler,  opacity_lr_scaler = self.opacity_lr_scaler, 
                                                                              scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler, 
                                                                              positive_sam_points = "tmp_edit/sam2_positive_points.npy", negative_sam_points = "tmp_edit/sam2_negative_points.npy",
-                                                                             camera = "tmp_edit/camera.pkl", use_original_resolution = self.use_original_resolution,
+                                                                             camera = "tmp_edit/camera.pkl", use_original_resolution = self.edit_use_original_resolution,
                                                                              center_point = center_point)
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
@@ -643,8 +644,8 @@ class EditorWidget(Widget):
                         self.text_sam_negative_points = []
 
                     imgui.separator_text("Parameters")
-                    label("Inpaint Prompt", viz.label_w)
-                    _, self.inpaint_prompt = imgui.input_text("##Inpaint Prompt", self.inpaint_prompt, 256)
+                    label("Original Resolution", viz.label_w)
+                    _, self.delete_use_original_resolution = imgui.checkbox("##Use Original Resolution", self.delete_use_original_resolution)
                     label("Inpaint Scale", viz.label_w)
                     _, self.inpaint_scale = imgui.slider_float("##Inpaint Scale", self.inpaint_scale, 0, 10, format="%.1f")
                     label("Mask Dilate", viz.label_w)
@@ -688,11 +689,12 @@ class EditorWidget(Widget):
                     if not self.edit3D:
                         if imgui_utils.button("Delete", width=viz.button_w):
                             self.edit3D = True 
-                            np.save("tmp_delete/sam2_positive_points.npy", np.array(self.text_sam_positive_points))
-                            np.save("tmp_delete/sam2_negative_points.npy", np.array(self.text_sam_negative_points))
+                            np.save("tmp_delete/sam2_positive_points.npy", np.array(self.delete_sam_positive_points))
+                            np.save("tmp_delete/sam2_negative_points.npy", np.array(self.delete_sam_negative_points))
                             origin = Image.fromarray(viz.result.image).convert("RGB")
                             R = viz.extr.inverse()[:3, :3].T.numpy()
                             T = viz.extr.inverse()[:3, 3].numpy()
+                            center_point = viz.result.center_point
                             fov_rad = viz.fov / 360 * 2 * np.pi
                             cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
                             with open(f'tmp_delete/camera.pkl', 'wb') as f:
@@ -701,7 +703,7 @@ class EditorWidget(Widget):
                                 gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
                                 inpaint_scale=self.inpaint_scale,mask_dilate=self.mask_dilate,
                                 edit_cam_num=self.edit_cam_num,delete_prompt=self.delete_prompt,
-                                inpaint_prompt=self.inpaint_prompt,edit_train_steps=self.edit_train_steps,
+                                edit_train_steps=self.edit_train_steps,
                                 per_editing_step=self.per_editing_step,edit_begin_step=self.edit_begin_step,
                                 edit_until_step=self.edit_until_step,lambda_l1=self.lambda_l1,
                                 lambda_p=self.lambda_p,lambda_anchor_color=self.lambda_anchor_color,
@@ -712,6 +714,7 @@ class EditorWidget(Widget):
                                 scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler,
                                 sam_type = self.delete_sam_option, positive_sam_points = "tmp_delete/sam2_positive_points.npy", 
                                 negative_sam_points = "tmp_delete/sam2_negative_points.npy", camera = "tmp_delete/camera.pkl",
+                                center_point = center_point, use_original_resolution = self.delete_use_original_resolution,
                             )
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):

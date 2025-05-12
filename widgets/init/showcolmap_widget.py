@@ -13,7 +13,7 @@ class ShowColmapWidget(Widget):
         self.data_source = "/home/wucunqi/Desktop/results/face/sparse/0"
         self.showing_colmap = False
         self.colmap_process = None
-        self.resolution = 1024
+        # self.resolution = 1024
     
     @imgui_utils.scoped_by_object_id
     def __call__(self, show=True):
@@ -24,8 +24,8 @@ class ShowColmapWidget(Widget):
             imgui.same_line()
             imgui.text(f"Selected Sparse: {self.data_source}")
 
-            label("Resolution", viz.label_w)
-            _changed, self.resolution = imgui.input_int("##Resolution", self.resolution, 64)
+            # label("Resolution", viz.label_w)
+            # _changed, self.resolution = imgui.input_int("##Resolution", self.resolution, 64)
 
             if self.showing_colmap== False or self.colmap_process.poll() != None:
                 if imgui_utils.button(f"Show colmap", width=viz.button_large_w):
@@ -38,7 +38,7 @@ class ShowColmapWidget(Widget):
                     self.showing_colmap = False
 
         viz.args.data_source = self.data_source
-        viz.args.resolution = self.resolution
+        # viz.args.resolution = self.resolution
 
     def _select_folder(self):
         root = tk.Tk()
