@@ -12,7 +12,7 @@ from EditorGS.GUIEditor.Guidance.DelGuidance import DelGuidance
 from torchvision.transforms.functional import to_pil_image, to_tensor
 from torchvision.utils import save_image
 from EditorGS.GUIEditor.train_base import *
-from EditorGS.gaussiansplatting.gaussian_renderer import render, render_simple
+from EditorGS.gaussiansplatting.gaussian_renderer import render
 from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
 from PIL import Image
 from EditorGS.GUIEditor.utils import *
@@ -37,7 +37,6 @@ class DeleteTrainer(BaseTrainer):
         self.per_editing_step = cfg.per_editing_step
         self.edit_begin_step = cfg.edit_begin_step
         self.edit_until_step = cfg.edit_until_step
-        self.inpaint_prompt = cfg.inpaint_prompt
         self.delete_prompt = cfg.delete_prompt
         self.inpaint_scale = cfg.inpaint_scale
         self.colmap_dir = cfg.colmap_dir
@@ -49,9 +48,11 @@ class DeleteTrainer(BaseTrainer):
         self.cameara_update_step = 500
         self.t_max_step = [999, 300, 300, 21]
 
-        self.sam_points = np.load(cfg.sam_points)
         self.positive_sam_points = np.load(cfg.positive_sam_points)
         self.negative_sam_points = np.load(cfg.negative_sam_points)
+
+        self.roate_point = list(map(float, cfg.center_point[1:-1].split(',')))
+
         with open(args.camera, 'rb') as f:
             self.cam  = pickle.load(f)
 
@@ -123,6 +124,10 @@ class DeleteTrainer(BaseTrainer):
             gaussian_copy = copy.deepcopy(self.gaussian)
             center = gaussian_copy._xyz.mean(dim=0)
             gaussian_copy._xyz = gaussian_copy._xyz - center
+
+            intersection_point = np.array(self.roate_point)
+            gaussian_copy._xyz = gaussian_copy._xyz - torch.from_numpy(intersection_point).to(gaussian_copy._xyz.device).to(torch.float32)
+
             positive_points3d = []
             negative_points3d = []
 
@@ -136,7 +141,7 @@ class DeleteTrainer(BaseTrainer):
                 sam_point = sam_point * np.array([self.cam.image_width, self.cam.image_height])
                 unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
                 # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
-                positive_points3d.append(unprojected_points3d+center.detach().cpu().numpy())
+                positive_points3d.append(unprojected_points3d+center.detach().cpu().numpy()+intersection_point)
             
             # negative
             for i, sam_point in enumerate(self.negative_sam_points):
@@ -148,7 +153,7 @@ class DeleteTrainer(BaseTrainer):
                 sam_point = sam_point * np.array([self.cam.image_width, self.cam.image_height])
                 unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
                 # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
-                negative_points3d.append(unprojected_points3d+center.detach().cpu().numpy())
+                negative_points3d.append(unprojected_points3d+center.detach().cpu().numpy()+intersection_point)
 
             positive_points3d = np.array(positive_points3d)
             negative_points3d = np.array(negative_points3d)
@@ -183,7 +188,6 @@ class DeleteTrainer(BaseTrainer):
         self.guidance = DelGuidance(
             guidance=cur_2D_guidance,
             gaussian=self.gaussian,
-            text_prompt=self.inpaint_prompt,
             per_editing_step=self.per_editing_step,
             edit_begin_step=self.edit_begin_step,
             edit_until_step=self.edit_until_step,
@@ -292,7 +296,6 @@ if __name__ == "__main__":
     parser.add_argument("--colmap_dir", type=str, required=True)
     parser.add_argument("--edit_cam_num", type=int, default=0, help="Camera number.")
     parser.add_argument("--delete_prompt", type=str, default="man", help="Delete Prompt.")
-    parser.add_argument("--inpaint_prompt", type=str, default="wall", help="Inpaint Prompt.")
     parser.add_argument("--text_prompt", type=str, default="", help="Lambda anchor color.")
     parser.add_argument("--edit_train_steps", type=int, default=1500, help="Edit train steps.")
     parser.add_argument("--per_train_step", type=int, default=1, help="Per train step.")
@@ -317,8 +320,10 @@ if __name__ == "__main__":
     parser.add_argument("--sam_type", type=int, default=0, help="sam type.")
     parser.add_argument("--positive_sam_points", type=str, default="/", help="the path of the positive sam points.")
     parser.add_argument("--negative_sam_points", type=str, default="/", help="the path of the negative sam points.")
-    parser.add_argument("--sam_points", type=str, default=0, help="the path of the sam points.")
     parser.add_argument("--camera", type=str, default="tmd_delete/camera.pkl", help="camera.")
+    parser.add_argument("--center_point", type=str, help="center point.")
+    parser.add_argument("--use_original_resolution", type=str, default="False", help="use original resolution.")
+
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):

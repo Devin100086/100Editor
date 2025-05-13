@@ -1,5 +1,6 @@
 import torch
 from tqdm import tqdm
+import datetime
 import sys
 import os
 from argparse import ArgumentParser
@@ -24,6 +25,8 @@ def render_cameras_list(gaussian, colmap_dir, save_dir, use_original_resolution)
         scene = CamScene(colmap_dir, h=512, w=512)
     colmap_cameras = scene.cameras
 
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    save_dir = f"{save_dir}_{current_time}"
     os.makedirs(save_dir, exist_ok=True)
 
     for cam in tqdm(colmap_cameras):

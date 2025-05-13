@@ -92,7 +92,6 @@ class EditTrainer(BaseTrainer):
             gaussian_copy = copy.deepcopy(self.gaussian)
             center = gaussian_copy._xyz.mean(dim=0)
             gaussian_copy._xyz = gaussian_copy._xyz - center
-            intersection_point = 0
             
             intersection_point = np.array(self.roate_point)
             gaussian_copy._xyz = gaussian_copy._xyz - torch.from_numpy(intersection_point).to(gaussian_copy._xyz.device).to(torch.float32)
