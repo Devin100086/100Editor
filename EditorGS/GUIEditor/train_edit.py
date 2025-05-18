@@ -19,6 +19,7 @@ from torchvision.utils import save_image
 class EditTrainer(BaseTrainer):
     def __init__(self, cfg):
         super().__init__(cfg)
+        self.origin_prompt = cfg.origin_prompt
         self.edit_cam_num = cfg.edit_cam_num
         self.guidance_type = cfg.guidance_type
         self.lambda_l1 = cfg.lambda_l1
@@ -60,22 +61,24 @@ class EditTrainer(BaseTrainer):
                                       "video":video})
                 )
             cur_2D_guidance = self.ip2p
+            self.origin_prompt = None
             print("using InstructPix2Pix!")
-        elif self.guidance_type == "ControlNet-Pix2Pix":
+        elif self.guidance_type == "ControlNet-Depth":
             if not self.ctn_ip2p:
                 from threestudio.models.guidance.controlnet_guidance import (
                     ControlNetGuidance,
                 )
 
                 self.ctn_ip2p = ControlNetGuidance(
-                    OmegaConf.create({"min_step_percent": 0.05,
-                                      "max_step_percent": 0.8,
-                                        "control_type": "p2p"})
+                    OmegaConf.create({"min_step_percent": 0.02,
+                                      "max_step_percent": 0.98,
+                                      "video":video,
+                                      "control_type": "depth"})
                 )
             cur_2D_guidance = self.ctn_ip2p
-            print("using ControlNet-InstructPix2Pix!")
+            print("using ControlNet-Depth!")
         
-        self.origin_frames = self.render_cameras_list(self.colmap_cameras)
+        self.origin_frames, self.depths = self.render_cameras_list(self.colmap_cameras)
 
         random.seed(0)  # make sure same views
         self.n2n_view_index = random.sample(
@@ -127,11 +130,33 @@ class EditTrainer(BaseTrainer):
             self.masks, _ = self.update_sam_mask_with_point_prompt(self.colmap_cameras, positive_points3d, negative_points3d)
             del gaussian_copy
             torch.cuda.empty_cache()
+
+        elif sam_option == 3:
+            gaussian_copy = copy.deepcopy(self.gaussian)
+            center = gaussian_copy._xyz.mean(dim=0)
+            gaussian_copy._xyz = gaussian_copy._xyz - center
+            
+            intersection_point = np.array(self.roate_point)
+
+            gaussian_copy._xyz = gaussian_copy._xyz - torch.from_numpy(intersection_point).to(gaussian_copy._xyz.device).to(torch.float32)
+            
+            self.positive_sam_points = np.empty((0,2)) if self.positive_sam_points.shape[0] == 0 else self.positive_sam_points * np.array([self.cam.image_width, self.cam.image_height])
+            self.negative_sam_points = np.empty((0,2)) if self.negative_sam_points.shape[0] == 0 else self.negative_sam_points * np.array([self.cam.image_width, self.cam.image_height])
+            render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
+            init_render = render(self.cam, gaussian_copy, self.pipe ,self.background_tensor)["render"]
+            save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
+            self.masks, _ = self.update_sam2_mask_with_point_prompt(self.colmap_cameras, 
+                                                                    self.positive_sam_points ,
+                                                                    self.negative_sam_points)
+            del gaussian_copy
+            torch.cuda.empty_cache()
         
         self.guidance = EditGuidance(
             guidance=cur_2D_guidance,
+            guidance_type = self.guidance_type,
             gaussian=self.gaussian,
             origin_frames=self.origin_frames,
+            depths = self.depths,
             text_prompt=self.edit_text,
             per_editing_step=self.per_editing_step,
             edit_begin_step=self.edit_begin_step,
@@ -143,6 +168,7 @@ class EditTrainer(BaseTrainer):
             lambda_anchor_scale=self.lambda_anchor_scale,
             lambda_anchor_opacity=self.lambda_anchor_opacity,
             cams=self.colmap_cameras,
+            origin_text_prompt=self.origin_prompt,
         )
         view_index_stack = self.n2n_view_index.copy()
         ema_loss_for_log = 0.0
@@ -201,6 +227,7 @@ class EditTrainer(BaseTrainer):
         cameras = []
         images = []
         origin_frames = []
+        depths = []
         masks = []
 
         self.guidance.guidance.max_step = self.t_max_step[min(len(self.t_max_step)-1, global_step// self.cameara_update_step)]
@@ -227,6 +254,7 @@ class EditTrainer(BaseTrainer):
                     mask = self.gaussian_blur(mask)
                     masks.append(mask)
                 origin_frames.append(self.origin_frames[id])
+                depths.append(self.depths[id])
 
             images = torch.cat(images, dim=0)
             if sam_option != 0:
@@ -235,8 +263,12 @@ class EditTrainer(BaseTrainer):
             else:
                 masks = torch.ones_like(images)
             origin_frames = torch.cat(origin_frames, dim=0)
+            depths = torch.cat(depths, dim=0)
 
-            edited_images = self.guidance.edit_all(images, origin_frames)
+            if self.guidance_type == "InstructPix2Pix":
+                edited_images = self.guidance.edit_all(images, origin_frames)
+            elif self.guidance_type == "ControlNet-Depth":
+                edited_images = self.guidance.edit_all(images, depths)
 
             edited_images = edited_images * masks + (1-masks) * origin_frames
 
@@ -253,6 +285,7 @@ if __name__ == "__main__":
     parser.add_argument("--edit_cam_num", type=int, default=0, help="Camera number.")
     parser.add_argument("--guidance_type", type=str, default="InstructPix2Pix")
     parser.add_argument("--text_prompt", default="default_text", help="Text prompt.")
+    parser.add_argument("--origin_prompt", default="default_origin_text", help="Origin text prompt.")
     parser.add_argument("--edit_train_steps", type=int, default=1500, help="Edit train steps.")
     parser.add_argument("--per_train_step", type=int, default=1, help="Per train step.")
     parser.add_argument("--per_editing_step", type=int, default=1, help="Per editing step.")

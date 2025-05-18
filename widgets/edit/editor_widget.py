@@ -60,15 +60,16 @@ class EditorWidget(Widget):
 
         self.gs_lr_scaler = 1.0
         self.gs_lr_end_scaler = 1.0
-        self.color_lr_scaler = 3.0
+        self.color_lr_scaler = 1.0
         self.opacity_lr_scaler = 2.0
         self.scaling_lr_scaler = 2.0
         self.rotation_lr_scaler = 2.0
         
         # text-edit
-        self.guidance_type = ["InstructPix2Pix","ControlNet-Pix2Pix"]
+        self.guidance_type = ["InstructPix2Pix","ControlNet-Depth"]
         self.guidance_item = 0
         self.text_prompt = "Turn him into Harry Potter"
+        self.origin_prompt = "a photo of a bear statue in the forest"
         self.text_sam_option = 0
         self.text_point_option = 0
         self.text_seg_prompt = "face"
@@ -142,8 +143,8 @@ class EditorWidget(Widget):
                     if imgui.radio_button("Text-Editing", self.select_option == 0):
                         self.select_option = 0
                         self.edit_cam_num = 48
-                        self.edit_train_steps = 1500
-                        self.edit_until_step = 1000
+                        self.edit_train_steps = 2000
+                        self.edit_until_step = 3000
                         self.per_editing_step = 10
                         self.densification_interval = 50
                         self.densify_until_step = 1500
@@ -264,11 +265,14 @@ class EditorWidget(Widget):
                         self.guidance_item,           
                         self.guidance_type                   
                     )
+                    if self.guidance_item == 1:
+                        label("origin prompt", viz.label_w)
+                        _, self.origin_prompt = imgui.input_text("##Origin Prompt", self.origin_prompt, 256)
                     label("prompt", viz.label_w)
                     _, self.text_prompt = imgui.input_text("##Prompt", self.text_prompt, 256)
                     self.text_change = True if imgui.is_item_active() else False
-                    # label("Video", viz.label_w)
-                    # _, self.text_videoEditing = imgui.checkbox("##Video", self.text_videoEditing)
+                    label("Video", viz.label_w)
+                    _, self.text_videoEditing = imgui.checkbox("##Video", self.text_videoEditing)
                     label("Original Resolution", viz.label_w)
                     _, self.edit_use_original_resolution = imgui.checkbox("##Use Original Resolution", self.edit_use_original_resolution)
 
@@ -277,14 +281,14 @@ class EditorWidget(Widget):
                     _, self.text_sam_option = imgui.combo(
                         "##SAM Type", 
                         self.text_sam_option, 
-                        ["No Sam", "Lang-sam", "SAM2"]  
+                        ["No Sam", "Lang-sam", "SAM2(image)","SAM2(video)"]  
                     )
 
                     if self.text_sam_option == 1:
                         label("Seg prompt", viz.label_w)
                         _, self.text_seg_prompt = imgui.input_text("##seg prompt", self.text_seg_prompt, 256)
 
-                    if self.text_sam_option == 2:
+                    if self.text_sam_option == 2 or self.text_sam_option == 3:
                         if imgui.radio_button("No Points", self.text_point_option == 0):
                             self.text_point_option = 0
                         imgui.same_line()
@@ -310,16 +314,18 @@ class EditorWidget(Widget):
                             np.save("tmp_edit/sam2_positive_points.npy", np.array(self.text_sam_positive_points))
                             np.save("tmp_edit/sam2_negative_points.npy", np.array(self.text_sam_negative_points))
                             origin = Image.fromarray(viz.result.image).convert("RGB")
+                            os.makedirs("tmp_edit/render", exist_ok=True)
+                            os.system(f"rm -rf tmp_edit/render/*")
                             R = viz.extr.inverse()[:3, :3].T.numpy()
                             T = viz.extr.inverse()[:3, 3].numpy()
                             center_point = viz.result.center_point
                             fov_rad = viz.fov / 360 * 2 * np.pi
-                            cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
+                            cam = CustomCam(origin.size[0]//2, origin.size[1]//2, fov_rad, fov_rad, R, T, viz.extr.cuda())
                             with open(f'tmp_edit/camera.pkl', 'wb') as f:
                                 pickle.dump(cam, f)  
                             self.edit_trainer = training_text_adding_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
                                                                              edit_cam_num=self.edit_cam_num,guidance_type=self.guidance_type[self.guidance_item],
-                                                                             text_prompt=self.text_prompt,edit_train_steps=self.edit_train_steps,
+                                                                             text_prompt=self.text_prompt, origin_prompt = self.origin_prompt, edit_train_steps=self.edit_train_steps,
                                                                              per_editing_step=self.per_editing_step,edit_begin_step=self.edit_begin_step,
                                                                              edit_until_step=self.edit_until_step,lambda_l1=self.lambda_l1,
                                                                              lambda_p=self.lambda_p,lambda_anchor_color=self.lambda_anchor_color,

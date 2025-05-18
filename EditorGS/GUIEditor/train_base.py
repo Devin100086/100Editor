@@ -43,6 +43,7 @@ from threestudio.utils.camera import camera_ray_sample_points, project, unprojec
 from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
 from transformers import pipeline
 from tqdm import tqdm
+from torchvision.utils import save_image
 
 
 class BaseTrainer:
@@ -135,11 +136,13 @@ class BaseTrainer:
     @torch.no_grad()
     def render_cameras_list(self, edit_cameras):
         origin_frames = []
+        depths = []
         for cam in edit_cameras:
-            out = self.render(cam)["comp_rgb"]
+            out, depth = self.render(cam)["comp_rgb"], self.render(cam)["depth"]
             origin_frames.append(out)
+            depths.append(depth)
 
-        return origin_frames
+        return origin_frames, depths
 
     def render(
         self,
@@ -400,6 +403,74 @@ class BaseTrainer:
         torch.cuda.empty_cache()
 
         return masks, selected_mask
+    
+    def update_sam2_mask_with_point_prompt(
+        self, edit_cameras, positive_sam_points=None, negative_sam_points=None
+    ):
+        os.makedirs(self.save_mask_tmp, exist_ok=True)
+        os.system(f"rm -rf {self.save_mask_tmp}/*")
+        from sam2.sam2_video_predictor import SAM2VideoPredictor
+        sam2_predictor = SAM2VideoPredictor.from_pretrained("facebook/sam2-hiera-large")
+        render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
+        for i, cam in tqdm(enumerate(edit_cameras)):
+            cur_cam = cam
+            img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)["render"]
+            save_image(img[None], f"{render_folder}/{i+1:05d}" + ".jpg")
+
+        frame_names = [
+            p for p in os.listdir(render_folder)
+            if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG"]
+        ]
+
+        frame_names.sort(key=lambda p: int(os.path.splitext(p)[0]))
+
+        state = sam2_predictor.init_state(video_path=render_folder)
+        sam2_predictor.reset_state(state)
+
+        ann_frame_idx = 0  
+        ann_obj_id = 1  
+
+        positive_points2ds = np.empty((0,2)) if positive_sam_points.shape[0] == 0 else positive_sam_points
+        negative_points2ds = np.empty((0,2)) if negative_sam_points.shape[0] == 0 else negative_sam_points
+        positive_label = np.empty((0), dtype=np.int64) if positive_sam_points.shape[0] == 0 else np.array([1] * positive_sam_points.shape[0], dtype=np.int64) 
+        negative_label = np.empty((0), dtype=np.int64) if negative_sam_points.shape[0] == 0 else np.array([0] * negative_sam_points.shape[0], dtype=np.int64)
+        
+        point_coords = np.concatenate((positive_points2ds, negative_points2ds), axis=0)
+        point_labels = np.concatenate((positive_label, negative_label), axis=0) 
+
+        sam2_predictor.add_new_points(
+            inference_state=state,
+            frame_idx=ann_frame_idx,
+            obj_id=ann_obj_id,
+            points=point_coords,
+            labels=point_labels,
+        )
+
+        masks = []
+        weights = torch.zeros_like(self.gaussian._opacity)
+        weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
+
+        for out_frame_idx, _, out_mask_logits in sam2_predictor.propagate_in_video(state):
+            if out_frame_idx == 0:
+                continue
+            mask = out_mask_logits[0] > 0.0
+            cur_cam = edit_cameras[out_frame_idx-1]
+            save_image(mask.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cur_cam.image_name}" + ".png")
+            self.gaussian.apply_weights(
+                cur_cam, weights, weights_cnt, mask.to(torch.float32)
+            )
+            masks.append(mask)
+
+        weights /= weights_cnt + 1e-7
+        selected_mask = weights > self.mask_thres
+        selected_mask = selected_mask[:, 0]
+        self.gaussian.set_mask(selected_mask)
+        self.gaussian.apply_grad_mask(selected_mask)
+        del sam2_predictor
+        gc.collect()    
+        torch.cuda.empty_cache()
+
+        return masks, selected_mask
 
     def obtain_depth(self,edit_camears):
         pipe = pipeline(task="depth-estimation", model="depth-anything/depth-anything-V2-Base-hf")
@@ -448,7 +519,7 @@ class BaseTrainer:
         blurred_mask = F.conv2d(mask, kernel2d, padding=kernel_size // 2, groups=mask.size(1))
         return blurred_mask
 
-    def compute_clip(self, clip_prompt_origin = "a photo of a face of a man", clip_prompt_target = "a photo of a face of hulk"):
+    def compute_clip(self, clip_prompt_origin = "a photo of a face of a man", clip_prompt_target = "a photo of a face of vampire"):
         clip_metrics = ClipSimilarity().to(self.gaussian.get_xyz.device)
         total_cos = 0
         total_sim = 0
@@ -461,4 +532,8 @@ class BaseTrainer:
                 total_cos += abs(cos_sim.item())
                 total_sim += abs(sim.item())
         print(clip_prompt_origin, clip_prompt_target, "cos:", total_cos / len(self.colmap_cameras), "sim:", total_sim / len(self.colmap_cameras))
+        with open("/home/wucunqi/Desktop/exp/Time/Ours(CLIP_DIRECTION).txt", "a") as f:
+            f.write(str(total_cos / len(self.colmap_cameras))+"\n")
+        with open("/home/wucunqi/Desktop/exp/Time/Ours(CLIP).txt", "a") as f:
+            f.write(str(total_sim / len(self.colmap_cameras))+ "\n")
         return total_sim / len(self.colmap_cameras), total_cos / len(self.colmap_cameras)
