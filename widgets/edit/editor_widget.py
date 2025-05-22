@@ -4,7 +4,6 @@ import pickle
 from imgui_bundle import imgui
 from omegaconf import OmegaConf
 from EditorGS.gaussiansplatting.scene.cameras import CustomCam             
-from EditorGS.GUIEditor.train_coarse_add import TrainCoarseAdd   
 from EditorGS.GUIEditor.train_fine_add import add_sketch                   
 from lumina3D_utils.gui_utils import imgui_utils
 from imgui_bundle import implot
@@ -15,11 +14,8 @@ from torchvision.transforms.functional import to_tensor
 import torch
 from lumina3D_utils.dict_utils import EasyDict
 import sys
-
-from shap_e.diffusion.sample import sample_latents
-from shap_e.diffusion.gaussian_diffusion import diffusion_from_config
-from shap_e.models.download import load_model, load_config
-from shap_e.util.notebooks import decode_latent_mesh,create_pan_cameras,decode_latent_images
+import tkinter as tk
+from tkinter import filedialog
 
 from widgets.widget import Widget
 import glfw
@@ -77,6 +73,7 @@ class EditorWidget(Widget):
         self.edit_use_original_resolution = False
         self.text_sam_positive_points = []
         self.text_sam_negative_points = []
+        self.edit_output_dir = os.path.join(os.getcwd(), "outputs")
 
         # madding
         self.mask_prompt = "add a red hat"
@@ -119,7 +116,7 @@ class EditorWidget(Widget):
         self.delete_sam_positive_points = []
         self.delete_sam_negative_points = []
         self.delete_use_original_resolution = False
-
+        self.delete_output_dir = os.path.join(os.getcwd(), "outputs")
 
         self.edit_trainer = None
         self.draw_image = False
@@ -130,6 +127,12 @@ class EditorWidget(Widget):
             num_gaussians=dict(values=[], dtype=int),
         )
         self.iterations = []    
+
+    def _select_folder(self):
+        root = tk.Tk()
+        root.withdraw()
+        folder_path = filedialog.askdirectory()
+        return folder_path
 
     @imgui_utils.scoped_by_object_id
     def __call__(self, show=True):
@@ -307,6 +310,13 @@ class EditorWidget(Widget):
                             self.text_sam_positive_points = []
                             self.text_sam_negative_points = []
 
+                    imgui.new_line()
+                    if imgui_utils.button("Save", width=viz.button_w):
+                        output_dir = self._select_folder() 
+                        self.edit_output_dir = self.edit_output_dir if isinstance(output_dir, tuple) else output_dir
+                    imgui.same_line()
+                    imgui.text(f"Save Path: {self.edit_output_dir}")
+
                     if not self.edit3D:
                         if imgui_utils.button("Edit", width=viz.button_w):
                             self.edit3D = True
@@ -334,7 +344,7 @@ class EditorWidget(Widget):
                                                                              color_lr_scaler = self.color_lr_scaler,  opacity_lr_scaler = self.opacity_lr_scaler, 
                                                                              scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler, 
                                                                              positive_sam_points = "tmp_edit/sam2_positive_points.npy", negative_sam_points = "tmp_edit/sam2_negative_points.npy",
-                                                                             camera = "tmp_edit/camera.pkl", use_original_resolution = self.edit_use_original_resolution,
+                                                                             camera = "tmp_edit/camera.pkl", use_original_resolution = self.edit_use_original_resolution, output_dir = self.edit_output_dir
                                                                             )
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
@@ -610,6 +620,13 @@ class EditorWidget(Widget):
                             self.delete_sam_positive_points = []
                             self.delete_sam_negative_points = []
 
+                    imgui.new_line()
+                    if imgui_utils.button("Save", width=viz.button_w):
+                        output_dir = self._select_folder() 
+                        self.delete_output_dir = self.delete_output_dir if isinstance(output_dir, tuple) else output_dir
+                    imgui.same_line()
+                    imgui.text(f"Save Path: {self.delete_output_dir}")
+
                     if not self.edit3D:
                         if imgui_utils.button("Delete", width=viz.button_w):
                             self.edit3D = True 
@@ -639,7 +656,7 @@ class EditorWidget(Widget):
                                 scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler,
                                 sam_type = self.delete_sam_option, positive_sam_points = "tmp_delete/sam2_positive_points.npy", 
                                 negative_sam_points = "tmp_delete/sam2_negative_points.npy", camera = "tmp_delete/camera.pkl",
-                                use_original_resolution = self.delete_use_original_resolution,
+                                use_original_resolution = self.delete_use_original_resolution, output_dir = self.delete_output_dir
                             )
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):

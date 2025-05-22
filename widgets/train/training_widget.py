@@ -14,11 +14,12 @@ import tkinter as tk
 import torch
 from gaussiansplatting.utils.general_utils import safe_state
 from lumina3D_utils.gui_utils.easy_imgui import label
+from lumina3D_utils.command_utils import *
 import subprocess
 from lumina3D_utils.dict_utils import EasyDict
 from widgets.widget import Widget
 from tkinter import filedialog
-
+import datetime
 
 class TrainingWidget(Widget):
     def __init__(self, viz):
@@ -36,13 +37,14 @@ class TrainingWidget(Widget):
         self.stop_training = True
         self.stop_from_renderer = False
         self.training_path = os.getcwd()
+        self.output_dir = os.path.join(os.getcwd(), "outputs")
         self.use_gpu = 0
         self.gpu_items = [str(i) for i in range(torch.cuda.device_count())]
         self.quiet = False
         self.detect_anomaly = False
         self.selected_option = 0
         self.gsplat_training_dir = os.getcwd()
-        self.gsplat_output_dir = os.getcwd()
+        self.gsplat_output_dir = os.path.join(os.getcwd(), "outputs")
         self.gsplat_mode = 0
         self.MODE = ["default","mcmc"]
         self.origin_trainer = None
@@ -69,6 +71,13 @@ class TrainingWidget(Widget):
 
                 imgui.same_line()
                 imgui.text(f"Training Path: {self.training_path}")
+
+                if imgui_utils.button("Output", width=viz.button_w):
+                    output_dir = self._select_folder() 
+                    target_name = os.path.basename(self.training_path)
+                    self.output_dir = self.training_path if isinstance(output_dir, tuple) else output_dir
+                imgui.same_line()
+                imgui.text(f"Output Path: {self.output_dir}")
                 
                 imgui.set_next_item_width(viz.button_w)
                 changed, self.use_gpu = imgui.combo(
@@ -82,17 +91,20 @@ class TrainingWidget(Widget):
                 clicked, self.detect_anomaly = imgui.checkbox("Detect Anomaly",self.detect_anomaly)
                 label("Ema alpha", viz.label_w)
                 _change, self.alpha = imgui.slider_float(label="##Ema alpha", v=self.alpha,v_min=0.00,v_max=1.00,format="%.2f")
-                imgui.new_line()
                 if self.stop_training or self.stop_from_renderer:
                     if imgui.button("Start Training", ImVec2(viz.label_w_large, 0)):
                         self.stop_training = False
-                        self.origin_trainer =subprocess.Popen([
-                            "python",
-                            "trainer/origin/train.py",
-                            "-s", self.training_path,
-                            "--gpu", self.gpu_items[self.use_gpu],
-                            "--alpha", str(self.alpha)
-                        ])
+                        # self.origin_trainer =subprocess.Popen([
+                        #     "python",
+                        #     "trainer/origin/train.py",
+                        #     "-s", self.training_path,
+                        #     "-m", self.output_dir,
+                        #     "--gpu", self.gpu_items[self.use_gpu],
+                        #     "--alpha", str(self.alpha)
+                        # ])
+                        now = datetime.datetime.now()
+                        now = f"{self.edit_text}@{now.strftime('%Y_%m_%d_%H_%M')}"
+                        self.origin_trainer = training_3DGS(self.training_path, os.path.join(output_dir,f"gsplat_{target_name}@{now}"), self.gpu_items[self.use_gpu], self.alpha)
                         if self.stop_from_renderer:
                             self.stop_at_value = -1
                 else:
@@ -102,23 +114,21 @@ class TrainingWidget(Widget):
                         self.stop_training = True
             elif self.selected_option == 1:
                 imgui.set_next_item_width(viz.button_w)
-                changedm, self.gsplat_mode = imgui.combo(
+                change, self.gsplat_mode = imgui.combo(
                                             "Mode",
                                             self.gsplat_mode,
                                             self.MODE
                                             )
-                if imgui_utils.button("Data dir", width=viz.button_w):
+                if imgui_utils.button("Choose", width=viz.button_w):
                     gsplat_trainning_folder = self._select_folder()
                     self.gsplat_training_dir = self.gsplat_training_dir if isinstance(gsplat_trainning_folder, tuple) else gsplat_trainning_folder
-                    target_name = os.path.basename(self.gsplat_training_dir)
-                    self.gsplat_output_dir = os.path.join(self.gsplat_output_dir,"results",target_name)
                 imgui.same_line()
                 imgui.text(f"Training Path: {self.gsplat_training_dir}")
                 
-                if imgui_utils.button("Output dir", width=viz.button_w):
+                if imgui_utils.button("Output", width=viz.button_w):
                     gsplat_output_dir = self._select_folder() 
                     target_name = os.path.basename(self.gsplat_training_dir)
-                    self.gsplat_output_dir = self.gsplat_training_dir if isinstance(gsplat_output_dir, tuple) else os.path.join(gsplat_output_dir,"results",target_name)
+                    self.gsplat_output_dir = self.gsplat_training_dir if isinstance(gsplat_output_dir, tuple) else gsplat_output_dir
                 imgui.same_line()
                 imgui.text(f"Output Path: {self.gsplat_output_dir}")
                 label("Ema alpha", viz.label_w)
@@ -126,15 +136,18 @@ class TrainingWidget(Widget):
                 if self.stop_training or self.stop_from_renderer:
                     if imgui.button("Start Training", ImVec2(viz.label_w_large, 0)):
                         self.stop_training = False
-                        self.gsplat_trainer = subprocess.Popen([
-                            "python", 
-                            "trainer/gsplat/train.py", 
-                            self.MODE[self.gsplat_mode],
-                            "--data_dir", self.gsplat_training_dir, 
-                            "--data_factor", "1",
-                            "--result_dir",self.gsplat_output_dir,
-                            "--alpha", str(self.alpha)
-                        ])
+                        # self.gsplat_trainer = subprocess.Popen([
+                        #     "python", 
+                        #     "trainer/gsplat/train.py", 
+                        #     self.MODE[self.gsplat_mode],
+                        #     "--data_dir", self.gsplat_training_dir, 
+                        #     "--data_factor", "1",
+                        #     "--result_dir",self.gsplat_output_dir,
+                        #     "--alpha", str(self.alpha)
+                        # ])
+                        now = datetime.datetime.now()
+                        now = f"{self.edit_text}@{now.strftime('%Y_%m_%d_%H_%M')}"
+                        self.gsplat_trainer = training_gsplat_3DGS(self.MODE[self.gsplat_mode], self.gsplat_training_dir, os.path.join(self.gsplat_output_dir,f"3DGS_{target_name}@{now}"), self.alpha)
                         if self.stop_from_renderer:
                             self.stop_at_value = -1
                 else:

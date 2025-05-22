@@ -10,6 +10,7 @@ def training_text_adding_command(
     lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,
     sam_option, seg_prompt, text_videoEditing, gs_lr_scaler, gs_lr_end_scaler, color_lr_scaler, 
     opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler, camera, positive_sam_points, negative_sam_points, use_original_resolution,
+    output_dir
 ):
     process = subprocess.Popen([
         "python",
@@ -42,7 +43,8 @@ def training_text_adding_command(
         "--rotation_lr_scaler", str(rotation_lr_scaler),
         "--camera", str(camera),
         "--video",str(text_videoEditing),
-        "--use_original_resolution", str(use_original_resolution)
+        "--use_original_resolution", str(use_original_resolution),
+        "--output_dir", str(output_dir)
     ])
     return process
 
@@ -94,7 +96,7 @@ def training_delete_command(gs_source, colmap_dir, inpaint_scale, mask_dilate, e
     use_original_resolution, edit_train_steps, per_editing_step, edit_begin_step, edit_until_step,
     lambda_l1, lambda_p, lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale,
     lambda_anchor_opacity, video, sam_type, camera, gs_lr_scaler, gs_lr_end_scaler, color_lr_scaler, 
-    opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler,  positive_sam_points, negative_sam_points
+    opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler,  positive_sam_points, negative_sam_points, output_dir
 ):
     process = subprocess.Popen([
         "python",
@@ -126,7 +128,8 @@ def training_delete_command(gs_source, colmap_dir, inpaint_scale, mask_dilate, e
         "--rotation_lr_scaler", str(rotation_lr_scaler),
         "--video", str(video),
         "--camera", str(camera),
-        "--use_original_resolution", str(use_original_resolution)
+        "--use_original_resolution", str(use_original_resolution),
+        "--output_dir", str(output_dir)
     ])
     return process
 
@@ -149,4 +152,26 @@ def colmap_reconstruction(source_path, colmap_executable, use_gpu):
     ])
     return process
 
+def training_3DGS(training_path, soutput_dir, gpu, alpha):
+    origin_trainer =subprocess.Popen([
+        "python",
+        "trainer/origin/train.py",
+        "-s", training_path,
+        "-m", soutput_dir,
+        "--gpu", gpu,
+        "--alpha", str(alpha)
+    ])
+    return origin_trainer
+
+def training_gsplat_3DGS(mode, gsplat_training_dir, gsplat_output_dir, alpha):
+    gsplat_trainer = subprocess.Popen([
+        "python", 
+        "trainer/gsplat/train.py", 
+        mode,
+        "--data_dir", gsplat_training_dir, 
+        "--data_factor", "1",
+        "--result_dir", gsplat_output_dir,
+        "--alpha", str(alpha)
+    ])
+    return gsplat_trainer
 
