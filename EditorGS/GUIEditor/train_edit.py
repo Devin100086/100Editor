@@ -40,7 +40,7 @@ class EditTrainer(BaseTrainer):
         self.positive_sam_points = np.load(cfg.positive_sam_points)
         self.negative_sam_points = np.load(cfg.negative_sam_points)
 
-        self.roate_point = list(map(float, cfg.center_point[1:-1].split(',')))
+        self.save_mask_tmp =  os.path.join(os.path.dirname(cfg.positive_sam_points),"mask")
 
         with open(args.camera, 'rb') as f:
             self.cam  = pickle.load(f)
@@ -92,18 +92,12 @@ class EditTrainer(BaseTrainer):
         elif sam_option == 1:
             self.masks, _ = self.update_mask(self.colmap_cameras, text_prompt=seg_prompt)
         elif sam_option == 2:
-            gaussian_copy = copy.deepcopy(self.gaussian)
-            center = gaussian_copy._xyz.mean(dim=0)
-            gaussian_copy._xyz = gaussian_copy._xyz - center
-            
-            intersection_point = np.array(self.roate_point)
-            gaussian_copy._xyz = gaussian_copy._xyz - torch.from_numpy(intersection_point).to(gaussian_copy._xyz.device).to(torch.float32)
 
             positive_points3d = []
             negative_points3d = []
             # positive
             for i, sam_point in enumerate(self.positive_sam_points):
-                depth = render(self.cam, gaussian_copy, self.pipe ,self.background_tensor)[
+                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor)[
                     "depth_3dgs"
                 ]
                 # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
@@ -111,11 +105,11 @@ class EditTrainer(BaseTrainer):
                 sam_point = sam_point * np.array([self.cam.image_width, self.cam.image_height])
                 unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
                 # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
-                positive_points3d.append(unprojected_points3d+center.detach().cpu().numpy()+intersection_point)
+                positive_points3d.append(unprojected_points3d)
             
             # negative
             for i, sam_point in enumerate(self.negative_sam_points):
-                depth = render(self.cam, gaussian_copy, self.pipe ,self.background_tensor)[
+                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor)[
                     "depth_3dgs"
                 ]
                 # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
@@ -123,33 +117,22 @@ class EditTrainer(BaseTrainer):
                 sam_point = sam_point * np.array([self.cam.image_width, self.cam.image_height])
                 unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
                 # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
-                negative_points3d.append(unprojected_points3d+center.detach().cpu().numpy()+intersection_point)
+                negative_points3d.append(unprojected_points3d)
             
             positive_points3d = np.array(positive_points3d)
             negative_points3d = np.array(negative_points3d)
             self.masks, _ = self.update_sam_mask_with_point_prompt(self.colmap_cameras, positive_points3d, negative_points3d)
-            del gaussian_copy
-            torch.cuda.empty_cache()
 
         elif sam_option == 3:
-            gaussian_copy = copy.deepcopy(self.gaussian)
-            center = gaussian_copy._xyz.mean(dim=0)
-            gaussian_copy._xyz = gaussian_copy._xyz - center
-            
-            intersection_point = np.array(self.roate_point)
 
-            gaussian_copy._xyz = gaussian_copy._xyz - torch.from_numpy(intersection_point).to(gaussian_copy._xyz.device).to(torch.float32)
-            
             self.positive_sam_points = np.empty((0,2)) if self.positive_sam_points.shape[0] == 0 else self.positive_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             self.negative_sam_points = np.empty((0,2)) if self.negative_sam_points.shape[0] == 0 else self.negative_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
-            init_render = render(self.cam, gaussian_copy, self.pipe ,self.background_tensor)["render"]
+            init_render = render(self.cam, self.gaussian, self.pipe ,self.background_tensor)["render"]
             save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
             self.masks, _ = self.update_sam2_mask_with_point_prompt(self.colmap_cameras, 
                                                                     self.positive_sam_points ,
                                                                     self.negative_sam_points)
-            del gaussian_copy
-            torch.cuda.empty_cache()
         
         self.guidance = EditGuidance(
             guidance=cur_2D_guidance,
@@ -310,7 +293,6 @@ if __name__ == "__main__":
     parser.add_argument("--positive_sam_points", type=str, default="/", help="the path of the positive sam points.")
     parser.add_argument("--negative_sam_points", type=str, default="/", help="the path of the negative sam points.")
     parser.add_argument("--camera", type=str, default="tmd_delete/camera.pkl", help="camera.")
-    parser.add_argument("--center_point", type=str, help="center point.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):

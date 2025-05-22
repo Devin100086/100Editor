@@ -5,12 +5,11 @@ Helper functions for Executing Command.
 import subprocess
 
 def training_text_adding_command(
-    gs_source, colmap_dir, edit_cam_num, guidance_type, text_prompt, edit_train_steps,
+    gs_source, colmap_dir, edit_cam_num, guidance_type, text_prompt, origin_prompt, edit_train_steps,
     per_editing_step, edit_begin_step, edit_until_step, lambda_l1, lambda_p,
     lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,
     sam_option, seg_prompt, text_videoEditing, gs_lr_scaler, gs_lr_end_scaler, color_lr_scaler, 
     opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler, camera, positive_sam_points, negative_sam_points, use_original_resolution,
-    center_point
 ):
     process = subprocess.Popen([
         "python",
@@ -20,6 +19,7 @@ def training_text_adding_command(
         "--edit_cam_num", str(edit_cam_num),
         "--guidance_type", str(guidance_type),
         "--text_prompt", str(text_prompt),
+        "--origin_prompt", str(origin_prompt),
         "--edit_train_steps", str(edit_train_steps),
         "--per_editing_step", str(per_editing_step),
         "--edit_begin_step", str(edit_begin_step),
@@ -41,7 +41,6 @@ def training_text_adding_command(
         "--scaling_lr_scaler", str(scaling_lr_scaler),
         "--rotation_lr_scaler", str(rotation_lr_scaler),
         "--camera", str(camera),
-        "--center_point", str(center_point),
         "--video",str(text_videoEditing),
         "--use_original_resolution", str(use_original_resolution)
     ])
@@ -92,9 +91,9 @@ def training_fine_adding_command(
     return process
 
 def training_delete_command(gs_source, colmap_dir, inpaint_scale, mask_dilate, edit_cam_num, delete_prompt,
-    inpaint_prompt, edit_train_steps, per_editing_step, edit_begin_step, edit_until_step,
+    use_original_resolution, edit_train_steps, per_editing_step, edit_begin_step, edit_until_step,
     lambda_l1, lambda_p, lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale,
-    lambda_anchor_opacity, video, sam_type, sam_points, camera, gs_lr_scaler, gs_lr_end_scaler, color_lr_scaler, 
+    lambda_anchor_opacity, video, sam_type, camera, gs_lr_scaler, gs_lr_end_scaler, color_lr_scaler, 
     opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler,  positive_sam_points, negative_sam_points
 ):
     process = subprocess.Popen([
@@ -109,7 +108,6 @@ def training_delete_command(gs_source, colmap_dir, inpaint_scale, mask_dilate, e
         "--positive_sam_points", str(positive_sam_points),
         "--negative_sam_points", str(negative_sam_points),
         "--delete_prompt", str(delete_prompt),
-        "--inpaint_prompt", str(inpaint_prompt),
         "--edit_train_steps", str(edit_train_steps),
         "--per_editing_step", str(per_editing_step),
         "--edit_begin_step", str(edit_begin_step),
@@ -128,6 +126,7 @@ def training_delete_command(gs_source, colmap_dir, inpaint_scale, mask_dilate, e
         "--rotation_lr_scaler", str(rotation_lr_scaler),
         "--video", str(video),
         "--camera", str(camera),
+        "--use_original_resolution", str(use_original_resolution)
     ])
     return process
 

@@ -3,7 +3,11 @@ from pathlib import Path
 from PIL import Image
 import sys
 import os
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from threestudio.utils.dpt import DPT
+from threestudio.utils.transform import rotate_gaussians, scale_gaussians, translate_gaussians
+from threestudio.utils.transform import default_model_mtx
 from EditorGS.GUIEditor.train_base import *
 from EditorGS.gaussiansplatting.gaussian_renderer import render
 from EditorGS.gaussiansplatting.scene.vanilla_gaussian_model import (
@@ -20,9 +24,8 @@ import torch
 
 
 class ShowGaussian():
-    def __init__(self,gs_source,colmap_dir):
+    def __init__(self,gs_source):
         self.gs_source = gs_source
-        self.colmap_dir = colmap_dir
         self.gaussian = GaussianModel(
             sh_degree=0,
             anchor_weight_init_g0=1.0,
@@ -39,35 +42,7 @@ class ShowGaussian():
         self.background_tensor = torch.tensor(
             [0, 0, 0], dtype=torch.float32, device="cuda"
         )
-        self.gs_lr_scaler = 3.0
-        self.lr_final_scaler = 2.0
-        self.color_lr_scaler = 3.0
-        self.opacity_lr_scaler = 2.0
-        self.scaling_lr_scaler = 2.0
-        self.rotation_lr_scaler = 2.0
-        self.gs_lr_end_scaler = 2.0
-        if self.colmap_dir is not None:
-            scene = CamScene(self.colmap_dir, h=512, w=512)
-            self.cameras_extent = scene.cameras_extent
-            self.colmap_cameras = scene.cameras
-
-    def configure_optimizers(self):
-        opt = OptimizationParams(
-            parser = ArgumentParser(description="Training script parameters"),
-            max_steps= 0,
-            lr_scaler = self.gs_lr_scaler,
-            lr_final_scaler = self.gs_lr_end_scaler,
-            color_lr_scaler = self.color_lr_scaler,
-            opacity_lr_scaler = self.opacity_lr_scaler,
-            scaling_lr_scaler = self.scaling_lr_scaler,
-            rotation_lr_scaler = self.rotation_lr_scaler,
-        )
-        opt = OmegaConf.create(vars(opt))
-        # opt.update(self.training_args)
-        self.gaussian.spatial_lr_scale = self.cameras_extent
-        self.gaussian.training_setup(opt)
-        self.opt = opt
-
+        
     def show(self, depth, cam):
         network = EditorNetwork(host="127.0.0.1",port=8084)
         cache_dir = Path("tmp_add").absolute().as_posix()
@@ -104,7 +79,7 @@ class ShowGaussian():
 
         with torch.no_grad():
             render_pkg = render(cam, self.gaussian, self.pipe, self.background_tensor)
-        rendered_depth = (1/render_pkg["depth_3dgs"])[..., ~object_mask]
+        rendered_depth = (1/(render_pkg["depth_3dgs"]+1e-6))[..., ~object_mask]
         inpainted_depth = estimated_depth[~object_mask]
         object_depth = estimated_depth[..., object_mask]
 
@@ -179,7 +154,7 @@ class ShowGaussian():
             self.gaussian.concat_gaussians(new_object_gaussian)
             self.scale_depth = False
             self.gaussian.save_ply("tmp_add/merge.ply")
-            network.render(self.pipe,self.gaussian,0, render,self.background_tensor,0,self.opt,show=True)
+            network.render(self.pipe,self.gaussian,0, render,self.background_tensor,0, OmegaConf.create({}), show=True)
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -190,8 +165,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):
-        shower = ShowGaussian(args.gs_source,args.colmap_dir)
-        shower.configure_optimizers()
+        shower = ShowGaussian(args.gs_source)
         with open(args.cam_dir, 'rb') as f:
             cam = pickle.load(f)
         

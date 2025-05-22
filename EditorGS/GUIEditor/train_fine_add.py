@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from omegaconf import OmegaConf
+import subprocess
 from tqdm import tqdm
 import sys
 import os
@@ -13,6 +14,9 @@ from utils import *
 import torch.nn.functional as F
 import numpy as np
 import torch
+from PIL import Image
+import rembg
+from pathlib import Path
 
 from torchvision.utils import save_image
 
@@ -79,12 +83,12 @@ class TrainFineeAdd(BaseTrainer):
 
         return masks, selected_mask
 
-    def edit(self, one_time = True):
+    def edit(self, video = True):
         from threestudio.models.guidance.brushnet_guidance import (
                     BrushNetGuidance,
                 )
         self.brushnet = BrushNetGuidance(
-                    OmegaConf.create({"min_step_percent": 0.02, "max_step_percent": 0.98, "video": one_time})
+                    OmegaConf.create({"min_step_percent": 0.02, "max_step_percent": 0.98, "video": video})
                 )
         cur_2D_guidance = self.brushnet
         print("using BrushNet!")
@@ -124,7 +128,7 @@ class TrainFineeAdd(BaseTrainer):
         
         for step in tqdm(range(self.edit_train_steps)):
             network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
-            if step % self.cameara_update_step == 0 and one_time:
+            if step % self.cameara_update_step == 0 and video:
                 self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
 
             if not view_index_stack:
@@ -193,6 +197,64 @@ class TrainFineeAdd(BaseTrainer):
             for view_index_tmp in range(len(self.view_list)):
                 self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
 
+def add_sketch(image_pil, text_prompt):
+    from lang_sam import LangSAM
+    langsam = LangSAM()
+    results = langsam.predict([image_pil], [text_prompt])
+    mask = results[0]['masks'].astype(np.uint8) * 255
+    mask = mask.squeeze()
+    original_image = np.array(image_pil)
+    bgra_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2BGRA)
+    bgra_image[:, :, 3] = mask
+    out = Image.fromarray(bgra_image)
+
+    removed_bg = rembg.remove(out)
+
+    cache_dir = Path("tmp_add").absolute().as_posix()
+    os.makedirs(cache_dir, exist_ok=True)
+    mv_image_dir = os.path.join(cache_dir, "multiview_pred_images")
+    os.makedirs(mv_image_dir, exist_ok=True)
+    inpaint_path = os.path.join(cache_dir, "inpainted.png")
+    removed_bg_path = os.path.join(cache_dir, "removed_bg.png")
+    mesh_path = os.path.join(cache_dir, "inpaint_mesh.obj")
+    gs_path = os.path.join(cache_dir, "inpaint_gs.obj")
+    image_pil.save(inpaint_path)
+    removed_bg.save(removed_bg_path)
+
+    p1 = subprocess.Popen(
+        f"{sys.prefix}/bin/accelerate launch --config_file 1gpu.yaml test_mvdiffusion_seq.py "
+        f"--save_dir {mv_image_dir} --config configs/mvdiffusion-joint-ortho-6views.yaml"
+        f" validation_dataset.root_dir={cache_dir} validation_dataset.filepaths=[removed_bg.png]".split(
+            " "
+        ),
+        cwd="threestudio/utils/wonder3D",
+    )
+    p1.wait()
+
+    print(
+        f"{sys.prefix}/bin/python launch.py --config configs/neuralangelo-ortho-wmask.yaml --save_dir {cache_dir} --gpu 0 --train dataset.root_dir={os.path.dirname(mv_image_dir)} dataset.scene={os.path.basename(mv_image_dir)}"
+    )
+    cmd = f"{sys.prefix}/bin/python launch.py --config configs/neuralangelo-ortho-wmask.yaml --save_dir {cache_dir} --gpu 0 --train dataset.root_dir={os.path.dirname(mv_image_dir)} dataset.scene={os.path.basename(mv_image_dir)}".split(
+        " "
+    )
+    p2 = subprocess.Popen(
+        cmd,
+        cwd="threestudio/utils/wonder3D/instant-nsr-pl",
+    )
+    p2.wait()
+    p3 = subprocess.Popen(
+        [
+            f"{sys.prefix}/bin/python",
+            "train_from_mesh.py",
+            "--mesh",
+            mesh_path,
+            "--save_path",
+            gs_path,
+            "--prompt",
+            "",
+        ]
+    )
+    p3.wait()
 
 if __name__ == "__main__":
     import time 
@@ -221,6 +283,13 @@ if __name__ == "__main__":
     parser.add_argument("--lambda_anchor_scale", type=float, default=1.0, help="Lambda anchor scale.")
     parser.add_argument("--lambda_anchor_opacity", type=float, default=1.0, help="Lambda anchor opacity.")
     parser.add_argument("--video", type=str, default=True, help="video editing pattern.")
+    parser.add_argument("--gs_lr_scaler", type=float, default=1.0, help="Initial learning rate scaler for GS.")
+    parser.add_argument("--gs_lr_end_scaler", type=float, default=1.0, help="Final learning rate scaler for GS.")
+    parser.add_argument("--color_lr_scaler", type=float, default=3.0, help="Learning rate scaler for color.")
+    parser.add_argument("--opacity_lr_scaler", type=float, default=2.0, help="Learning rate scaler for opacity.")
+    parser.add_argument("--scaling_lr_scaler", type=float, default=2.0, help="Learning rate scaler for scaling.")
+    parser.add_argument("--rotation_lr_scaler", type=float, default=2.0, help="Learning rate scaler for rotation.")
+    parser.add_argument("--use_original_resolution", type=str, default="False", help="use original resolution.")
 
 
     args = parser.parse_args()
@@ -233,7 +302,7 @@ if __name__ == "__main__":
         )
         trainer.configure_optimizers()
         
-        trainer.edit(one_time=eval(args.video))
+        trainer.edit(video=eval(args.video))
     end_time = time.time()
     print("Time taken:", end_time - start_time)
     

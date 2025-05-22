@@ -1,4 +1,3 @@
-import math
 import random
 from omegaconf import OmegaConf
 import torch
@@ -7,12 +6,12 @@ import os
 import torchvision
 import torch.nn.functional as F
 from torchvision.transforms.functional import to_pil_image, to_tensor
-from EditorGS.gaussiansplatting.scene.cameras import Simple_Camera
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import sys
 import gc
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"gaussiansplatting"))
+from threestudio.utils.sam import LangSAMTextSegmentor
 from EditorGS.gaussiansplatting.scene import GaussianModel
 from EditorGS.gaussiansplatting.gaussian_renderer import render
 from EditorGS.gaussiansplatting.arguments import (
@@ -21,24 +20,11 @@ from EditorGS.gaussiansplatting.arguments import (
 )
 from threestudio.utils.typing import *
 from threestudio.utils.clip_metrics import *
-from threestudio.utils.transform import rotate_gaussians
-from threestudio.utils.dpt import DPT
 from argparse import ArgumentParser
 from threestudio.utils.misc import (
     get_device,
-    step_check,
-    dilate_mask,
-    erode_mask,
-    fill_closed_areas,
 )
-from threestudio.utils.transform import (
-    rotate_gaussians,
-    translate_gaussians,
-    scale_gaussians,
-    default_model_mtx,
-)
-from threestudio.utils.sam import LangSAMTextSegmentor
-from threestudio.utils.camera import camera_ray_sample_points, project, unproject, project_3d_to_2d
+from threestudio.utils.camera import project_3d_to_2d
 
 from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
 from transformers import pipeline
@@ -54,7 +40,7 @@ class BaseTrainer:
         self.edit_train_steps = None if cfg.edit_train_steps==-1 else cfg.edit_train_steps
 
         # Camera
-        self.gs_lr_scaler = cfg.gs_lr_scaler
+        self.gs_lr_scaler = cfg.gs_lr_scaler 
         self.color_lr_scaler = cfg.color_lr_scaler
         self.opacity_lr_scaler = cfg.opacity_lr_scaler
         self.scaling_lr_scaler = cfg.scaling_lr_scaler
@@ -130,8 +116,6 @@ class BaseTrainer:
         self.system_need_update = False
         self.inpaint_again = True
         self.scale_depth = True
-
-        self.save_mask_tmp =  os.path.join(os.path.dirname(cfg.positive_sam_points),"mask")
 
     @torch.no_grad()
     def render_cameras_list(self, edit_cameras):
@@ -319,6 +303,9 @@ class BaseTrainer:
     
     def update_mask(self, edit_cameras, text_prompt = "hat") -> None:
 
+        from threestudio.utils.sam import LangSAMTextSegmentor
+        lang_sam = LangSAMTextSegmentor().to(get_device())
+
         masks = []
         weights = torch.zeros_like(self.gaussian._opacity)
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
@@ -330,7 +317,7 @@ class BaseTrainer:
                 cur_cam, self.gaussian, self.pipe, self.background_tensor
             )["render"]
             
-            mask = self.lang_sam(this_frame.unsqueeze(0).permute(0,2,3,1), text_prompt)[
+            mask = lang_sam(this_frame.unsqueeze(0).permute(0,2,3,1), text_prompt)[
                     0
                 ].to(get_device())
 
@@ -459,14 +446,14 @@ class BaseTrainer:
             self.gaussian.apply_weights(
                 cur_cam, weights, weights_cnt, mask.to(torch.float32)
             )
-            masks.append(mask)
+            masks.append(mask.to(torch.float16))
 
         weights /= weights_cnt + 1e-7
         selected_mask = weights > self.mask_thres
         selected_mask = selected_mask[:, 0]
         self.gaussian.set_mask(selected_mask)
         self.gaussian.apply_grad_mask(selected_mask)
-        del sam2_predictor
+        del sam2_predictor,state
         gc.collect()    
         torch.cuda.empty_cache()
 

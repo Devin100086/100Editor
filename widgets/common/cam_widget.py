@@ -37,6 +37,9 @@ class CamWidget(Widget):
         self.current_control_mode = 0
         self.last_drag_delta = imgui.ImVec2(0, 0)
 
+        self.center = torch.tensor((0.0, 0.0, 0.0))
+        self.center_roate = torch.tensor((0.0, 0.0, 0.0))
+
     @imgui_utils.scoped_by_object_id
     def __call__(self, show: bool):
         viz = self.viz
@@ -44,6 +47,12 @@ class CamWidget(Widget):
         self.handle_dragging_in_window(**active_region)
         self.handle_mouse_wheel()
         self.handle_wasd()
+        if "mean_xyz" in viz.result.keys() and not torch.allclose(self.center, viz.result.mean_xyz.cpu()):
+            self.lookat_point = viz.result.mean_xyz.cpu()
+            self.center = viz.result.mean_xyz.cpu()
+        elif "center" in viz.result.keys() and not torch.allclose(self.center_roate, viz.result.center.cpu()):
+            self.lookat_point = viz.result.center.cpu()
+            self.center_roate = viz.result.center.cpu()
 
         if show:
             label("Camera Mode", viz.label_w)
@@ -91,7 +100,8 @@ class CamWidget(Widget):
                 self.lookat_point = torch.tensor(look_at_point_tuple)
                 imgui.same_line()
                 if imgui_utils.button("Set to xyz mean", width=viz.button_large_w) and "mean_xyz" in viz.result.keys():
-                    self.lookat_point = viz.result.mean_xyz
+                    self.lookat_point = viz.result.mean_xyz.cpu()
+
             imgui.pop_item_width()
 
             label("Invert X", viz.label_w)

@@ -5,10 +5,11 @@ from threestudio.utils.perceptual import PerceptualLoss
 from threestudio.models.prompt_processors.stable_diffusion_prompt_processor import StableDiffusionPromptProcessor
 
 class EditGuidance:
-    def __init__(self, guidance, gaussian, origin_frames, text_prompt, per_editing_step, edit_begin_step,
+    def __init__(self, guidance, guidance_type, gaussian, origin_frames, depths, text_prompt, per_editing_step, edit_begin_step,
                  edit_until_step, lambda_l1, lambda_p, lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale,
-                 lambda_anchor_opacity, cams):
+                 lambda_anchor_opacity, cams, origin_text_prompt = None):
         self.guidance = guidance
+        self.guidance_type = guidance_type
         self.gaussian = gaussian
         self.per_editing_step = per_editing_step
         self.edit_begin_step = edit_begin_step
@@ -20,6 +21,7 @@ class EditGuidance:
         self.lambda_anchor_scale = lambda_anchor_scale
         self.lambda_anchor_opacity = lambda_anchor_opacity
         self.origin_frames = origin_frames
+        self.depths = depths
         self.cams = cams
         self.edit_frames = {}
         self.visible = True
@@ -29,6 +31,15 @@ class EditGuidance:
                 "prompt": text_prompt,
             }
         )()
+        if origin_text_prompt is not None:
+            self.origin_prompt_utils = StableDiffusionPromptProcessor(
+                {
+                    "pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5",
+                    "prompt": origin_text_prompt,
+                }
+            )()
+        else:
+            self.origin_prompt_utils = None
         self.perceptual_loss = PerceptualLoss().eval().to(get_device())
     
     def __call__(self, rendering, view_index, step):
@@ -42,13 +53,22 @@ class EditGuidance:
                 < self.edit_until_step
                 and step % self.per_editing_step == 0
         ):
-            result = self.guidance(
-                rendering,
-                self.origin_frames[view_index],
-                self.prompt_utils,
-            )
-            self.edit_frames[view_index] = result["edit_images"].detach().clone() # 1 H W C
+            if self.guidance_type == "InstructPix2Pix":
+                result = self.guidance(
+                    rendering,
+                    self.origin_frames[view_index],
+                    self.prompt_utils,
+                )
+                self.edit_frames[view_index] = result["edit_images"].detach().clone() # 1 H W C
             # print("edited image index", cur_index)
+            elif self.guidance_type == "ControlNet-Depth":
+                result = self.guidance(
+                    rendering,
+                    self.depths[view_index],
+                    self.prompt_utils,
+                    self.origin_prompt_utils,
+                )
+                self.edit_frames[view_index] = result["edit_images"].detach().clone() # 1 H W C
 
         gt_image = self.edit_frames[view_index]
 
@@ -71,14 +91,22 @@ class EditGuidance:
 
         return loss
 
-    def edit_all(self, frames, origin_frame):
+    def edit_all(self, frames, image_conds):
         
         # nerf2nerf loss
-        result = self.guidance(
-            frames,
-            origin_frame,
-            self.prompt_utils,
-        )
+        if self.origin_prompt_utils == None:
+            result = self.guidance(
+                frames,
+                image_conds,
+                self.prompt_utils,
+            )
+        else:
+            result = self.guidance(
+                frames,
+                image_conds,
+                self.prompt_utils,
+                self.origin_prompt_utils,
+            )
         gt_image = result["edit_images"].detach().clone()
 
         return gt_image

@@ -18,7 +18,7 @@ torch.manual_seed(42)
 torch.cuda.manual_seed(42)
 torch.cuda.manual_seed_all(42)
 
-torch.set_grad_enabled(False)
+# torch.set_grad_enabled(False)
 
 target_image_size = 512
 root_path = "LeftRefill/check_points/ref_guided_inpainting"
@@ -148,6 +148,7 @@ def pad_image(input_image):
 
 sampler = initialize_model(path=root_path)
 def predict(source, reference, ddim_steps, num_samples, scale, seed):
+    torch.set_grad_enabled(False)
     source_img = source["image"].convert("RGB")
     origin_w, origin_h = source_img.size
     ratio = origin_h / origin_w

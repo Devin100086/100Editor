@@ -4,8 +4,8 @@ import pickle
 from imgui_bundle import imgui
 from omegaconf import OmegaConf
 from EditorGS.gaussiansplatting.scene.cameras import CustomCam             
-from EditorGS.GUIEditor.train_coarse_add import TrainCoarseAdd
-from EditorGS.GUIEditor.show import ShowGaussian                                    
+from EditorGS.GUIEditor.train_coarse_add import TrainCoarseAdd   
+from EditorGS.GUIEditor.train_fine_add import add_sketch                   
 from lumina3D_utils.gui_utils import imgui_utils
 from imgui_bundle import implot
 from lumina3D_utils.command_utils import *
@@ -19,7 +19,7 @@ import sys
 from shap_e.diffusion.sample import sample_latents
 from shap_e.diffusion.gaussian_diffusion import diffusion_from_config
 from shap_e.models.download import load_model, load_config
-from shap_e.util.notebooks import decode_latent_mesh
+from shap_e.util.notebooks import decode_latent_mesh,create_pan_cameras,decode_latent_images
 
 from widgets.widget import Widget
 import glfw
@@ -78,9 +78,8 @@ class EditorWidget(Widget):
         self.text_sam_positive_points = []
         self.text_sam_negative_points = []
 
-        # mask-edit
+        # madding
         self.mask_prompt = "add a red hat"
-        self.mask = False
         self.start_rec_pos = None
         self.end_rec_pos = None
         self.rec_start = None 
@@ -90,7 +89,7 @@ class EditorWidget(Widget):
         self.depth = 1
 
         # adding
-        self.editing_option = 0
+        self.editing_option = -1
         self.points = []
         self.current_color = [1.0, 1.0, 1.0, 1.0]
         self.line_width = 2.0
@@ -318,7 +317,6 @@ class EditorWidget(Widget):
                             os.system(f"rm -rf tmp_edit/render/*")
                             R = viz.extr.inverse()[:3, :3].T.numpy()
                             T = viz.extr.inverse()[:3, 3].numpy()
-                            center_point = viz.result.center_point
                             fov_rad = viz.fov / 360 * 2 * np.pi
                             cam = CustomCam(origin.size[0]//2, origin.size[1]//2, fov_rad, fov_rad, R, T, viz.extr.cuda())
                             with open(f'tmp_edit/camera.pkl', 'wb') as f:
@@ -337,7 +335,7 @@ class EditorWidget(Widget):
                                                                              scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler, 
                                                                              positive_sam_points = "tmp_edit/sam2_positive_points.npy", negative_sam_points = "tmp_edit/sam2_negative_points.npy",
                                                                              camera = "tmp_edit/camera.pkl", use_original_resolution = self.edit_use_original_resolution,
-                                                                             center_point = center_point)
+                                                                            )
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
                             self.edit3D = False
@@ -362,113 +360,17 @@ class EditorWidget(Widget):
                                 implot.end_plot()
 
                     imgui.end_tab_item()
-                
-                if imgui.begin_tab_item("mask")[0]:
-                    self.points = []
-                    self.sam_points = []
-                    if imgui.button("clear"):
-                        self.rec_start = None
-                        self.rec_end = None
-                    label("Paint Mask", viz.label_w)
-                    _, self.mask = imgui.checkbox("##Mask", self.mask)
-                    label("prompt", viz.label_w)
-                    _, self.mask_prompt = imgui.input_text("##Prompt", self.mask_prompt, 256)
-                    self.text_change = True if imgui.is_item_active() else False
-                    if not self.mask and not self.text_change and self.judge_move():  
-                        self.draw_image = False
-                        self.rec_start, self.rec_end = None, None
-                    if self.mask:
-                        self.draw_mask()
-                        self.draw_image = True
-                        imgui.begin_disabled()
-                        if imgui_utils.button("Add", width=viz.button_w):
-                            pass
-                        imgui.end_disabled()    
-                    else:
-                        edit_image = True
-                        if imgui_utils.button("Add", width=viz.button_w):
-                            cache_dir = "tmp_edit"
-                            os.makedirs("tmp_edit", exist_ok=True)
-                            mask = self.get_mask(viz.origin_image, viz.edit_image)
-                            mask.save(f"{cache_dir}/mask.png")
-                            origin = Image.fromarray(viz.result.image).convert("RGB")
-                            origin.save(f"{cache_dir}/origin.png")
-                            left_up = [self.rec_start[0]-viz.pane_w, self.rec_start[1]]
-                            right_down = [self.rec_end[0]-viz.pane_w, self.rec_end[1]]
-                            zoom = min((viz.content_width - viz.pane_w) / viz._tex_obj.width, viz.content_height / viz._tex_obj.height)
-                            R = viz.extr.inverse()[:3, :3].T.numpy()
-                            T = viz.extr.inverse()[:3, 3].numpy()
-                            fov_rad = viz.fov / 360 * 2 * np.pi
-                            cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
-                            with open(f'{cache_dir}/camera.pkl', 'wb') as f:
-                                pickle.dump(cam, f)     
-                            
-                            cfg = Config(
-                                ply_file_path=viz.args.ply_file_paths[0],
-                                data_source=viz.args.data_source,
-                                mask_prompt=self.mask_prompt,
-                                edit_train_steps=self.edit_train_steps,
-                                left_up=left_up,
-                                right_down=right_down,
-                                zoom=zoom,
-                            )
-                            self.traincoarseadd = TrainCoarseAdd(cfg=cfg)  
-                            self.traincoarseadd.add(cam)
-                            self.rec_start, self.rec_end = None, None
 
-                    imgui.separator()
-                    label("Depth", viz.label_w)
-                    _, self.depth = imgui.slider_float("##Depth", self.depth, 0, 10, format="%.1f")
-                    if os.path.exists("tmp_add/inpaint_gs.obj"):
-                        if imgui_utils.button("Show", width=viz.button_w): 
-                            self.edit3D = True 
-                            origin = Image.fromarray(viz.result.image).convert("RGB")
-                            R = viz.extr.inverse()[:3, :3].T.numpy()
-                            T = viz.extr.inverse()[:3, 3].numpy()
-                            fov_rad = viz.fov / 360 * 2 * np.pi
-                            cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
-                            with open(f'tmp_edit/camera.pkl', 'wb') as f:
-                                pickle.dump(cam, f)    
-
-                            if self.edit_trainer != None:
-                                self.edit_trainer.terminate()
-                                self.edit_trainer.wait()   
-        
-                            self.edit_trainer = show_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
-                                                                      depth=self.depth,cam_dir=str(f"tmp_edit/camera.pkl"))
-                    else:
-                        imgui.begin_disabled()
-                        if imgui_utils.button("Show", width=viz.button_w):
-                            pass
-                        imgui.end_disabled()
-
-                    imgui.end_tab_item()
-                
                 if imgui.begin_tab_item("add")[0]:
-                    self.rec_start = None
-                    self.rec_end = None
                     self.sam_points = []
-                    label("Add Option", viz.label_w)
-                    if imgui.radio_button("Sketch", self.editing_option == 0):
-                        self.editing_option = 0
-                    imgui.same_line()
-                    if imgui.radio_button("Text", self.editing_option == 1):
-                        self.editing_option = 1
+                    label("Addding", viz.label_w)
+                    _, self.adding = imgui.checkbox("##adding", self.adding)
+                    if not self.adding and self.judge_move():  
+                        self.draw_image = False
+                        self.points = []
 
-                    if self.editing_option == 0:
-                        label("Addding", viz.label_w)
-                        _, self.adding = imgui.checkbox("##adding", self.adding)
-                        if not self.adding and self.judge_move():  
-                            self.draw_image = False
-                            self.points = []
-
-                    elif self.editing_option == 1:
-                        label("Generate 3D Prompt", viz.label_w)
-                        _, self.generate_3D_prompt = imgui.input_text("##3D Prompt", self.generate_3D_prompt, 256)
-                        if imgui_utils.button("Generate", width=viz.button_w):
-                            self.generate3D()
-
-                    if not self.adding or self.editing_option == 1:   
+                    if not self.adding:   
+                        self.edit_single = False
                         label("Depth", viz.label_w)
                         _, self.depth = imgui.slider_float("##Depth", self.depth, 0, 10, format="%.2f")
                         if os.path.exists("tmp_add/inpaint_gs.obj") and os.path.exists("tmp_edit/camera.pkl"):
@@ -494,24 +396,37 @@ class EditorWidget(Widget):
                             if imgui_utils.button("Show", width=viz.button_w):
                                 pass
                             imgui.end_disabled()
-                        if self.editing_option == 1:
-                            imgui.separator_text("Fine-Adding")
 
                     else:
-                        label("Painting", viz.label_w)
-                        _, self.painting = imgui.checkbox("##painting", self.painting)
-                        if self.painting:
+                        label("Add Option", viz.label_w)
+                        if imgui.radio_button("No", self.editing_option == -1):
+                            self.editing_option = -1
+                        imgui.same_line()
+                        if imgui.radio_button("Sketch", self.editing_option == 0):
+                            self.editing_option = 0
+                        imgui.same_line()
+                        if imgui.radio_button("Mask", self.editing_option == 1):
+                            self.editing_option = 1
+
+                        if self.editing_option == 0:
                             _, self.line_width = imgui.slider_float("width", self.line_width, 1.0, 10.0)
                             _, self.current_color = imgui.color_edit4("color choice", self.current_color)
                             if imgui.button("clear"):
                                 self.points = []
                             self.handle_mouse_input()
+                        elif self.editing_option == 1:
+                            self.draw_mask()
+                            if imgui.button("clear"):
+                                self.rec_start = None
+                                self.rec_end = None
                     
                         imgui.separator_text("Edit one image")
 
-                        self.draw_image = True if self.painting else False
-                        if not self.painting and self.judge_move():  
+                        self.draw_image = True if self.editing_option >= 0 else False
+                        if self.editing_option < 0 and self.judge_move():  
                             self.points = []
+                            self.rec_start = None
+                            self.rec_end = None
                         edit_image = True
                         label("prompt", viz.label_w)
                         _, self.sketch_prompt = imgui.input_text("##Prompt", self.sketch_prompt, 256)
@@ -523,10 +438,11 @@ class EditorWidget(Widget):
                             self.edit3D = False
                             self.edit_single = True
                             mask = self.get_mask(viz.origin_image, viz.edit_image)
-                            cache_dir = "tmp_edit"
-                            os.makedirs("tmp_edit", exist_ok=True)
+                            cache_dir = "tmp_add"
+                            os.makedirs("tmp_add", exist_ok=True)
                             mask = self.get_mask(viz.origin_image, viz.edit_image)
                             mask.save(f"{cache_dir}/mask.png")
+                            viz.result.image = (viz.result.image * 255).astype(np.uint8) if np.all(viz.result.image <= 1.0) else viz.result.image
                             origin = Image.fromarray(viz.result.image).convert("RGB")
                             origin.save(f"{cache_dir}/origin.png")
 
@@ -536,14 +452,16 @@ class EditorWidget(Widget):
                                                       image_path = f"{cache_dir}/origin.png",
                                                       mask_path = f"{cache_dir}/mask.png")
                             self.points = []
+                            self.rec_start, self.rec_end = None, None
 
                         imgui.separator_text("Coarse Adding")
 
                         label("Segmentation", viz.label_w)
                         changed, self.segmentation_prompt = imgui.input_text("##Segmentation", self.segmentation_prompt, 256)
                         if imgui_utils.button("Mesh", width=viz.button_w):
-                            cache_dir = "tmp_edit"
-                            os.makedirs("tmp_edit", exist_ok=True)
+                            cache_dir = "tmp_add"
+                            os.makedirs("tmp_add", exist_ok=True)
+                            viz.result.image = (viz.result.image * 255).astype(np.uint8) if np.all(viz.result.image <= 1.0) else viz.result.image
                             origin = Image.fromarray(viz.result.image).convert("RGB")
                             origin.save(f"{cache_dir}/origin.png")
                             cfg = Config(
@@ -555,8 +473,7 @@ class EditorWidget(Widget):
                                 right_down=None,
                                 zoom=None,
                             )
-                            self.traincoarseadd = TrainCoarseAdd(cfg=cfg)  
-                            self.traincoarseadd.add_sketch(origin, self.segmentation_prompt)                                
+                            add_sketch(origin, self.segmentation_prompt)                                
                         
                         label("Depth", viz.label_w)
                         _, self.depth = imgui.slider_float("##Depth", self.depth, 0, 10, format="%.2f")
@@ -564,6 +481,7 @@ class EditorWidget(Widget):
                             if imgui_utils.button("Show", width=viz.button_w): 
                                 self.edit_single = False
                                 self.edit3D = True 
+                                viz.result.image = (viz.result.image * 255).astype(np.uint8) if np.all(viz.result.image <= 1.0) else viz.result.image
                                 origin = Image.fromarray(viz.result.image).convert("RGB")
                                 R = viz.extr.inverse()[:3, :3].T.numpy()
                                 T = viz.extr.inverse()[:3, 3].numpy()
@@ -586,7 +504,7 @@ class EditorWidget(Widget):
                         
                         imgui.separator_text("Fine-Adding")
 
-                    if self.adding or self.editing_option == 1:
+                    if self.adding:
                         label("prompt", viz.label_w)
                         _, self.fine_add_prompt = imgui.input_text("##prompt", self.fine_add_prompt, 256)
                         label("Seg prompt", viz.label_w)
@@ -664,13 +582,13 @@ class EditorWidget(Widget):
                     _, self.delete_sam_option = imgui.combo(
                         "##SAM Type", 
                         self.delete_sam_option, 
-                        ["Lang-sam", "SAM2"]  
+                        ["No Sam", "Lang-sam", "SAM2(image)","SAM2(video)"] 
                     )
 
-                    if self.delete_sam_option == 0:
+                    if self.delete_sam_option == 1:
                         label("Seg Prompt", viz.label_w)
                         _, self.delete_prompt = imgui.input_text("##Seg Prompt", self.delete_prompt, 256)
-                    elif self.delete_sam_option == 1:
+                    elif self.delete_sam_option == 2 or self.delete_sam_option == 3:
                         if imgui.radio_button("No Points", self.delete_point_option == 0):
                             self.delete_point_option = 0
                         imgui.same_line()
@@ -700,11 +618,12 @@ class EditorWidget(Widget):
                             origin = Image.fromarray(viz.result.image).convert("RGB")
                             R = viz.extr.inverse()[:3, :3].T.numpy()
                             T = viz.extr.inverse()[:3, 3].numpy()
-                            center_point = viz.result.center_point
                             fov_rad = viz.fov / 360 * 2 * np.pi
-                            cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
+                            cam = CustomCam(origin.size[0]//2, origin.size[1]//2, fov_rad, fov_rad, R, T, viz.extr.cuda())
                             with open(f'tmp_delete/camera.pkl', 'wb') as f:
                                 pickle.dump(cam, f)  
+                            os.makedirs("tmp_delete/render", exist_ok=True)
+                            os.system(f"rm -rf tmp_delete/render/*")
                             self.edit_trainer = training_delete_command(
                                 gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
                                 inpaint_scale=self.inpaint_scale,mask_dilate=self.mask_dilate,
@@ -720,7 +639,7 @@ class EditorWidget(Widget):
                                 scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler,
                                 sam_type = self.delete_sam_option, positive_sam_points = "tmp_delete/sam2_positive_points.npy", 
                                 negative_sam_points = "tmp_delete/sam2_negative_points.npy", camera = "tmp_delete/camera.pkl",
-                                center_point = center_point, use_original_resolution = self.delete_use_original_resolution,
+                                use_original_resolution = self.delete_use_original_resolution,
                             )
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
@@ -743,8 +662,7 @@ class EditorWidget(Widget):
         viz.args.rec_start = self.rec_start
         viz.args.rec_end = self.rec_end
         viz.args.edit_image = edit_image
-        viz.args.painting = self.painting  
-        viz.args.mask = self.mask     
+        viz.args.painting = self.editing_option >= 0  
         viz.args.points = self.points
         viz.args.current_color = self.current_color
         viz.args.line_width = self.line_width
@@ -826,15 +744,14 @@ class EditorWidget(Widget):
                 )
         from threestudio.models.prompt_processors.stable_diffusion_prompt_processor import StableDiffusionPromptProcessor
         brushnet = BrushNetGuidance(
-                    OmegaConf.create({"min_step_percent": 0.02, "max_step_percent": 0.98})
+                    OmegaConf.create({"min_step_percent": 0.02, "max_step_percent": 0.98, "generator_seed": seed})
                 )
 
         image = Image.open(f"{image_path}")
         image = to_tensor(image).unsqueeze(0).permute(0,2,3,1).to("cuda")
         mask = Image.open(f"{mask_path}").convert('L') 
         mask = to_tensor(mask).unsqueeze(0).permute(0,2,3,1).repeat(1,1,1,3).float().to("cuda")
-        image =  image*(1-mask)
-        generator = torch.Generator("cuda").manual_seed(seed)
+        masked_image =  image*(1-mask)
         prompt_utils = StableDiffusionPromptProcessor(
             {
                 "pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5",
@@ -844,62 +761,13 @@ class EditorWidget(Widget):
         # mask = np.ones((image.size[1], image.size[0]), dtype=np.uint8) * 255
         # mask_image = Image.fromarray(mask)
         result = brushnet(
-                image,
+                masked_image,
                 mask,
                 prompt_utils,
             )
         
+        print("😚Finally Editing!")
         return np.array(result['edit_images'].squeeze(0).cpu())
-
-    def generate3D(self):
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        xm = load_model('transmitter', device=device)
-        model = load_model('text300M', device=device)
-        diffusion = diffusion_from_config(load_config('diffusion'))
-
-        latents = sample_latents(
-            batch_size=1,
-            model=model,
-            diffusion=diffusion,
-            guidance_scale=15.0,
-            model_kwargs=dict(texts=[self.generate_3D_prompt]),
-            progress=True,
-            clip_denoised=True,
-            use_fp16=True,
-            use_karras=True,
-            karras_steps=64,
-            sigma_min=1e-3,
-            sigma_max=160,
-            s_churn=0,
-        )
-        
-        mesh_path = "tmp_add/inpaint_mesh.obj"
-        gs_path = "tmp_add/inpaint_gs.obj"
-
-        for i, latent in enumerate(latents):
-            t = decode_latent_mesh(xm, latent).tri_mesh()
-            with open(mesh_path, 'w') as f:
-                t.write_obj(f)
-        
-
-
-        del xm
-        del model
-        del diffusion
-
-        p3 = subprocess.Popen(
-            [
-                f"{sys.prefix}/bin/python",
-                "train_from_mesh.py",
-                "--mesh",
-                mesh_path,
-                "--save_path",
-                gs_path,
-                "--prompt",
-                "",
-            ]
-        )
-        p3.wait()
 
     def close(self):
         if self.edit_trainer != None:

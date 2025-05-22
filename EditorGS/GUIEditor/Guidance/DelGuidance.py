@@ -8,10 +8,11 @@ from torchvision.transforms import ToTensor
 from threestudio.models.prompt_processors.stable_diffusion_prompt_processor import StableDiffusionPromptProcessor
 from transformers import pipeline
 from PIL import Image
+from LeftRefill.run import predict
 # Diffusion model (cached) + prompts + edited_frames + training config
 
 class DelGuidance:
-    def __init__(self, guidance, gaussian, text_prompt,per_editing_step,edit_begin_step, edit_until_step,
+    def __init__(self, guidance, gaussian, per_editing_step, edit_begin_step, edit_until_step,
                  lambda_l1, lambda_p, lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,
                  cams):
         self.guidance = guidance # ctn-inpaint guidance
@@ -28,16 +29,15 @@ class DelGuidance:
         self.gaussian = gaussian
         self.edit_frames = {}
         self.depth_frames = {}
-        self.text_prompt = text_prompt
         self.cams = cams
         self.visible = True
 
-        self.prompt_utils = StableDiffusionPromptProcessor(
-            {
-                "pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5",
-                "prompt": text_prompt,
-            }
-        )()
+        # self.prompt_utils = StableDiffusionPromptProcessor(
+        #     {
+        #         "pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5",
+        #         "prompt": text_prompt,
+        #     }
+        # )()
         self.step = 0
         self.perceptual_loss = PerceptualLoss().eval().to(get_device())
         self.to_tensor = ToTensor()
@@ -58,11 +58,9 @@ class DelGuidance:
             image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
             image = torch.from_numpy(image)
             return image
-
-        from LeftRefill.run import predict
-
+        
         source = {"image":image_in_pil, "mask":mask_in_pil}
-        reference = Image.open("EditorGS/image2.png")
+        reference = Image.open("EditorGS/image.png")
         out = predict(source, reference, 25, 1, 2.5, 124241)[0]
         # control_image = make_inpaint_condition(image_in_pil, mask_in_pil).to("cuda")
         # generator = torch.Generator(device="cuda").manual_seed(0)
@@ -80,6 +78,7 @@ class DelGuidance:
         # self.depth_frames[view_index] = self.to_tensor(self.depthPredictor(out)["depth"]).unsqueeze(0).permute(0,2,3,1)
 
     def __call__(self, rendering, image_in, mask_in, view_index, step):
+        torch.cuda.empty_cache()
         self.gaussian.update_learning_rate(step)
 
         if view_index not in self.edit_frames:

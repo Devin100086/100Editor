@@ -22,11 +22,17 @@ class EditcamWidget(cam_widget.CamWidget):
     def __call__(self, show: bool):
         viz = self.viz
         active_region = EasyDict(x=viz.pane_w, y=0, width=viz.content_width - viz.pane_w, height=viz.content_height)
-        if not viz.args.painting and not viz.args.mask:
+        if not viz.args.painting:
             self.handle_dragging_in_window(**active_region)
             self.handle_mouse_wheel()
             if not viz.args.text_change:
                 self.handle_wasd()
+            if "mean_xyz" in viz.result.keys() and not torch.allclose(self.center, viz.result.mean_xyz.cpu()):
+                self.lookat_point = viz.result.mean_xyz.cpu()
+                self.center = viz.result.mean_xyz.cpu()
+            elif "center" in viz.result.keys() and not torch.allclose(self.center_roate, viz.result.center.cpu()):
+                self.lookat_point = viz.result.center.cpu()
+                self.center_roate = viz.result.center.cpu()
 
         if show:
             label("Camera Mode", viz.label_w)

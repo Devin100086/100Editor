@@ -1,6 +1,5 @@
 from imgui_bundle import imgui
 from OpenGL.GL import *
-from PIL import Image
 import numpy as np
 import torch
 import sys

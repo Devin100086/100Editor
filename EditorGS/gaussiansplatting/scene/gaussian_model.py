@@ -639,6 +639,26 @@ class GaussianModel:
                 optimizable_tensors[group["name"]] = group["params"][0]
 
         return optimizable_tensors
+    
+    def cat_tensor(
+            self,
+            new_xyz,
+            new_features_dc,
+            new_features_rest,
+            new_opacities,
+            new_scaling,
+            new_rotation
+        ):
+        self._xyz = torch.cat((self._xyz, new_xyz), dim=0)
+        self._features_dc = torch.cat((self._features_dc, new_features_dc), dim=0)
+        self._features_rest = torch.cat((self._features_rest, new_features_rest), dim=0)
+        self._opacity = torch.cat((self._opacity, new_opacities), dim=0)
+        self._scaling = torch.cat((self._scaling, new_scaling), dim=0)
+        self._rotation = torch.cat((self._rotation, new_rotation), dim=0)
+
+        self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
 
     def densification_postfix(
             self,
@@ -659,6 +679,7 @@ class GaussianModel:
         }
 
         optimizable_tensors = self.cat_tensors_to_optimizer(d)
+        # optimizable_tensors = self.cat_tensor(d)
         self._xyz = optimizable_tensors["xyz"]
         self._features_dc = optimizable_tensors["f_dc"]
         self._features_rest = optimizable_tensors["f_rest"]
@@ -905,7 +926,7 @@ class GaussianModel:
         new_opacities = another_gaussian._opacity
         new_scaling = another_gaussian._scaling
         new_rotation = another_gaussian._rotation
-        self.densification_postfix(
+        self.cat_tensor(
             new_xyz,
             new_features_dc,
             new_features_rest,
@@ -916,7 +937,7 @@ class GaussianModel:
         self.mask = ~self.mask
         self.mask = torch.cat([self.mask, torch.ones_like(new_opacities[:, 0], dtype=torch.bool)], dim=0)
         self.remove_grad_mask()
-        self.apply_grad_mask(self.mask)
+        # self.apply_grad_mask(self.mask)
 
         self._generation = torch.cat([self._generation, torch.zeros_like(new_opacities[:, 0], dtype=torch.int64)],
                                      dim=0)
