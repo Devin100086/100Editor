@@ -17,8 +17,11 @@ import torch
 from PIL import Image
 import rembg
 from pathlib import Path
-
+import datetime
 from torchvision.utils import save_image
+from threestudio.models.guidance.brushnet_guidance import (
+            BrushNetGuidance,
+        )
 
 class TrainFineeAdd(BaseTrainer):
     def __init__(self, cfg):
@@ -84,11 +87,15 @@ class TrainFineeAdd(BaseTrainer):
         return masks, selected_mask
 
     def edit(self, video = True):
-        from threestudio.models.guidance.brushnet_guidance import (
-                    BrushNetGuidance,
-                )
+        now = datetime.datetime.now()
+        now = f"{self.edit_text}@{now.strftime('%Y_%m_%d_%H_%M')}"
+        self.output_dir = os.path.join(self.output_dir, now)
+        os.makedirs(self.output_dir, exist_ok=True)
+
         self.brushnet = BrushNetGuidance(
-                    OmegaConf.create({"min_step_percent": 0.02, "max_step_percent": 0.98, "video": video})
+                    OmegaConf.create({"min_step_percent": 0.02,
+                                      "max_step_percent": 0.98,
+                                      "video": video})
                 )
         cur_2D_guidance = self.brushnet
         print("using BrushNet!")
@@ -152,8 +159,7 @@ class TrainFineeAdd(BaseTrainer):
             
             ema_loss_for_log = self.alpha * ema_loss_for_log + (1-self.alpha) * loss.item()
 
-        os.makedirs("save", exist_ok=True)
-        self.gaussian.save_ply("save/result0.ply")
+        self.gaussian.save_ply(f"{self.output_dir}/result.ply")
 
     def edit_all_view(self, update_camera=False, global_step=0):
         
@@ -192,8 +198,7 @@ class TrainFineeAdd(BaseTrainer):
                 masked_frames,
             )
 
-            # save_image(images.permute(0,3,1,2), f'batch_image_{global_step}.png', nrow=4)
-            save_image(edited_images.permute(0, 3, 1, 2), f'batch_image_{global_step}.png', nrow=4)
+            save_image(edited_images.permute(0, 3, 1, 2), f'{self.output_dir}/batch_image_{global_step}.png', nrow=4)
             for view_index_tmp in range(len(self.view_list)):
                 self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
 

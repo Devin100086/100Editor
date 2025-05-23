@@ -19,7 +19,7 @@ from threestudio.utils.misc import (
     fill_closed_areas,
 )
 from threestudio.utils.camera import pixel_to_3d
-import copy
+import datetime
 
 class DeleteTrainer(BaseTrainer):
     def __init__(self, cfg):
@@ -40,6 +40,7 @@ class DeleteTrainer(BaseTrainer):
         self.mask_dilate  = cfg.mask_dilate
         self.sam_type = cfg.sam_type
         self.fix_holes = True
+        self.output_dir = cfg.output_dir
 
         self.cameara_update_step = 500
         self.t_max_step = [999, 300, 300, 21]
@@ -53,6 +54,11 @@ class DeleteTrainer(BaseTrainer):
             self.cam  = pickle.load(f)
 
     def delete(self,video):
+        now = datetime.datetime.now()
+        now = f"Delete@{now.strftime('%Y_%m_%d_%H_%M')}"
+        self.output_dir = os.path.join(self.output_dir, now)
+        os.makedirs(self.output_dir, exist_ok=True)
+
         edit_cameras = sample_train_camera(self.colmap_cameras,
                                            self.edit_cam_num,
                                           )
@@ -233,8 +239,7 @@ class DeleteTrainer(BaseTrainer):
             
             ema_loss_for_log = self.alpha * ema_loss_for_log + (1-self.alpha) * loss.item()
         
-        os.makedirs("save", exist_ok=True)
-        self.gaussian.save_ply("save/result2.ply")
+        self.gaussian.save_ply(f"{self.output_dir}/result.ply")
 
     @torch.no_grad()
     def render_all_view_with_mask(self, edit_cameras):
@@ -295,7 +300,7 @@ if __name__ == "__main__":
     parser.add_argument("--colmap_dir", type=str, required=True)
     parser.add_argument("--edit_cam_num", type=int, default=0, help="Camera number.")
     parser.add_argument("--delete_prompt", type=str, default="man", help="Delete Prompt.")
-    parser.add_argument("--text_prompt", type=str, default="", help="Lambda anchor color.")
+    parser.add_argument("--text_prompt", type=str, default="", help="text prompt.")
     parser.add_argument("--edit_train_steps", type=int, default=1500, help="Edit train steps.")
     parser.add_argument("--per_train_step", type=int, default=1, help="Per train step.")
     parser.add_argument("--per_editing_step", type=int, default=1, help="Per editing step.")
@@ -321,7 +326,7 @@ if __name__ == "__main__":
     parser.add_argument("--negative_sam_points", type=str, default="/", help="the path of the negative sam points.")
     parser.add_argument("--camera", type=str, default="tmd_delete/camera.pkl", help="camera.")
     parser.add_argument("--use_original_resolution", type=str, default="False", help="use original resolution.")
-
+    parser.add_argument("--output_dir", type=str, default="save/", help="output dir.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):

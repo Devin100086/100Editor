@@ -15,6 +15,7 @@ from EditorGS.GUIEditor.Network import EditorNetwork
 from threestudio.utils.camera import pixel_to_3d
 
 from torchvision.utils import save_image
+import datetime
 
 class EditTrainer(BaseTrainer):
     def __init__(self, cfg):
@@ -32,6 +33,7 @@ class EditTrainer(BaseTrainer):
         self.lang_sam = LangSAMTextSegmentor().to(get_device())
         self.edit_begin_step = cfg.edit_begin_step
         self.edit_until_step = cfg.edit_until_step
+        self.output_dir = cfg.output_dir
 
         self.t_max_step = [999, 300, 300, 21]
         self.cameara_update_step = 500
@@ -46,6 +48,10 @@ class EditTrainer(BaseTrainer):
             self.cam  = pickle.load(f)
 
     def edit(self, sam_option, seg_prompt, video):
+        now = datetime.datetime.now()
+        now = f"{self.edit_text}@{now.strftime('%Y_%m_%d_%H_%M')}"
+        self.output_dir = os.path.join(self.output_dir, now)
+        os.makedirs(self.output_dir, exist_ok=True)
         # edit_cameras = sample_train_camera(self.colmap_cameras,
         #                                    self.edit_cam_num,
         #                                   )
@@ -197,8 +203,8 @@ class EditTrainer(BaseTrainer):
         # Renderings2 = torch.cat(Renderings2, dim=0)
         # save_image(Renderings1, f"batch_image1_{self.edit_train_steps}.png", nrow=Renderings1.shape[0])
         # save_image(Renderings2, f"batch_image2_{self.edit_train_steps}.png", nrow=Renderings2.shape[0])
-        os.makedirs("save", exist_ok=True)
-        self.gaussian.save_ply("save/result1.ply")
+
+        self.gaussian.save_ply(f"{self.output_dir}/result.ply")
     
     def edit_all_view(self, sam_option, update_camera=False, global_step=0):
     
@@ -254,9 +260,7 @@ class EditTrainer(BaseTrainer):
                 edited_images = self.guidance.edit_all(images, depths)
 
             edited_images = edited_images * masks + (1-masks) * origin_frames
-
-            # save_image(images.permute(0,3,1,2), f'batch_image_{global_step}.png', nrow=4)
-            save_image(edited_images.permute(0, 3, 1, 2), f'batch_image_{global_step}.png', nrow=4)
+            save_image(edited_images.permute(0, 3, 1, 2), f'{self.output_dir}/batch_image_{global_step}.png', nrow=4)
             for view_index_tmp in range(len(self.view_list)):
                 self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
 
@@ -293,6 +297,7 @@ if __name__ == "__main__":
     parser.add_argument("--positive_sam_points", type=str, default="/", help="the path of the positive sam points.")
     parser.add_argument("--negative_sam_points", type=str, default="/", help="the path of the negative sam points.")
     parser.add_argument("--camera", type=str, default="tmd_delete/camera.pkl", help="camera.")
+    parser.add_argument("--output_dir", type=str, default="save/", help="output dir.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):

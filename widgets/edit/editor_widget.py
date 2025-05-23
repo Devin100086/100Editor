@@ -100,6 +100,7 @@ class EditorWidget(Widget):
         self.edit_single = False
         self.segmentation_prompt = "hat"
         self.video_editing = True
+        self.add_output_dir = os.path.join(os.getcwd(), "outputs")
 
         self.fine_add_prompt = "a man wear a red hat on head"
         self.fine_seg_prompt = "hat"
@@ -521,6 +522,12 @@ class EditorWidget(Widget):
                         _, self.fine_seg_prompt = imgui.input_text("##seg prompt", self.fine_seg_prompt, 256)
                         label("Video", viz.label_w)
                         _, self.video_editing = imgui.checkbox("##Video", self.video_editing)
+
+                        imgui.new_line()
+                        if imgui_utils.button("Save", width=viz.button_w):
+                            output_dir = self._select_folder() 
+                            self.add_output_dir = self.add_output_dir if isinstance(output_dir, tuple) else output_dir
+
                         if not self.edit3D: 
                             if imgui_utils.button("Edit3D", width=viz.button_w):
                                 if self.edit_trainer != None:
@@ -546,7 +553,8 @@ class EditorWidget(Widget):
                                                                                     lambda_l1=self.lambda_l1,lambda_p=self.lambda_p,
                                                                                     lambda_anchor_color=self.lambda_anchor_color,lambda_anchor_geo=self.lambda_anchor_geo,
                                                                                     lambda_anchor_scale=self.lambda_anchor_scale,lambda_anchor_opacity=self.lambda_anchor_opacity,
-                                                                                    densification_interval=self.densification_interval, densify_until_step=self.densify_until_step)
+                                                                                    densification_interval=self.densification_interval, densify_until_step=self.densify_until_step,
+                                                                                    output_dir = self.add_output_dir)
                         else:
                             if imgui_utils.button("Stop", width=viz.button_w):
                                 self.edit3D = False
