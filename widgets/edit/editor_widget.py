@@ -101,6 +101,7 @@ class EditorWidget(Widget):
         self.segmentation_prompt = "hat"
         self.video_editing = True
         self.add_output_dir = os.path.join(os.getcwd(), "outputs")
+        self.concat = False
 
         self.fine_add_prompt = "a man wear a red hat on head"
         self.fine_seg_prompt = "hat"
@@ -491,7 +492,8 @@ class EditorWidget(Widget):
                         if os.path.exists("tmp_add/inpaint_gs.obj") and os.path.exists("tmp_edit/camera.pkl"):
                             if imgui_utils.button("Show", width=viz.button_w): 
                                 self.edit_single = False
-                                self.edit3D = True 
+                                self.edit3D = False 
+                                self.concat = True
                                 viz.result.image = (viz.result.image * 255).astype(np.uint8) if np.all(viz.result.image <= 1.0) else viz.result.image
                                 origin = Image.fromarray(viz.result.image).convert("RGB")
                                 R = viz.extr.inverse()[:3, :3].T.numpy()
@@ -505,21 +507,34 @@ class EditorWidget(Widget):
                                     self.edit_trainer.terminate()
                                     self.edit_trainer.wait()   
 
-                                self.edit_trainer = show_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
-                                                                      depth=self.depth,cam_dir=str(f"tmp_edit/camera.pkl"))
+                                # self.edit_trainer = show_command(gs_source=viz.args.ply_file_paths[0],
+                                #                                       depth=self.depth,cam_dir=str(f"tmp_edit/camera.pkl"))
+                            else:
+                                self.concat = False
+
                         else:
                             imgui.begin_disabled()
                             if imgui_utils.button("Show", width=viz.button_w):
                                 pass
                             imgui.end_disabled()
                         
+                        imgui.same_line()
+                        if imgui_utils.button("Stop", width=viz.button_w):
+                            viz.args.stop_concat = True
+                        else:
+                            viz.args.stop_concat = False
+
+                        imgui.same_line()
+                        if imgui_utils.button("save", width=viz.button_w):
+                            viz.args.save_concat_ply_path = "tmp_add/merge.ply"
+                        else:
+                            viz.args.save_concat_ply_path = None
+                        
                         imgui.separator_text("Fine-Adding")
 
                     if self.adding:
                         label("prompt", viz.label_w)
                         _, self.fine_add_prompt = imgui.input_text("##prompt", self.fine_add_prompt, 256)
-                        label("Seg prompt", viz.label_w)
-                        _, self.fine_seg_prompt = imgui.input_text("##seg prompt", self.fine_seg_prompt, 256)
                         label("Video", viz.label_w)
                         _, self.video_editing = imgui.checkbox("##Video", self.video_editing)
 
@@ -527,6 +542,8 @@ class EditorWidget(Widget):
                         if imgui_utils.button("Save", width=viz.button_w):
                             output_dir = self._select_folder() 
                             self.add_output_dir = self.add_output_dir if isinstance(output_dir, tuple) else output_dir
+                        imgui.same_line()
+                        imgui.text(f"Save Path: {self.add_output_dir}")
 
                         if not self.edit3D: 
                             if imgui_utils.button("Edit3D", width=viz.button_w):
@@ -535,18 +552,20 @@ class EditorWidget(Widget):
                                         self.edit_trainer.wait()   
                                 self.edit3D = True
                                 origin = Image.fromarray(viz.result.image).convert("RGB")
-                                cache_dir = "tmp_edit"
+                                cache_dir = "tmp_add"
                                 R = viz.extr.inverse()[:3, :3].T.numpy()
                                 T = viz.extr.inverse()[:3, 3].numpy()
                                 fov_rad = viz.fov / 360 * 2 * np.pi
-                                cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
+                                cam = CustomCam(origin.size[0]//2, origin.size[1]//2, fov_rad, fov_rad, R, T, viz.extr.cuda())
                                 with open(f'{cache_dir}/camera.pkl', 'wb') as f:
-                                    pickle.dump(cam, f)    
+                                    pickle.dump(cam, f) 
+                                os.makedirs("tmp_add/render", exist_ok=True)
+                                os.system(f"rm -rf tmp_add/render/*")
 
                                 self.edit_trainer = training_fine_adding_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
                                                                                     text_prompt=self.fine_add_prompt,
                                                                                     edit_train_steps=self.edit_train_steps,cameara_update_step=self.cameara_update_step,
-                                                                                    seg_prompt=self.fine_seg_prompt,mask_dir=str(f"{cache_dir}/mask.png"),
+                                                                                    mask_dir=str(f"{cache_dir}/mask.png"),
                                                                                     video=self.video_editing,edit_cam_num=self.edit_cam_num,
                                                                                     guidance_type=self.guidance_type[self.guidance_item],per_editing_step=self.per_editing_step,
                                                                                     edit_begin_step=self.edit_begin_step,edit_until_step=self.edit_until_step,
@@ -554,7 +573,7 @@ class EditorWidget(Widget):
                                                                                     lambda_anchor_color=self.lambda_anchor_color,lambda_anchor_geo=self.lambda_anchor_geo,
                                                                                     lambda_anchor_scale=self.lambda_anchor_scale,lambda_anchor_opacity=self.lambda_anchor_opacity,
                                                                                     densification_interval=self.densification_interval, densify_until_step=self.densify_until_step,
-                                                                                    output_dir = self.add_output_dir)
+                                                                                    output_dir = self.add_output_dir, camera = "tmp_add/camera.pkl",)
                         else:
                             if imgui_utils.button("Stop", width=viz.button_w):
                                 self.edit3D = False
@@ -588,12 +607,6 @@ class EditorWidget(Widget):
                     imgui.separator_text("Parameters")
                     label("Original Resolution", viz.label_w)
                     _, self.delete_use_original_resolution = imgui.checkbox("##Use Original Resolution", self.delete_use_original_resolution)
-                    label("Inpaint Scale", viz.label_w)
-                    _, self.inpaint_scale = imgui.slider_float("##Inpaint Scale", self.inpaint_scale, 0, 10, format="%.1f")
-                    label("Mask Dilate", viz.label_w)
-                    _, self.mask_dilate = imgui.slider_int("##Mask Dilate", self.mask_dilate, 1, 30, format="%d")
-                    label("Video", viz.label_w)
-                    _, self.video_inpainting = imgui.checkbox("##Video", self.video_inpainting)
                     
                     imgui.separator_text("SAM Option")
                     label("Sam Type", viz.label_w)
@@ -684,7 +697,10 @@ class EditorWidget(Widget):
         viz.args.edit_single = self.edit_single
         viz.args.single_image = self.single_image
 
+
         viz.args.rec_start = self.rec_start
+        viz.args.depth = self.depth
+        viz.args.concat = self.concat
         viz.args.rec_end = self.rec_end
         viz.args.edit_image = edit_image
         viz.args.painting = self.editing_option >= 0  

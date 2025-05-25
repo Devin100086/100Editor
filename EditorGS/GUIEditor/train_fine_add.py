@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+import pickle
 from omegaconf import OmegaConf
 import subprocess
 from tqdm import tqdm
@@ -44,6 +45,7 @@ class TrainFineeAdd(BaseTrainer):
         self.densification_interval = cfg.densification_interval
         self.seg_prompt = cfg.seg_prompt
         self.lang_sam = LangSAMTextSegmentor().to(get_device())
+        self.output_dir = cfg.output_dir
         
         self.gaussian2 = GaussianModel(
             sh_degree=0,
@@ -52,43 +54,20 @@ class TrainFineeAdd(BaseTrainer):
             anchor_weight_multiplier=2,
         )
         self.gaussian2.load_ply("tmp_add/merge.ply")
+        self.save_mask_tmp =  "tmp_add/mask"
 
         self.mask_frames = {}
 
         self.use_masked_image = False
         self.t_max_step = [999, 300, 300, 21]
-    
-    def update_mask(self,edit_cameras, text_prompt = "hat") -> None:
 
-        masks = []
-        weights = torch.zeros_like(self.gaussian._opacity)
-        weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
-        kernel =  np.ones((5,5),np.uint8)
-
-        for i,cam in enumerate(edit_cameras):
-            cur_cam = cam
-            this_frame = render(
-                cur_cam, self.gaussian2, self.pipe, self.background_tensor
-            )["render"]
-
-            mask = self.lang_sam(this_frame.unsqueeze(0).permute(0,2,3,1), text_prompt)[
-                    0
-                ].to(get_device())
-
-            masks.append(mask.cpu().numpy().astype(np.uint8) * 255)
-            self.gaussian.apply_weights(cur_cam, weights, weights_cnt, mask)
-
-        weights /= weights_cnt + 1e-7
-        selected_mask = weights > 0.5
-        selected_mask = selected_mask[:, 0]
-        self.gaussian.set_mask(selected_mask)
-        self.gaussian.apply_grad_mask(selected_mask)
-
-        return masks, selected_mask
+        with open(args.camera, 'rb') as f:
+            self.cam  = pickle.load(f)
 
     def edit(self, video = True):
         now = datetime.datetime.now()
         now = f"{self.edit_text}@{now.strftime('%Y_%m_%d_%H_%M')}"
+        now = now.replace(" ", "_")
         self.output_dir = os.path.join(self.output_dir, now)
         os.makedirs(self.output_dir, exist_ok=True)
 
@@ -112,7 +91,15 @@ class TrainFineeAdd(BaseTrainer):
         )
         self.view_list = self.n2n_view_index
 
-        self.masks, _ = self.update_mask(self.colmap_cameras, text_prompt=self.seg_prompt)
+        # self.masks, _ = self.update_mask(self.colmap_cameras, text_prompt=self.seg_prompt)
+
+        points3d = np.load("tmp_add/center_3D.npy")
+        points2d = project_3d_to_2d(points3d, self.cam) if len(points3d) > 0 else np.empty((0,2))
+        render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
+        init_render = render(self.cam, self.gaussian2, self.pipe ,self.background_tensor)["render"]
+        save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
+        self.masks, _ = self.update_sam2_mask_with_point_prompt(self.colmap_cameras, points2d, np.empty((0,2)), type = "add")
+
         self.guidance = EditFineGuidance(
             guidance=cur_2D_guidance,
             gaussian=self.gaussian,
@@ -295,7 +282,8 @@ if __name__ == "__main__":
     parser.add_argument("--scaling_lr_scaler", type=float, default=2.0, help="Learning rate scaler for scaling.")
     parser.add_argument("--rotation_lr_scaler", type=float, default=2.0, help="Learning rate scaler for rotation.")
     parser.add_argument("--use_original_resolution", type=str, default="False", help="use original resolution.")
-
+    parser.add_argument("--output_dir", type=str, default="save/", help="output dir.")
+    parser.add_argument("--camera", type=str, default="tmp_add/cameras.pkl", help="camera file path.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):

@@ -50,6 +50,7 @@ class EditTrainer(BaseTrainer):
     def edit(self, sam_option, seg_prompt, video):
         now = datetime.datetime.now()
         now = f"{self.edit_text}@{now.strftime('%Y_%m_%d_%H_%M')}"
+        now = now.replace(" ", "_")
         self.output_dir = os.path.join(self.output_dir, now)
         os.makedirs(self.output_dir, exist_ok=True)
         # edit_cameras = sample_train_camera(self.colmap_cameras,

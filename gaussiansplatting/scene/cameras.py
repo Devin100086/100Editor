@@ -89,7 +89,7 @@ class MiniCam:
 
 
 class CustomCam:
-    def __init__(self, width, height, fovy, fovx, extr, znear=0.01, zfar=10):
+    def __init__(self, width, height, fovy, fovx, R, T, extr, znear=0.01, zfar=10):
         self.image_width = width
         self.image_height = height
         self.FoVy = fovy
@@ -97,6 +97,8 @@ class CustomCam:
         self.znear = znear
         self.zfar = zfar
         self.extr = extr.cpu()
+        self.R = R
+        self.T = T
 
         self.world_view_transform = extr.T.inverse()
         self.projection_matrix = (

@@ -468,3 +468,39 @@ class GaussianModel:
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
+    
+    def concat_gaussians(self, another_gaussian):
+        # return a mask
+        new_xyz = another_gaussian._xyz
+        new_features_dc = another_gaussian._features_dc
+        new_features_rest = another_gaussian._features_rest
+        new_opacities = another_gaussian._opacity
+        new_scaling = another_gaussian._scaling
+        new_rotation = another_gaussian._rotation
+        self.cat_tensor(
+            new_xyz,
+            new_features_dc,
+            new_features_rest,
+            new_opacities,
+            new_scaling,
+            new_rotation,
+        )
+    def cat_tensor(
+            self,
+            new_xyz,
+            new_features_dc,
+            new_features_rest,
+            new_opacities,
+            new_scaling,
+            new_rotation
+        ):
+        self._xyz = torch.cat((self._xyz, new_xyz), dim=0)
+        self._features_dc = torch.cat((self._features_dc, new_features_dc), dim=0)
+        self._features_rest = torch.cat((self._features_rest, new_features_rest), dim=0)
+        self._opacity = torch.cat((self._opacity, new_opacities), dim=0)
+        self._scaling = torch.cat((self._scaling, new_scaling), dim=0)
+        self._rotation = torch.cat((self._rotation, new_rotation), dim=0)
+
+        self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")

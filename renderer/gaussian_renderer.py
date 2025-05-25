@@ -7,17 +7,25 @@ import imageio
 import numpy as np
 import torch
 import torch.nn
+from torchvision.transforms.functional import to_tensor
+from torchvision.ops import masks_to_boxes
 from tqdm import tqdm
 from pathlib import Path
+from PIL import Image
 
 from compression.compression_exp import run_single_decompression
 from gaussiansplatting.gaussian_renderer import render_simple,render
+from gaussiansplatting.utils.graphics_utils import fov2focal
 from gaussiansplatting.scene import GaussianModel
 from gaussiansplatting.scene.cameras import CustomCam
 from renderer.base_renderer import Renderer
 from lumina3D_utils.dict_utils import EasyDict
 from torchvision.transforms.functional import to_pil_image
 import torch.nn.functional as F
+from threestudio.utils.dpt import DPT
+from threestudio.utils.transform import rotate_gaussians, scale_gaussians, translate_gaussians
+from threestudio.utils.transform import default_model_mtx
+from threestudio.utils.misc import get_device
 
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
@@ -28,6 +36,7 @@ class GaussianRenderer(Renderer):
         super().__init__()
         self.num_parallel_scenes = num_parallel_scenes
         self.gaussian_models: List[GaussianModel | None] = [None] * num_parallel_scenes
+        self.concat_gaussian_models: List[GaussianModel | None] = [None] * num_parallel_scenes
         self._current_ply_file_paths: List[str | None] = [None] * num_parallel_scenes
         self.bg_color = torch.tensor([0, 0, 0], dtype=torch.float32).to("cuda")
         self._last_num_scenes = 0
@@ -171,10 +180,14 @@ class GaussianRenderer(Renderer):
         use_splitscreen=False,
         highlight_border=False,
         save_ply_path=None,
+        save_concat_ply_path=None,
         slider={},
         roate_point = None,
         sam_positive_points = [],
         sam_negative_points = [],
+        concat = False,
+        stop_concat = False,
+        depth = None,
         **other_args,
     ):
         cam_params = cam_params.to("cuda")
@@ -194,8 +207,6 @@ class GaussianRenderer(Renderer):
             # Load
             if ply_file_path != self._current_ply_file_paths[scene_index]:
                 self.gaussian_models[scene_index] = self._load_model(ply_file_path)
-                # center = self.gaussian_models[scene_index]._xyz.mean(dim=0)
-                # self.gaussian_models[scene_index]._xyz = self.gaussian_models[scene_index]._xyz - center
                 self._current_ply_file_paths[scene_index] = ply_file_path
                 self.center = torch.tensor((0.0, 0.0, 0.0))
 
@@ -232,9 +243,18 @@ class GaussianRenderer(Renderer):
                 render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
                 intersection_point = self.pixel_to_3d(roate_point, intrinsic, cam_params, render["depth"].cpu().numpy()[0][int(roate_point[1]),int(roate_point[0])])
                 self.center = torch.tensor(intersection_point).to(torch.float32)
-
-            render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, extr=cam_params)
-            render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
+            R = cam_params.inverse()[:3, :3].T.cpu().numpy()
+            T = cam_params.inverse()[:3, 3].cpu().numpy()
+            render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, R=R, T=T, extr=cam_params)
+            if concat:
+                self.concat_gaussian_models[scene_index] = self.concat_gaussian(render_cam, depth, background_color, gs)
+            
+            if stop_concat:
+                self.concat_gaussian_models[scene_index] = None
+            if self.concat_gaussian_models[scene_index] is not None:
+                render = render_simple(viewpoint_camera=render_cam, pc=self.concat_gaussian_models[scene_index], bg_color=background_color.to("cuda"))
+            else:
+                render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
             if render_alpha:
                 images.append(render["alpha"])
             elif render_depth:
@@ -293,6 +313,9 @@ class GaussianRenderer(Renderer):
             # Save ply
             if save_ply_path is not None:
                 self.save_ply(gs, save_ply_path)
+            if save_concat_ply_path is not None:
+                self.save_concat_ply(self.concat_gaussian_models[scene_index], save_concat_ply_path)
+                self.concat_gaussian_models[scene_index] = None
 
         self._return_image(
             images,
@@ -335,6 +358,121 @@ class GaussianRenderer(Renderer):
         save_path = os.path.join(save_ply_path, f"model_{len(os.listdir(save_ply_path))}.ply")
         print("Model saved in", save_path)
         gaussian.save_ply(save_path)
+    
+    @staticmethod
+    def save_concat_ply(gaussian, save_ply_path):
+        print("Model saved in", save_ply_path)
+        gaussian.save_ply(save_ply_path)
+    
+    def concat_gaussian(self, cam, depth, background_color, gaussian):
+        cache_dir = Path("tmp_add").absolute().as_posix()
+        os.makedirs(cache_dir, exist_ok=True)
+        mv_image_dir = os.path.join(cache_dir, "multiview_pred_images")
+        os.makedirs(mv_image_dir, exist_ok=True)
+        inpaint_path = os.path.join(cache_dir, "inpainted.png")
+        removed_bg_path = os.path.join(cache_dir, "removed_bg.png")
+        gs_path = os.path.join(cache_dir, "inpaint_gs.obj")
+
+        removed_bg = Image.open(removed_bg_path)
+        inpainted_image = to_tensor(Image.open(inpaint_path))[:3,...].to("cuda")
+
+        object_mask = np.array(removed_bg)
+        object_mask = object_mask[:, :, 3] > 0
+        object_mask = torch.from_numpy(object_mask)
+        bbox = masks_to_boxes(object_mask[None])[0].to("cuda")
+
+        depth_estimator = DPT(get_device(), mode="depth")
+
+        estimated_depth = depth_estimator(
+            inpainted_image.moveaxis(0, -1)[None, ...]
+        ).squeeze()
+        # ui_utils.vis_depth(estimated_depth.cpu())
+        object_center = (bbox[:2] + bbox[2:]) / 2
+
+        fx = fov2focal(cam.FoVx, cam.image_width)
+        fy = fov2focal(cam.FoVy, cam.image_height)
+
+        object_center = (
+            object_center
+            - torch.tensor([cam.image_width, cam.image_height]).to("cuda") / 2
+        ) / torch.tensor([fx, fy]).to("cuda")
+
+        with torch.no_grad():
+            render_pkg = render_simple(viewpoint_camera=cam, pc=gaussian, bg_color=background_color.to("cuda"))
+        rendered_depth = render_pkg["depth"][..., ~object_mask]
+        inpainted_depth = estimated_depth[~object_mask]
+        object_depth = estimated_depth[..., object_mask]
+
+        min_object_depth = torch.quantile(object_depth, 0.05)
+        max_object_depth = torch.quantile(object_depth, 0.95)
+        obj_depth_scale = (max_object_depth - min_object_depth) * 1
+
+        min_valid_depth_mask = (min_object_depth - obj_depth_scale) < inpainted_depth
+        max_valid_depth_mask = inpainted_depth < (max_object_depth + obj_depth_scale)
+        valid_depth_mask = torch.logical_and(min_valid_depth_mask, max_valid_depth_mask)
+        valid_percent = valid_depth_mask.sum() / min_valid_depth_mask.shape[0]
+        print("depth valid percent: ", valid_percent)
+
+        rendered_depth = rendered_depth[0, valid_depth_mask]
+        inpainted_depth = inpainted_depth[valid_depth_mask.squeeze()]
+
+        ## assuming rendered_depth = a * estimated_depth + b
+        y = rendered_depth
+        x = inpainted_depth
+        a = (torch.sum(x * y) - torch.sum(x) * torch.sum(y)) / (
+            torch.sum(x**2) - torch.sum(x) ** 2
+        )
+        b = torch.sum(y) - a * torch.sum(x)
+
+        z_in_cam = object_depth.min() * a + b
+
+        new_object_gaussian = None
+
+        if new_object_gaussian is not None:
+            gaussian.prune_with_mask()
+        scaled_z_in_cam = z_in_cam * depth
+        x_in_cam, y_in_cam = (object_center.cuda()) * scaled_z_in_cam
+        T_in_cam = torch.stack([x_in_cam, y_in_cam, scaled_z_in_cam], dim=-1)
+
+        bbox = bbox.cuda()
+        real_scale = (
+            (bbox[2:] - bbox[:2])
+            / torch.tensor([fx, fy], device="cuda")
+            * scaled_z_in_cam
+        )
+
+        new_object_gaussian = GaussianModel(sh_degree=gaussian.max_sh_degree, disable_xyz_log_activation=True)
+        new_object_gaussian.load_ply(gs_path)
+        new_object_gaussian._opacity.data = (
+            torch.ones_like(new_object_gaussian._opacity.data) * 99.99
+        )
+
+        new_object_gaussian._xyz.data -= new_object_gaussian._xyz.data.mean(
+            dim=0, keepdim=True
+        )
+        rotate_gaussians(new_object_gaussian, default_model_mtx.T)
+
+        object_scale = (
+            new_object_gaussian._xyz.data.max(dim=0)[0]
+            - new_object_gaussian._xyz.data.min(dim=0)[0]
+        )[:2]
+
+        relative_scale = (real_scale / object_scale).mean()
+        print(relative_scale)
+
+        scale_gaussians(new_object_gaussian, relative_scale)
+
+        new_object_gaussian._xyz.data += T_in_cam
+
+        R = torch.from_numpy(cam.R).float().cuda()
+        T = -R @ torch.from_numpy(cam.T).float().cuda()
+
+        rotate_gaussians(new_object_gaussian, R)
+        translate_gaussians(new_object_gaussian, T)
+
+        np.save("tmp_add/center_3D.npy", torch.mean(new_object_gaussian.get_xyz, dim=0).detach().cpu().float().numpy())
+        gaussian.concat_gaussians(new_object_gaussian)
+        return gaussian
     
     @staticmethod
     def close():

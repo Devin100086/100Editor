@@ -48,12 +48,11 @@ def training_text_adding_command(
     ])
     return process
 
-def show_command(gs_source, colmap_dir, depth, cam_dir):
+def show_command(gs_source, depth, cam_dir):
     process = subprocess.Popen([
         "python",
         "EditorGS/GUIEditor/show.py",
         "--gs_source", str(gs_source),
-        "--colmap_dir", str(colmap_dir),
         "--depth", str(depth),
         "--cam_dir", str(cam_dir)
     ])
@@ -61,9 +60,10 @@ def show_command(gs_source, colmap_dir, depth, cam_dir):
 
 def training_fine_adding_command(
     gs_source, colmap_dir, text_prompt, edit_train_steps, cameara_update_step,
-    seg_prompt, mask_dir, video, edit_cam_num, guidance_type, per_editing_step, edit_begin_step,
+    mask_dir, video, edit_cam_num, guidance_type, per_editing_step, edit_begin_step,
     edit_until_step, lambda_l1, lambda_p, lambda_anchor_color, lambda_anchor_geo,
-    lambda_anchor_scale, lambda_anchor_opacity, densification_interval, densify_until_step, output_dir
+    lambda_anchor_scale, lambda_anchor_opacity, densification_interval, densify_until_step, output_dir,
+    camera
 ):
     process = subprocess.Popen([
         "python",
@@ -73,7 +73,6 @@ def training_fine_adding_command(
         "--text_prompt", str(text_prompt),
         "--edit_train_steps", str(edit_train_steps),
         "--cameara_update_step", str(cameara_update_step),
-        "--seg_prompt", str(seg_prompt),
         "--mask_dir", str(mask_dir),
         "--video", str(video),
         "--edit_cam_num", str(edit_cam_num),
@@ -89,7 +88,8 @@ def training_fine_adding_command(
         "--lambda_anchor_opacity", str(lambda_anchor_opacity),
         "--densification_interval", str(densification_interval),
         "--densify_until_step", str(densify_until_step),
-        "--output_dir", str(output_dir)
+        "--output_dir", str(output_dir),
+        "--camera", str(camera)
     ])
     return process
 

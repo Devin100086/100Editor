@@ -103,8 +103,8 @@ class TrainingWidget(Widget):
                         #     "--alpha", str(self.alpha)
                         # ])
                         now = datetime.datetime.now()
-                        now = f"{self.edit_text}@{now.strftime('%Y_%m_%d_%H_%M')}"
-                        self.origin_trainer = training_3DGS(self.training_path, os.path.join(output_dir,f"gsplat_{target_name}@{now}"), self.gpu_items[self.use_gpu], self.alpha)
+                        now = f"Trainig@{now.strftime('%Y_%m_%d_%H_%M')}"
+                        self.origin_trainer = training_3DGS(self.training_path, os.path.join(self.output_dir, now), self.gpu_items[self.use_gpu], self.alpha)
                         if self.stop_from_renderer:
                             self.stop_at_value = -1
                 else:
@@ -146,8 +146,8 @@ class TrainingWidget(Widget):
                         #     "--alpha", str(self.alpha)
                         # ])
                         now = datetime.datetime.now()
-                        now = f"{self.edit_text}@{now.strftime('%Y_%m_%d_%H_%M')}"
-                        self.gsplat_trainer = training_gsplat_3DGS(self.MODE[self.gsplat_mode], self.gsplat_training_dir, os.path.join(self.gsplat_output_dir,f"3DGS_{target_name}@{now}"), self.alpha)
+                        now = f"Trainig_gsplat@{now.strftime('%Y_%m_%d_%H_%M')}"
+                        self.gsplat_trainer = training_gsplat_3DGS(self.MODE[self.gsplat_mode], self.gsplat_training_dir, os.path.join(self.gsplat_output_dir, now), self.alpha)
                         if self.stop_from_renderer:
                             self.stop_at_value = -1
                 else:

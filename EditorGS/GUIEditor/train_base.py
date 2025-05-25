@@ -301,7 +301,7 @@ class BaseTrainer:
                     max_screen_size=5,
                 )
     
-    def update_mask(self, edit_cameras, text_prompt = "hat") -> None:
+    def update_mask(self, edit_cameras, text_prompt = "hat", type = "default") -> None:
 
         from threestudio.utils.sam import LangSAMTextSegmentor
         lang_sam = LangSAMTextSegmentor().to(get_device())
@@ -313,9 +313,14 @@ class BaseTrainer:
 
         for cam in tqdm(edit_cameras):
             cur_cam = cam
-            this_frame = render(
-                cur_cam, self.gaussian, self.pipe, self.background_tensor
-            )["render"]
+            if type == "default":
+                this_frame = render(
+                    cur_cam, self.gaussian, self.pipe, self.background_tensor
+                )["render"]
+            else:
+                this_frame = render(
+                    cur_cam, self.gaussian2, self.pipe, self.background_tensor
+                )["render"]
             
             mask = lang_sam(this_frame.unsqueeze(0).permute(0,2,3,1), text_prompt)[
                     0
@@ -333,8 +338,9 @@ class BaseTrainer:
         return masks, selected_mask
     
     def update_sam_mask_with_point_prompt(
-        self, edit_cameras, positive_points3d=None, negative_points3d=None
+        self, edit_cameras, positive_points3d=None, negative_points3d=None, type = "default"
     ):
+        os.makedirs(self.save_mask_tmp, exist_ok=True)
         os.system(f"rm -rf {self.save_mask_tmp}/*")
         from sam2.build_sam import build_sam2
         from sam2.sam2_image_predictor import SAM2ImagePredictor
@@ -351,9 +357,14 @@ class BaseTrainer:
             assert len(positive_points3d) > 0
             positive_points2ds = project_3d_to_2d(positive_points3d, cur_cam) if len(positive_points3d) > 0 else np.empty((0,2))
             negative_points2ds = project_3d_to_2d(negative_points3d, cur_cam) if len(negative_points3d) > 0 else np.empty((0,2))
-            img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)[
-                "render"
-            ]
+            if type == "default":
+                img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)[
+                    "render"
+                ]
+            else:
+                img = render(cur_cam, self.gaussian2, self.pipe, self.background_tensor)[
+                    "render"
+                ]
             sam2_predictor.set_image(
                 np.asarray(to_pil_image(img.cpu())),
             )
@@ -373,7 +384,6 @@ class BaseTrainer:
                 multimask_output=False,
             )
             mask = torch.from_numpy(mask).to(get_device())
-            os.makedirs(self.save_mask_tmp, exist_ok=True)
             torchvision.utils.save_image(mask.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cam.image_name}" + ".png")
             self.gaussian.apply_weights(
                 cur_cam, weights, weights_cnt, mask.to(torch.float32)
@@ -392,7 +402,7 @@ class BaseTrainer:
         return masks, selected_mask
     
     def update_sam2_mask_with_point_prompt(
-        self, edit_cameras, positive_sam_points=None, negative_sam_points=None
+        self, edit_cameras, positive_sam_points=None, negative_sam_points=None, type = "default"
     ):
         os.makedirs(self.save_mask_tmp, exist_ok=True)
         os.system(f"rm -rf {self.save_mask_tmp}/*")
@@ -401,7 +411,10 @@ class BaseTrainer:
         render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
         for i, cam in tqdm(enumerate(edit_cameras)):
             cur_cam = cam
-            img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)["render"]
+            if type == "default":
+                img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)["render"]
+            else:
+                img = render(cur_cam, self.gaussian2, self.pipe, self.background_tensor)["render"]
             save_image(img[None], f"{render_folder}/{i+1:05d}" + ".jpg")
 
         frame_names = [
