@@ -48,16 +48,6 @@ def training_text_adding_command(
     ])
     return process
 
-def show_command(gs_source, depth, cam_dir):
-    process = subprocess.Popen([
-        "python",
-        "EditorGS/GUIEditor/show.py",
-        "--gs_source", str(gs_source),
-        "--depth", str(depth),
-        "--cam_dir", str(cam_dir)
-    ])
-    return process
-
 def training_fine_adding_command(
     gs_source, colmap_dir, text_prompt, edit_train_steps, cameara_update_step,
     mask_dir, video, edit_cam_num, guidance_type, per_editing_step, edit_begin_step,

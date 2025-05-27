@@ -247,10 +247,14 @@ class GaussianRenderer(Renderer):
             T = cam_params.inverse()[:3, 3].cpu().numpy()
             render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, R=R, T=T, extr=cam_params)
             if concat:
-                self.concat_gaussian_models[scene_index] = self.concat_gaussian(render_cam, depth, background_color, gs)
+                gs_concat = copy.deepcopy(gs)
+                self.concat_gaussian_models[scene_index] = self.concat_gaussian(render_cam, depth, background_color, gs_concat)
+                del gs_concat
+                torch.cuda.empty_cache()
             
             if stop_concat:
                 self.concat_gaussian_models[scene_index] = None
+                torch.cuda.empty_cache()
             if self.concat_gaussian_models[scene_index] is not None:
                 render = render_simple(viewpoint_camera=render_cam, pc=self.concat_gaussian_models[scene_index], bg_color=background_color.to("cuda"))
             else:
@@ -316,6 +320,7 @@ class GaussianRenderer(Renderer):
             if save_concat_ply_path is not None:
                 self.save_concat_ply(self.concat_gaussian_models[scene_index], save_concat_ply_path)
                 self.concat_gaussian_models[scene_index] = None
+                torch.cuda.empty_cache()
 
         self._return_image(
             images,
@@ -382,6 +387,7 @@ class GaussianRenderer(Renderer):
         bbox = masks_to_boxes(object_mask[None])[0].to("cuda")
 
         depth_estimator = DPT(get_device(), mode="depth")
+        del depth_estimator
 
         estimated_depth = depth_estimator(
             inpainted_image.moveaxis(0, -1)[None, ...]
@@ -472,6 +478,8 @@ class GaussianRenderer(Renderer):
 
         np.save("tmp_add/center_3D.npy", torch.mean(new_object_gaussian.get_xyz, dim=0).detach().cpu().float().numpy())
         gaussian.concat_gaussians(new_object_gaussian)
+        del new_object_gaussian
+        torch.cuda.empty_cache()
         return gaussian
     
     @staticmethod

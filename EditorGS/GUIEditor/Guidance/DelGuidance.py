@@ -60,7 +60,7 @@ class DelGuidance:
             return image
         
         source = {"image":image_in_pil, "mask":mask_in_pil}
-        reference = Image.open("EditorGS/image.png")
+        reference = Image.open("tmp_delete/Reference.png")
         out = predict(source, reference, 25, 1, 2.5, 124241)[0]
         # control_image = make_inpaint_condition(image_in_pil, mask_in_pil).to("cuda")
         # generator = torch.Generator(device="cuda").manual_seed(0)

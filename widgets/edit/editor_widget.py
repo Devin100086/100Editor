@@ -9,6 +9,10 @@ from lumina3D_utils.gui_utils import imgui_utils
 from imgui_bundle import implot
 from lumina3D_utils.command_utils import *
 from lumina3D_utils.gui_utils.easy_imgui import label
+from google import genai
+from google.genai import types
+from PIL import Image
+from io import BytesIO
 
 from torchvision.transforms.functional import to_tensor
 import torch
@@ -108,8 +112,7 @@ class EditorWidget(Widget):
 
         #"A rectangular clean slate"
         # deleting
-        self.delete_prompt = "tractor"
-        self.inpaint_prompt = "A large stone slab with a rectangular base on top, surrounded by a natural outdoor setting with trees, greenery, and dirt paths."
+        self.delete_prompt = "remove the vase"
         self.inpaint_scale = 1.0
         self.mask_dilate = 15
         self.video_inpainting = False
@@ -157,7 +160,7 @@ class EditorWidget(Widget):
                         self.select_option = 1
                         self.edit_cam_num = 20
                         self.per_editing_step = 10000
-                        self.edit_train_steps = 1000
+                        self.edit_train_steps = 2000
                         self.edit_until_step = 4000
                         self.densification_interval = 100
                         self.densify_until_step = 4000
@@ -388,7 +391,8 @@ class EditorWidget(Widget):
                         if os.path.exists("tmp_add/inpaint_gs.obj") and os.path.exists("tmp_edit/camera.pkl"):
                             if imgui_utils.button("Show", width=viz.button_w): 
                                 self.edit_single = False
-                                self.edit3D = True 
+                                self.concat = True
+                                self.edit3D = False 
                                 origin = Image.fromarray(viz.result.image).convert("RGB")
                                 R = viz.extr.inverse()[:3, :3].T.numpy()
                                 T = viz.extr.inverse()[:3, 3].numpy()
@@ -396,18 +400,28 @@ class EditorWidget(Widget):
                                 cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
                                 with open(f'tmp_edit/camera.pkl', 'wb') as f:
                                     pickle.dump(cam, f)    
-
-                                if self.edit_trainer != None:
-                                    self.edit_trainer.terminate()
-                                    self.edit_trainer.wait()   
             
-                                self.edit_trainer = show_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
-                                                                      depth=self.depth,cam_dir=str(f"tmp_edit/camera.pkl"))
+                            else:
+                                self.concat = False
+                            
+                            imgui.same_line()
+                            if imgui_utils.button("Stop", width=viz.button_w):
+                                viz.args.stop_concat = True
+                            else:
+                                viz.args.stop_concat = False
+
+                            imgui.same_line()
+                            if imgui_utils.button("save", width=viz.button_w):
+                                viz.args.save_concat_ply_path = "tmp_add/merge.ply"
+                            else:
+                                viz.args.save_concat_ply_path = None
+
                         else:
                             imgui.begin_disabled()
                             if imgui_utils.button("Show", width=viz.button_w):
                                 pass
                             imgui.end_disabled()
+                        
 
                     else:
                         label("Add Option", viz.label_w)
@@ -503,32 +517,25 @@ class EditorWidget(Widget):
                                 with open(f'tmp_edit/camera.pkl', 'wb') as f:
                                     pickle.dump(cam, f)    
 
-                                if self.edit_trainer != None:
-                                    self.edit_trainer.terminate()
-                                    self.edit_trainer.wait()   
-
-                                # self.edit_trainer = show_command(gs_source=viz.args.ply_file_paths[0],
-                                #                                       depth=self.depth,cam_dir=str(f"tmp_edit/camera.pkl"))
                             else:
-                                self.concat = False
+                                self.concat = False    
+                            imgui.same_line()
+                            if imgui_utils.button("Stop", width=viz.button_w):
+                                viz.args.stop_concat = True
+                            else:
+                                viz.args.stop_concat = False
+
+                            imgui.same_line()
+                            if imgui_utils.button("save", width=viz.button_w):
+                                viz.args.save_concat_ply_path = "tmp_add/merge.ply"
+                            else:
+                                viz.args.save_concat_ply_path = None
 
                         else:
                             imgui.begin_disabled()
                             if imgui_utils.button("Show", width=viz.button_w):
                                 pass
                             imgui.end_disabled()
-                        
-                        imgui.same_line()
-                        if imgui_utils.button("Stop", width=viz.button_w):
-                            viz.args.stop_concat = True
-                        else:
-                            viz.args.stop_concat = False
-
-                        imgui.same_line()
-                        if imgui_utils.button("save", width=viz.button_w):
-                            viz.args.save_concat_ply_path = "tmp_add/merge.ply"
-                        else:
-                            viz.args.save_concat_ply_path = None
                         
                         imgui.separator_text("Fine-Adding")
 
@@ -604,9 +611,21 @@ class EditorWidget(Widget):
                         self.text_sam_positive_points = []
                         self.text_sam_negative_points = []
 
+                    imgui.separator_text("Remove single image")
+                    label("prompt", viz.label_w)
+                    _, self.delete_prompt = imgui.input_text("##Remove Prompt", self.delete_prompt, 256)
+                    if imgui_utils.button("remove", width=viz.button_w):
+                        self.edit_single = True
+                        self.single_image = self.remove_single_image(image=viz.result.image, prompts=self.delete_prompt)
+                    imgui.same_line()
+                    if imgui_utils.button("stop", width=viz.button_w):
+                        self.edit_single = False
+
                     imgui.separator_text("Parameters")
                     label("Original Resolution", viz.label_w)
                     _, self.delete_use_original_resolution = imgui.checkbox("##Use Original Resolution", self.delete_use_original_resolution)
+                    label("mask dilate", viz.label_w)
+                    _, self.mask_dilate = imgui.slider_int("##Mask Dilate", self.mask_dilate, 0, 30, format="%d")
                     
                     imgui.separator_text("SAM Option")
                     label("Sam Type", viz.label_w)
@@ -809,6 +828,28 @@ class EditorWidget(Widget):
         
         print("😚Finally Editing!")
         return np.array(result['edit_images'].squeeze(0).cpu())
+
+    def remove_single_image(self, prompts, image):
+        image = Image.fromarray(image)
+        client = genai.Client(api_key="AIzaSyDzhGiyxkTNdnee0iUeL8ItUxZRrGHvRFI")
+        text_input = (f'{prompts}, After removal, make sure the background of the area is filled consistently with the surrounding area so that the modified image looks authentic and without any abrupt traces.')
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-preview-image-generation",
+            contents=[text_input, image],
+            config=types.GenerateContentConfig(
+            response_modalities=['TEXT', 'IMAGE']
+            )
+        )
+        for part in response.candidates[0].content.parts:
+            if part.text is not None:
+                print(part.text)
+            elif part.inline_data is not None:
+                image = Image.open(BytesIO(part.inline_data.data))
+                image_resized = image.resize((512,512))
+                image_resized.save('tmp_delete/Reference.png')
+
+        print("😚Finally Editing!")
+        return np.array(image) 
 
     def close(self):
         if self.edit_trainer != None:
