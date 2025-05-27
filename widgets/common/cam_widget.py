@@ -53,6 +53,11 @@ class CamWidget(Widget):
         elif "center" in viz.result.keys() and not torch.allclose(self.center_roate, viz.result.center.cpu()):
             self.lookat_point = viz.result.center.cpu()
             self.center_roate = viz.result.center.cpu()
+        
+        if "mean_xyz" not in viz.result.keys() and "center" not in viz.result.keys():
+            viz.args.show_image = False
+        else:
+            viz.args.show_image = True
 
         if show:
             label("Camera Mode", viz.label_w)

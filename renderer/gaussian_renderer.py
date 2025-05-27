@@ -173,6 +173,7 @@ class GaussianRenderer(Renderer):
         cam_params,
         current_ply_names,
         background_color,
+        show_image,
         video_cams=[],
         render_depth=False,
         render_alpha=False,
@@ -329,6 +330,9 @@ class GaussianRenderer(Renderer):
             use_splitscreen=use_splitscreen,
             highlight_border=highlight_border,
         )
+
+        if show_image == False:
+            del res["image"]
 
         res.mean_xyz = torch.mean(gs.get_xyz, dim=0)
         res.center = self.center
