@@ -60,7 +60,7 @@ class FittingRenderer(Renderer):
         try:
             current_bytes = 0
             expected_bytes = resolution * resolution * 3
-            try_counter = 50
+            try_counter = 100
             counter = 0
             message = bytes()
             while current_bytes < expected_bytes:

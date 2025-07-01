@@ -175,6 +175,7 @@ class GaussianRenderer(Renderer):
         background_color,
         show_image,
         video_cams=[],
+        circle_video_cams=[],
         render_depth=False,
         render_alpha=False,
         img_normalize=False,
@@ -224,6 +225,9 @@ class GaussianRenderer(Renderer):
             # Render video
             if len(video_cams) > 0:
                 self.render_video("./_videos", video_cams, gs)
+            
+            if len(circle_video_cams) > 0:
+                self.render_video("./_videos", circle_video_cams, gs)
 
             # Render current view
             fov_rad = fov / 360 * 2 * np.pi
@@ -391,11 +395,11 @@ class GaussianRenderer(Renderer):
         bbox = masks_to_boxes(object_mask[None])[0].to("cuda")
 
         depth_estimator = DPT(get_device(), mode="depth")
-        del depth_estimator
 
         estimated_depth = depth_estimator(
             inpainted_image.moveaxis(0, -1)[None, ...]
         ).squeeze()
+        del depth_estimator
         # ui_utils.vis_depth(estimated_depth.cpu())
         object_center = (bbox[:2] + bbox[2:]) / 2
 

@@ -48,7 +48,7 @@ class EditTrainer(BaseTrainer):
             self.cam  = pickle.load(f)
 
     def edit(self, sam_option, seg_prompt, video):
-        now = datetime.datetime.now()
+        start_time = now = datetime.datetime.now()
         now = f"{self.edit_text}@{now.strftime('%Y_%m_%d_%H_%M')}"
         now = now.replace(" ", "_")
         self.output_dir = os.path.join(self.output_dir, now)
@@ -205,6 +205,15 @@ class EditTrainer(BaseTrainer):
         # save_image(Renderings1, f"batch_image1_{self.edit_train_steps}.png", nrow=Renderings1.shape[0])
         # save_image(Renderings2, f"batch_image2_{self.edit_train_steps}.png", nrow=Renderings2.shape[0])
 
+        end_time = datetime.datetime.now()
+        run_time = end_time - start_time
+        total_seconds = run_time.total_seconds()
+
+        hours = int(total_seconds // 3600)  
+        minutes = int((total_seconds % 3600) // 60) 
+        seconds = total_seconds % 60 
+
+        print(f"Time: {hours} h {minutes} min {seconds:.2f} s")
         self.gaussian.save_ply(f"{self.output_dir}/result.ply")
     
     def edit_all_view(self, sam_option, update_camera=False, global_step=0):

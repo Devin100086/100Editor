@@ -44,12 +44,14 @@ class Slider(object):
         self._id = _id
 
     def render(self, viz):
+        imgui.push_item_width(viz.button_large_w * 3)
         _changed, self.value = imgui.slider_float(
             f"##slider-{self.key}-{self._id}",
             self.value,
             self.min_value,
             self.max_value,
         )
+        imgui.pop_item_width()
         with imgui_utils.item_width(viz.font_size * 4):
             imgui.same_line()
             min_changed, self.min_value = imgui.input_float(f"##min-{self._id}", self.min_value, )
@@ -71,8 +73,8 @@ class EditWidget(Widget):
         self.history = {}
         self.history_size = 5
         self.safe_load = False
-        self.preset_path = "./presets.json"
-        self.history_path = "./history.json"
+        self.preset_path = "./gui_configs/presets.json"
+        self.history_path = "./gui_configs/history.json"
         self.load_presets()
 
         self.editor = edit.TextEditor()

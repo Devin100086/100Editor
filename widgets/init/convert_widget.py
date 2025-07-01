@@ -13,7 +13,7 @@ import GPUtil
 import torch
 import cv2
 from tkinter import filedialog
-from lumina3D_utils.command_utils import colmap_reconstruction
+from lumina3D_utils.command_utils import sfm_reconstruction,vggt_reconstruction
 
 class Monitor(Thread):
     def __init__(self, delay):
@@ -45,6 +45,7 @@ class ConverWidget(Widget):
         self.colmap_status = "waiting..."
         self.colmap_rec = None
         self.colmap = True
+        self.selected_colmap = 0  # 0 for SfM, 1 for vggt
     
     def close(self):
         self.gpu_monitor.stop()
@@ -62,26 +63,35 @@ class ConverWidget(Widget):
             imgui.same_line()
             imgui.text(f"Source Path: {self.source_path}")
 
-            if imgui.begin_popup(f"browse_colmap_popup"):
-                for item in self.items:
-                    clicked = imgui.menu_item_simple(os.path.relpath(item, self.root))
-                    if clicked:
-                        self.colmap_executable = item
-                imgui.end_popup()
+            if imgui.radio_button("SfM", self.selected_colmap == 0):
+                self.selected_colmap = 0 
+            imgui.same_line(viz.label_w)
+            if imgui.radio_button("VGGT", self.selected_colmap == 1):
+                self.selected_colmap = 1 
+            if self.selected_colmap == 0: 
+                if imgui.begin_popup(f"browse_colmap_popup"):
+                    for item in self.items:
+                        clicked = imgui.menu_item_simple(os.path.relpath(item, self.root))
+                        if clicked:
+                            self.colmap_executable = item
+                    imgui.end_popup()
 
-            if imgui_utils.button(f"Browse ", width=viz.button_w):
-                imgui.open_popup(f"browse_colmap_popup")
-                self.items = self.list_runs_and_colmap()
-            imgui.same_line() 
-            imgui.text(f"colmap path: {self.colmap_executable}")
-            imgui.set_next_item_width(viz.button_w)
+                if imgui_utils.button(f"Browse ", width=viz.button_w):
+                    imgui.open_popup(f"browse_colmap_popup")
+                    self.items = self.list_runs_and_colmap()
+                imgui.same_line() 
+                imgui.text(f"colmap path: {self.colmap_executable}")
+                imgui.set_next_item_width(viz.button_w)
 
-            changed, self.use_gpu = imgui.checkbox("Use GPU", self.use_gpu)
+                changed, self.use_gpu = imgui.checkbox("Use GPU", self.use_gpu)
 
             if imgui_utils.button("colmap", width=viz.button_w):
                 self.colmap = False
                 self.colmap_progress = 0.0
-                self.colmap_rec = self.colmap_process()
+                if self.selected_colmap == 0:
+                    self.colmap_rec = self.sfm_process()
+                elif self.selected_colmap == 1:
+                    self.colmap_rec = self.vggt_process()
             
             if self.colmap_rec!= None and self.colmap_rec.poll() is not None:
                 self.colmap_status = "finish!"
@@ -112,8 +122,12 @@ class ConverWidget(Widget):
                     self.items.append(str(current_path))
         return sorted(self.items)
     
-    def colmap_process(self):
+    def sfm_process(self):
         if self.colmap_executable == "Default":
-            return colmap_reconstruction(self.source_path, "", self.use_gpu)
+            return sfm_reconstruction(self.source_path, "", self.use_gpu)
         else:
-            return colmap_reconstruction(self.source_path, self.colmap_executable, self.use_gpu)
+            return sfm_reconstruction(self.source_path, self.colmap_executable, self.use_gpu)
+    
+    def vggt_process(self):
+        return vggt_reconstruction(self.source_path)
+    

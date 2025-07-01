@@ -20,7 +20,7 @@ class VideoWidget(Widget):
     @imgui_utils.scoped_by_object_id
     def __call__(self, show=True):
         viz = self.viz
-        viz.args.video_cams = []
+        viz.args.circle_video_cams = []
         if show:
             label("Num Frames", viz.label_w)
             _changed, self.num_frames = imgui.input_int("##num_frames", self.num_frames)
@@ -47,7 +47,7 @@ class VideoWidget(Widget):
                         radius=self.radius,
                         up_vector=self.viz.args.up_vector,
                     )
-                    viz.args.video_cams.append(
+                    viz.args.circle_video_cams.append(
                         CustomCam(
                             width=self.resolution,
                             height=self.resolution,

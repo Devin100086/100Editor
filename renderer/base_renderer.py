@@ -39,7 +39,6 @@ class Renderer:
 
     @staticmethod
     def sanitize_command(edit_text):
-        edit_text = edit_text.replace('gaussian', 'gs')
         command = re.sub(";+", ";", edit_text.replace("\n", ";"))
         while command.startswith(";"):
             command = command[1:]

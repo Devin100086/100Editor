@@ -42,7 +42,7 @@ class CamvideoWidget(Widget):
                 }
                 )
             imgui.same_line()
-            if imgui_utils.button("Clear Cameras", viz.button_large_w):
+            if imgui_utils.button("Clean Cameras", viz.button_large_w):
                 self.cam.clear()
 
             size = imgui.ImVec2(0, 80)

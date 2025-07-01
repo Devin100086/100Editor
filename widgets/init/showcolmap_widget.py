@@ -28,7 +28,7 @@ class ShowColmapWidget(Widget):
             # _changed, self.resolution = imgui.input_int("##Resolution", self.resolution, 64)
 
             if self.showing_colmap== False or self.colmap_process.poll() != None:
-                if imgui_utils.button(f"Show colmap", width=viz.button_large_w):
+                if imgui_utils.button(f"Show", width=viz.button_large_w):
                     self.colmap_process = showing_colmap_command(self.data_source)
                     self.showing_colmap = True
             else:

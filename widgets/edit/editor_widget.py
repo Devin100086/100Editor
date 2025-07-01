@@ -58,9 +58,9 @@ class EditorWidget(Widget):
         self.cameara_update_step = 500
         self.densification_interval = 50
 
-        self.gs_lr_scaler = 1.0
-        self.gs_lr_end_scaler = 1.0
-        self.color_lr_scaler = 1.0
+        self.gs_lr_scaler = 3.0
+        self.gs_lr_end_scaler = 3.0
+        self.color_lr_scaler = 3.0
         self.opacity_lr_scaler = 2.0
         self.scaling_lr_scaler = 2.0
         self.rotation_lr_scaler = 2.0
@@ -150,7 +150,7 @@ class EditorWidget(Widget):
                     if imgui.radio_button("Text-Editing", self.select_option == 0):
                         self.select_option = 0
                         self.edit_cam_num = 48
-                        self.edit_train_steps = 2000
+                        self.edit_train_steps = 1000
                         self.edit_until_step = 3000
                         self.per_editing_step = 10
                         self.densification_interval = 50
@@ -160,7 +160,7 @@ class EditorWidget(Widget):
                         self.select_option = 1
                         self.edit_cam_num = 20
                         self.per_editing_step = 10000
-                        self.edit_train_steps = 2000
+                        self.edit_train_steps = 1000
                         self.edit_until_step = 4000
                         self.densification_interval = 100
                         self.densify_until_step = 4000
@@ -294,6 +294,7 @@ class EditorWidget(Widget):
                     if self.text_sam_option == 1:
                         label("Seg prompt", viz.label_w)
                         _, self.text_seg_prompt = imgui.input_text("##seg prompt", self.text_seg_prompt, 256)
+                        self.text_change = True if imgui.is_item_active() else False
 
                     if self.text_sam_option == 2 or self.text_sam_option == 3:
                         if imgui.radio_button("No Points", self.text_point_option == 0):
@@ -484,6 +485,7 @@ class EditorWidget(Widget):
 
                         label("Segmentation", viz.label_w)
                         changed, self.segmentation_prompt = imgui.input_text("##Segmentation", self.segmentation_prompt, 256)
+                        self.text_change = True if imgui.is_item_active() else False
                         if imgui_utils.button("Mesh", width=viz.button_w):
                             cache_dir = "tmp_add"
                             os.makedirs("tmp_add", exist_ok=True)
@@ -542,6 +544,7 @@ class EditorWidget(Widget):
                     if self.adding:
                         label("prompt", viz.label_w)
                         _, self.fine_add_prompt = imgui.input_text("##prompt", self.fine_add_prompt, 256)
+                        self.text_change = True if imgui.is_item_active() else False
                         label("Video", viz.label_w)
                         _, self.video_editing = imgui.checkbox("##Video", self.video_editing)
 
@@ -553,7 +556,7 @@ class EditorWidget(Widget):
                         imgui.text(f"Save Path: {self.add_output_dir}")
 
                         if not self.edit3D: 
-                            if imgui_utils.button("Edit3D", width=viz.button_w):
+                            if imgui_utils.button("Add", width=viz.button_w):
                                 if self.edit_trainer != None:
                                         self.edit_trainer.terminate()
                                         self.edit_trainer.wait()   
@@ -611,9 +614,10 @@ class EditorWidget(Widget):
                         self.text_sam_positive_points = []
                         self.text_sam_negative_points = []
 
-                    imgui.separator_text("Remove single image")
+                    imgui.separator_text("Remove in the single image")
                     label("prompt", viz.label_w)
                     _, self.delete_prompt = imgui.input_text("##Remove Prompt", self.delete_prompt, 256)
+                    self.text_change = True if imgui.is_item_active() else False
                     if imgui_utils.button("remove", width=viz.button_w):
                         self.edit_single = True
                         self.single_image = self.remove_single_image(image=viz.result.image, prompts=self.delete_prompt)
