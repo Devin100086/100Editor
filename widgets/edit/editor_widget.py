@@ -52,23 +52,23 @@ class EditorWidget(Widget):
         self.edit_until_step = 1000
         self.per_editing_step = 10
         self.edit_begin_step = 0
-        self.edit_cam_num = 16
-        self.edit_train_steps = 1500
-        self.densify_until_step = 1300
+        self.edit_cam_num = 300
+        self.edit_train_steps = 30000
+        self.densify_until_step = 1000
         self.cameara_update_step = 500
-        self.densification_interval = 50
+        self.densification_interval = 100
 
-        self.gs_lr_scaler = 3.0
-        self.gs_lr_end_scaler = 3.0
-        self.color_lr_scaler = 3.0
-        self.opacity_lr_scaler = 2.0
-        self.scaling_lr_scaler = 2.0
-        self.rotation_lr_scaler = 2.0
+        self.gs_lr_scaler = 1
+        self.gs_lr_end_scaler = 1
+        self.color_lr_scaler = 2
+        self.opacity_lr_scaler = 1.0
+        self.scaling_lr_scaler = 1.0
+        self.rotation_lr_scaler = 1.0
         
         # text-edit
-        self.guidance_type = ["InstructPix2Pix","ControlNet-Depth"]
+        self.guidance_type = ["InstructPix2Pix","ControlNet-Depth","pds","pds-refine"]
         self.guidance_item = 0
-        self.text_prompt = "Turn him into Harry Potter"
+        self.text_prompt = "Put makeup on her"
         self.origin_prompt = "a photo of a bear statue in the forest"
         self.text_sam_option = 0
         self.text_point_option = 0
@@ -78,6 +78,8 @@ class EditorWidget(Widget):
         self.text_sam_positive_points = []
         self.text_sam_negative_points = []
         self.edit_output_dir = os.path.join(os.getcwd(), "outputs")
+        self.hard_segmentation = True
+        self.mask_thres = 0.5
 
         # madding
         self.mask_prompt = "add a red hat"
@@ -165,16 +167,8 @@ class EditorWidget(Widget):
                         self.densification_interval = 100
                         self.densify_until_step = 4000
                     imgui.same_line()
-                    if imgui.radio_button("Coarse-Editing", self.select_option == 2):
+                    if imgui.radio_button("Fine-Adding", self.select_option == 2):
                         self.select_option = 2
-                        self.per_editing_step = 10
-                        self.edit_train_steps = 1500
-                        self.edit_until_step = 1000
-                        self.densification_interval = 50
-                        self.densify_until_step = 1300
-                    imgui.same_line()
-                    if imgui.radio_button("Fine-Adding", self.select_option == 3):
-                        self.select_option = 3
                         self.edit_cam_num = 48
                         self.per_editing_step = 10
                         self.densification_interval = 50
@@ -182,32 +176,23 @@ class EditorWidget(Widget):
                         self.edit_until_step = 1000
                         self.densify_until_step = 1300
                     imgui.same_line()
-                    if imgui.radio_button("Fine-VideoAdding", self.select_option == 4):
-                        self.select_option = 4
+                    if imgui.radio_button("Fine-VideoAdding", self.select_option == 3):
+                        self.select_option = 3
                         self.edit_cam_num = 18
                         self.per_editing_step = 10000
                         self.edit_train_steps = 1500
                         self.edit_until_step = 4000
                         self.densification_interval = 100
                         self.densify_until_step = 4000
-                    if imgui.radio_button("Deleting", self.select_option == 5):
-                        self.select_option = 5
+                    imgui.same_line()
+                    if imgui.radio_button("Deleting", self.select_option == 4):
+                        self.select_option = 4
                         self.edit_cam_num = 48
                         self.per_editing_step = 10
                         self.edit_train_steps = 2000
                         self.edit_until_step = 1000
                         self.densification_interval = 50
                         self.densify_until_step = 4000
-                    imgui.same_line()
-                    if imgui.radio_button("VideoDeleting", self.select_option == 6):
-                        self.select_option = 6
-                        self.edit_cam_num = 8
-                        self.per_editing_step = 10000
-                        self.edit_train_steps = 1500
-                        self.edit_until_step = 4000
-                        self.densification_interval = 50
-                        self.densify_until_step = 4000
-                    imgui.separator_text("Parameters")
 
                     if imgui.tree_node("Editing Training"):
                         label("Camera Num", viz.label_w_large)
@@ -278,10 +263,14 @@ class EditorWidget(Widget):
                     label("prompt", viz.label_w)
                     _, self.text_prompt = imgui.input_text("##Prompt", self.text_prompt, 256)
                     self.text_change = True if imgui.is_item_active() else False
+                    label("mask threshold", viz.label_w)
+                    _, self.mask_thres = imgui.slider_float("##Mask Threshold", self.mask_thres, 0.0, 1.0, format="%.2f")
                     label("Video", viz.label_w)
                     _, self.text_videoEditing = imgui.checkbox("##Video", self.text_videoEditing)
                     label("Original Resolution", viz.label_w)
                     _, self.edit_use_original_resolution = imgui.checkbox("##Use Original Resolution", self.edit_use_original_resolution)
+                    label("hard segmentation", viz.label_w)
+                    _, self.hard_segmentation = imgui.checkbox("##Hard Segmentation", self.hard_segmentation)
 
                     imgui.separator_text("SAM Option")
                     label("Sam Type", viz.label_w)
@@ -337,7 +326,7 @@ class EditorWidget(Widget):
                             cam = CustomCam(origin.size[0]//2, origin.size[1]//2, fov_rad, fov_rad, R, T, viz.extr.cuda())
                             with open(f'tmp_edit/camera.pkl', 'wb') as f:
                                 pickle.dump(cam, f)  
-                            self.edit_trainer = training_text_adding_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
+                            self.edit_trainer = training_text_editing_command(gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
                                                                              edit_cam_num=self.edit_cam_num,guidance_type=self.guidance_type[self.guidance_item],
                                                                              text_prompt=self.text_prompt, origin_prompt = self.origin_prompt, edit_train_steps=self.edit_train_steps,
                                                                              per_editing_step=self.per_editing_step,edit_begin_step=self.edit_begin_step,
@@ -350,7 +339,8 @@ class EditorWidget(Widget):
                                                                              color_lr_scaler = self.color_lr_scaler,  opacity_lr_scaler = self.opacity_lr_scaler, 
                                                                              scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler, 
                                                                              positive_sam_points = "tmp_edit/sam2_positive_points.npy", negative_sam_points = "tmp_edit/sam2_negative_points.npy",
-                                                                             camera = "tmp_edit/camera.pkl", use_original_resolution = self.edit_use_original_resolution, output_dir = self.edit_output_dir
+                                                                             camera = "tmp_edit/camera.pkl", use_original_resolution = self.edit_use_original_resolution, output_dir = self.edit_output_dir,
+                                                                             hard_segmentation = self.hard_segmentation, mask_thres=self.mask_thres
                                                                             )
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):

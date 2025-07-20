@@ -327,6 +327,7 @@ if __name__ == "__main__":
     parser.add_argument("--camera", type=str, default="tmd_delete/camera.pkl", help="camera.")
     parser.add_argument("--use_original_resolution", type=str, default="False", help="use original resolution.")
     parser.add_argument("--output_dir", type=str, default="save/", help="output dir.")
+    parser.add_argument("--mask_thres", type=float, default=0.5, help="mask threshold.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):

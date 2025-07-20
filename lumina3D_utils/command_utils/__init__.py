@@ -4,13 +4,13 @@ Helper functions for Executing Command.
 
 import subprocess
 
-def training_text_adding_command(
+def training_text_editing_command(
     gs_source, colmap_dir, edit_cam_num, guidance_type, text_prompt, origin_prompt, edit_train_steps,
     per_editing_step, edit_begin_step, edit_until_step, lambda_l1, lambda_p,
     lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,
     sam_option, seg_prompt, text_videoEditing, gs_lr_scaler, gs_lr_end_scaler, color_lr_scaler, 
     opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler, camera, positive_sam_points, negative_sam_points, use_original_resolution,
-    output_dir
+    output_dir, hard_segmentation, mask_thres
 ):
     process = subprocess.Popen([
         "python",
@@ -44,7 +44,9 @@ def training_text_adding_command(
         "--camera", str(camera),
         "--video",str(text_videoEditing),
         "--use_original_resolution", str(use_original_resolution),
-        "--output_dir", str(output_dir)
+        "--output_dir", str(output_dir),
+        "--hard_segmentation", str(hard_segmentation),
+        "--mask_thres", str(mask_thres)
     ])
     return process
 
@@ -132,7 +134,7 @@ def showing_colmap_command(data_path):
     ])
     return process
 
-def colmap_reconstruction(source_path, colmap_executable, use_gpu):
+def sfm_reconstruction(source_path, colmap_executable, use_gpu):
     gpu = 1 if use_gpu == True else 0
     process = subprocess.Popen([
         "python",
@@ -140,6 +142,14 @@ def colmap_reconstruction(source_path, colmap_executable, use_gpu):
         "-s",str(source_path),
         "--colmap_executable",str(colmap_executable),
         "--gpu", str(gpu)
+    ])
+    return process
+
+def vggt_reconstruction(source_path):
+    process = subprocess.Popen([
+        "python",
+        "EditorGS/vggt/colmap.py",
+        "--scene_dir",str(source_path),
     ])
     return process
 

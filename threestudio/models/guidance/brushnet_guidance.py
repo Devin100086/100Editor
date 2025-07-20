@@ -40,6 +40,7 @@ class BrushNetGuidance(BaseObject):
 
         min_step_percent: float = 0.02
         max_step_percent: float = 0.98
+        generator_seed: int = 1
 
         diffusion_steps: int = 20
 
@@ -121,7 +122,7 @@ class BrushNetGuidance(BaseObject):
         self.vae = self.pipe.vae.eval()
         self.unet = self.pipe.unet.eval()
         self.brushnet = self.pipe.brushnet.eval()
-        self.generator = torch.Generator("cuda").manual_seed(1)
+        self.generator = torch.Generator("cuda").manual_seed(self.cfg.generator_seed)
 
         for p in self.vae.parameters():
             p.requires_grad_(False)
@@ -460,36 +461,15 @@ class BrushNetGuidance(BaseObject):
         temp = torch.zeros(batch_size).to(rgb.device)
         text_embeddings = prompt_utils.get_text_embeddings(temp, temp, temp, False)
 
-        if self.cfg.use_sds:
-            # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
-            t = torch.randint(
-                self.min_step,
-                self.max_step + 1,
-                [batch_size],
-                dtype=torch.long,
-                device=self.device,
-            )
-            grad = self.compute_grad_sds(text_embeddings, latents, latents, t)
-            grad = torch.nan_to_num(grad)
-            if self.grad_clip_val is not None:
-                grad = grad.clamp(-self.grad_clip_val, self.grad_clip_val)
-            target = (latents - grad).detach()
-            loss_sds = 0.5 * F.mse_loss(latents, target, reduction="sum") / batch_size
-            return {
-                "loss_sds": loss_sds,
-                "grad_norm": grad.norm(),
-                "min_step": self.min_step,
-                "max_step": self.max_step,
-            }
-        else:
-            if self.cfg.video:
-                edit_latents = self.edit_all_latents(text_embeddings, latents, noise_latents)
-            else:
-                edit_latents = self.edit_latents(text_embeddings, latents, noise_latents)
-            edit_images = self.decode_latents(edit_latents)
-            edit_images = F.interpolate(edit_images, (H, W), mode="bilinear")
 
-            return {"edit_images": edit_images.permute(0, 2, 3, 1)}
+        if self.cfg.video:
+            edit_latents = self.edit_all_latents(text_embeddings, latents, noise_latents)
+        else:
+            edit_latents = self.edit_latents(text_embeddings, latents, noise_latents)
+        edit_images = self.decode_latents(edit_latents)
+        edit_images = F.interpolate(edit_images, (H, W), mode="bilinear")
+
+        return {"edit_images": edit_images.permute(0, 2, 3, 1)}
 
     def update_step(self, epoch: int, global_step: int, on_load_weights: bool = False):
         # clip grad for stable training as demonstrated in

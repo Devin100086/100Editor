@@ -42,13 +42,16 @@ class EditTrainer(BaseTrainer):
         self.positive_sam_points = np.load(cfg.positive_sam_points)
         self.negative_sam_points = np.load(cfg.negative_sam_points)
 
+        self.hard_segmentation = eval(cfg.hard_segmentation)
+
         self.save_mask_tmp =  os.path.join(os.path.dirname(cfg.positive_sam_points),"mask")
 
         with open(args.camera, 'rb') as f:
             self.cam  = pickle.load(f)
 
     def edit(self, sam_option, seg_prompt, video):
-        start_time = now = datetime.datetime.now()
+        # start_time = datetime.datetime.now()
+        now = datetime.datetime.now()
         now = f"{self.edit_text}@{now.strftime('%Y_%m_%d_%H_%M')}"
         now = now.replace(" ", "_")
         self.output_dir = os.path.join(self.output_dir, now)
@@ -67,7 +70,9 @@ class EditTrainer(BaseTrainer):
                                       "max_step_percent": 0.98,
                                       "video":video})
                 )
+
             cur_2D_guidance = self.ip2p
+            # cur_2D_guidance = self.dreambooth
             self.origin_prompt = None
             print("using InstructPix2Pix!")
         elif self.guidance_type == "ControlNet-Depth":
@@ -163,8 +168,8 @@ class EditTrainer(BaseTrainer):
         view_index_stack = self.n2n_view_index.copy()
         ema_loss_for_log = 0.0
 
-        Renderings1 = []
-        Renderings2 = []
+        # Renderings1 = []
+        # Renderings2 = []
 
         network = EditorNetwork(host="127.0.0.1",port=8084)
         for step in tqdm(range(self.edit_train_steps)):
@@ -178,6 +183,8 @@ class EditTrainer(BaseTrainer):
             view_index_stack.remove(view_index)
 
             rendering = self.render(self.colmap_cameras[view_index], train=True)["comp_rgb"]
+            # import torchvision.utils as vutils
+            # vutils.save_image(rendering.permute(0,3,1,2), "output_images.png", nrow=1)
             # if (step+1) % 250 == 0:
             #     image1 = self.render(self.colmap_cameras[37])["comp_rgb"]
             #     image2 = self.render(self.colmap_cameras[29])["comp_rgb"]
@@ -205,15 +212,15 @@ class EditTrainer(BaseTrainer):
         # save_image(Renderings1, f"batch_image1_{self.edit_train_steps}.png", nrow=Renderings1.shape[0])
         # save_image(Renderings2, f"batch_image2_{self.edit_train_steps}.png", nrow=Renderings2.shape[0])
 
-        end_time = datetime.datetime.now()
-        run_time = end_time - start_time
-        total_seconds = run_time.total_seconds()
+        # end_time = datetime.datetime.now()
+        # run_time = end_time - start_time
+        # total_seconds = run_time.total_seconds()
 
-        hours = int(total_seconds // 3600)  
-        minutes = int((total_seconds % 3600) // 60) 
-        seconds = total_seconds % 60 
+        # hours = int(total_seconds // 3600)  
+        # minutes = int((total_seconds % 3600) // 60) 
+        # seconds = total_seconds % 60 
 
-        print(f"Time: {hours} h {minutes} min {seconds:.2f} s")
+        # print(f"Time: {hours} h {minutes} min {seconds:.2f} s")
         self.gaussian.save_ply(f"{self.output_dir}/result.ply")
     
     def edit_all_view(self, sam_option, update_camera=False, global_step=0):
@@ -263,13 +270,14 @@ class EditTrainer(BaseTrainer):
                 masks = torch.ones_like(images)
             origin_frames = torch.cat(origin_frames, dim=0)
             depths = torch.cat(depths, dim=0)
-
+            
             if self.guidance_type == "InstructPix2Pix":
                 edited_images = self.guidance.edit_all(images, origin_frames)
             elif self.guidance_type == "ControlNet-Depth":
                 edited_images = self.guidance.edit_all(images, depths)
+            if self.hard_segmentation:
+                edited_images = edited_images * masks + (1-masks) * origin_frames
 
-            edited_images = edited_images * masks + (1-masks) * origin_frames
             save_image(edited_images.permute(0, 3, 1, 2), f'{self.output_dir}/batch_image_{global_step}.png', nrow=4)
             for view_index_tmp in range(len(self.view_list)):
                 self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
@@ -308,6 +316,8 @@ if __name__ == "__main__":
     parser.add_argument("--negative_sam_points", type=str, default="/", help="the path of the negative sam points.")
     parser.add_argument("--camera", type=str, default="tmd_delete/camera.pkl", help="camera.")
     parser.add_argument("--output_dir", type=str, default="save/", help="output dir.")
+    parser.add_argument("--hard_segmentation", type=str, default="True", help="hard segmentation.")
+    parser.add_argument("--mask_thres", type=float, default=0.5, help="mask threshold.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):

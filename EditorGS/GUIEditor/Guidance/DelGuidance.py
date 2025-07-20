@@ -4,6 +4,7 @@ from threestudio.utils.misc import get_device
 from threestudio.utils.perceptual import PerceptualLoss
 from torchvision.transforms.functional import to_pil_image,to_tensor
 from torchvision.transforms import ToTensor
+from torch.nn import functional as F
 
 from threestudio.models.prompt_processors.stable_diffusion_prompt_processor import StableDiffusionPromptProcessor
 from transformers import pipeline
@@ -87,8 +88,8 @@ class DelGuidance:
             # rgb = image_in * (1-mask)
             self.inpaint_with_mask_ctn(image_in, mask_in, view_index)
 
-        gt_image = self.edit_frames[view_index]
-
+        gt_image = self.edit_frames[view_index].permute(0,3,1,2)
+        gt_image = F.interpolate(gt_image, size=(rendering.shape[1], rendering.shape[2]), mode='bilinear', align_corners=False).permute(0,2,3,1)
         loss = self.lambda_l1 * torch.nn.functional.l1_loss(rendering, gt_image) + \
                self.lambda_p * self.perceptual_loss(rendering.permute(0, 3, 1, 2).contiguous(),
                                                         gt_image.permute(0, 3, 1, 2).contiguous(), ).sum() # 1 H W C to 1 C H W

@@ -268,7 +268,6 @@ class InstructPix2PixGuidance(BaseObject):
         latents: Float[Tensor, "B 4 DH DW"],
         image_cond_latents: Float[Tensor, "B 4 DH DW"],
         t: Int[Tensor, "B"],
-        cams= None,
     ) -> Float[Tensor, "B 4 DH DW"]:
         
         self.scheduler.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
@@ -312,7 +311,57 @@ class InstructPix2PixGuidance(BaseObject):
                     noise_preds[chunk] = noise_pred
                 # get previous sample, continue loop
                 latents = self.scheduler.step(noise_preds, t, latents).prev_sample
+                # vidtome.update_patch(self.pipe, global_tokens = None)
         print("Editing finished.")
+        return latents
+
+    def edit_all_latents_without_consistent(
+        self,
+        text_embeddings: Float[Tensor, "BB 77 768"],
+        latents: Float[Tensor, "B 4 DH DW"],
+        image_cond_latents: Float[Tensor, "B 4 DH DW"],
+        t: Int[Tensor, "B"],
+    ) -> Float[Tensor, "B 4 DH DW"]:
+        
+        self.scheduler.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
+        self.scheduler.set_timesteps(self.cfg.diffusion_steps)
+
+        print("Start editing images...")
+
+        with torch.no_grad():
+            # add noise
+            noise = torch.randn_like(latents)
+            latents = self.scheduler.add_noise(latents, noise, t) 
+
+            # sections of code used from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_instruct_pix2pix.py
+            for t in self.scheduler.timesteps:
+                # pred noise
+                
+                noise_preds = torch.zeros_like(latents)
+                
+                with torch.no_grad():
+                    latent_model_input = torch.cat([latents] * 3)
+                    # image_cond_latent = torch.cat([image_cond_latents] * 3)
+                    latent_model_input = torch.cat(
+                    [latent_model_input, image_cond_latents], dim=1
+                    )
+                    eps = self.forward_unet(
+                    latent_model_input, t, encoder_hidden_states=text_embeddings
+                )
+                noise_pred_text, noise_pred_image, noise_pred_uncond = eps.chunk(
+                    3
+                )
+                # perform classifier-free guidance
+                noise_pred = (
+                    noise_pred_uncond
+                    + self.cfg.guidance_scale * (noise_pred_text - noise_pred_image)
+                    + self.cfg.condition_scale * (noise_pred_image - noise_pred_uncond)
+                )
+                noise_preds = noise_pred
+                # get previous sample, continue loop
+                latents = self.scheduler.step(noise_preds, t, latents).prev_sample
+                # vidtome.update_patch(self.pipe, global_tokens = None)
+            threestudio.debug("Editing finished.")
         return latents
 
     def compute_grad_sds(
@@ -439,35 +488,3 @@ class InstructPix2PixGuidance(BaseObject):
             min_step_percent=C(self.cfg.min_step_percent, epoch, global_step),
             max_step_percent=C(self.cfg.max_step_percent, epoch, global_step),
         )
-
-
-if __name__ == "__main__":
-    from threestudio.utils.config import ExperimentConfig, load_config
-    from threestudio.utils.typing import Optional
-
-    cfg = load_config("configs/debugging/instructpix2pix.yaml")
-    guidance = threestudio.find(cfg.system.guidance_type)(cfg.system.guidance)
-    prompt_processor = threestudio.find(cfg.system.prompt_processor_type)(
-        cfg.system.prompt_processor
-    )
-    rgb_image = cv2.imread("assets/face.jpg")[:, :, ::-1].copy() / 255
-    rgb_image = torch.FloatTensor(rgb_image).unsqueeze(0).to(guidance.device)
-    prompt_utils = prompt_processor()
-    guidance_out = guidance(rgb_image, rgb_image, prompt_utils)
-    edit_image = (
-        (
-            guidance_out["edit_images"][0]
-            .permute(1, 2, 0)
-            .detach()
-            .cpu()
-            .clip(0, 1)
-            .numpy()
-            * 255
-        )
-        .astype(np.uint8)[:, :, ::-1]
-        .copy()
-    )
-    import os
-
-    os.makedirs(".threestudio_cache", exist_ok=True)
-    cv2.imwrite(".threestudio_cache/edit_image.jpg", edit_image)

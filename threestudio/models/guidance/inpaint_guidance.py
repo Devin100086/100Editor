@@ -319,9 +319,9 @@ class inpaintingGuidance(BaseObject):
         latents: Float[Tensor, "B 4 DH DW"],
         mask: Float[Tensor, "B 1 DH DW"],
         masked_image_latents: Float[Tensor, "B 4 DH DW"],
-        cams= None,
     ) -> Float[Tensor, "B 4 DH DW"]:
         
+        # self.scheduler.set_timesteps(self.cfg.diffusion_steps)
         self.scheduler.set_timesteps(self.cfg.diffusion_steps)
 
         print("Start editing images...")
@@ -338,10 +338,12 @@ class inpaintingGuidance(BaseObject):
                 for chunk in chunks:
                     with torch.no_grad():
                         latent_model_input = torch.cat([latents[chunk]] * 2)
+                        Mask = torch.cat([mask[chunk]] * 2)
+                        Masked_image_latents = torch.cat([masked_image_latents[chunk]] * 2)
                         latent_model_input = torch.cat(
-                        [latent_model_input, mask[chunk],masked_image_latents[chunk]], dim=1
+                        [latent_model_input, Mask,Masked_image_latents], dim=1
                         )
-                        pos,neg = text_embeddings.chunk(2)
+                        neg,pos = text_embeddings.chunk(2)
                         text_embeddings_chunk = torch.cat([neg[chunk], pos[chunk]], dim=0)
                         eps = self.forward_unet(
                         latent_model_input, t, encoder_hidden_states=text_embeddings_chunk
@@ -355,7 +357,7 @@ class inpaintingGuidance(BaseObject):
                                 )
                     noise_preds[chunk] = noise_pred
                 # get previous sample, continue loop
-                latents = self.scheduler.step(noise_preds, t, latents).prev_sample
+                latents = self.scheduler.step(noise_preds, t, latents, eta=1.0).prev_sample
         print("Editing finished.")
         return latents
 

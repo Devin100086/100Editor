@@ -110,26 +110,3 @@ class EditGuidance:
         gt_image = result["edit_images"].detach().clone()
 
         return gt_image
-    
-    # def get_loss(self, rendering, view_index):
-
-    #     gt_image = self.edit_frames[view_index]
-
-    #     loss = self.lambda_l1 * torch.nn.functional.l1_loss(rendering, gt_image) + \
-    #            self.lambda_p * self.perceptual_loss(rendering.permute(0, 3, 1, 2).contiguous(),
-    #                                                 gt_image.permute(0, 3, 1, 2).contiguous(), ).sum()
-        
-    #     # anchor loss
-    #     if (
-    #             self.lambda_anchor_color > 0
-    #             or self.lambda_anchor_geo > 0
-    #             or self.lambda_anchor_scale > 0
-    #             or self.lambda_anchor_opacity > 0
-    #     ):
-    #         anchor_out = self.gaussian.anchor_loss()
-    #         loss += self.lambda_anchor_color * anchor_out['loss_anchor_color'] + \
-    #                 self.lambda_anchor_geo * anchor_out['loss_anchor_geo'] + \
-    #                 self.lambda_anchor_opacity * anchor_out['loss_anchor_opacity'] + \
-    #                 self.lambda_anchor_scale * anchor_out['loss_anchor_scale']
-
-    #     return loss

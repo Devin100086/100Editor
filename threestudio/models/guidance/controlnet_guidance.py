@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from controlnet_aux import CannyDetector, NormalBaeDetector
-from diffusers import ControlNetModel, DDIMScheduler, StableDiffusionControlNetPipeline
+from diffusers import ControlNetModel, DDIMScheduler, StableDiffusionControlNetPipeline, DDIMInverseScheduler
 from diffusers.utils.import_utils import is_xformers_available
 from tqdm import tqdm
 
@@ -15,6 +15,7 @@ from threestudio.models.prompt_processors.base import PromptProcessorOutput
 from threestudio.utils.base import BaseObject
 from threestudio.utils.misc import C, parse_version
 from threestudio.utils.typing import *
+import threestudio.utils.vidtome as vidtome
 
 
 @threestudio.register("stable-diffusion-controlnet-guidance")
@@ -22,9 +23,9 @@ class ControlNetGuidance(BaseObject):
     @dataclass
     class Config(BaseObject.Config):
         cache_dir: Optional[str] = None
-        pretrained_model_name_or_path: str = "SG161222/Realistic_Vision_V2.0"
-        ddim_scheduler_name_or_path: str = "runwayml/stable-diffusion-v1-5"
-        control_type: str = "normal"  # normal/canny
+        pretrained_model_name_or_path: str = "CompVis/stable-diffusion-v1-4"
+        ddim_scheduler_name_or_path: str = "CompVis/stable-diffusion-v1-4"
+        control_type: str = "depth"  # normal/canny/depth
 
         enable_memory_efficient_attention: bool = False
         enable_sequential_cpu_offload: bool = False
@@ -42,13 +43,26 @@ class ControlNetGuidance(BaseObject):
         min_step_percent: float = 0.02
         max_step_percent: float = 0.98
 
-        diffusion_steps: int = 20
+        diffusion_steps: int = 25
 
         use_sds: bool = False
+
+        video: bool = False
 
         # Canny threshold
         canny_lower_bound: int = 50
         canny_upper_bound: int = 100
+
+        # vidtome
+        chunk_size: int = 2
+        chunk_ord: str = "mix-4"
+        merge_global: bool = True
+        local_merge_ratio: float = 0.9
+        global_merge_ratio: float = 0.9
+        global_rand: float =  0.5
+        seed: int = 142857
+        batch_size: int = 2
+        align_batch: bool = True
 
     cfg: Config
 
@@ -74,6 +88,8 @@ class ControlNetGuidance(BaseObject):
             controlnet_name_or_path = "lllyasviel/control_v11e_sd15_ip2p"
         elif self.cfg.control_type == "inpaint":
             controlnet_name_or_path = "lllyasviel/control_v11p_sd15_inpaint"
+        elif self.cfg.control_type == "depth":
+            controlnet_name_or_path = "lllyasviel/sd-controlnet-depth"
 
         self.weights_dtype = (
             torch.float16 if self.cfg.half_precision_weights else torch.float32
@@ -92,16 +108,30 @@ class ControlNetGuidance(BaseObject):
             torch_dtype=self.weights_dtype,
             cache_dir=self.cfg.cache_dir,
         )
+
         self.pipe = StableDiffusionControlNetPipeline.from_pretrained(
             self.cfg.pretrained_model_name_or_path, controlnet=controlnet, **pipe_kwargs
         ).to(self.device)
+        self.inverse_pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            self.cfg.pretrained_model_name_or_path, controlnet=controlnet, **pipe_kwargs
+        ).to(self.device)
+
         self.scheduler = DDIMScheduler.from_pretrained(
             self.cfg.ddim_scheduler_name_or_path,
             subfolder="scheduler",
             torch_dtype=self.weights_dtype,
             cache_dir=self.cfg.cache_dir,
         )
+
+        self.ddim_inverser = DDIMInverseScheduler.from_pretrained(
+                self.cfg.ddim_scheduler_name_or_path, 
+                subfolder="scheduler",
+                torch_dtype=self.weights_dtype,
+                cache_dir=self.cfg.cache_dir,
+        )
+
         self.scheduler.set_timesteps(self.cfg.diffusion_steps)
+        self.ddim_inverser.set_timesteps(self.cfg.diffusion_steps)
 
         if self.cfg.enable_memory_efficient_attention:
             if parse_version(torch.__version__) >= parse_version("2"):
@@ -127,6 +157,7 @@ class ControlNetGuidance(BaseObject):
         # Create model
         self.vae = self.pipe.vae.eval()
         self.unet = self.pipe.unet.eval()
+        self.inverse_unet = self.inverse_pipe.unet.eval()
         self.controlnet = self.pipe.controlnet.eval()
 
         if self.cfg.control_type == "normal":
@@ -152,6 +183,13 @@ class ControlNetGuidance(BaseObject):
         self.grad_clip_val: Optional[float] = None
 
         threestudio.info(f"Loaded ControlNet!")
+
+        if self.cfg.video:
+            self.activate_vidtome()
+    
+    def activate_vidtome(self):
+        vidtome.apply_patch(self.pipe, self.cfg.local_merge_ratio, self.cfg.merge_global, self.cfg.global_merge_ratio, 
+            seed = self.cfg.seed, batch_size = self.cfg.batch_size, align_batch = self.cfg.align_batch, global_rand = self.cfg.global_rand) 
 
     @torch.cuda.amp.autocast(enabled=False)
     def set_min_max_steps(self, min_step_percent=0.02, max_step_percent=0.98):
@@ -195,6 +233,26 @@ class ControlNetGuidance(BaseObject):
             down_block_additional_residuals=down_block_additional_residuals,
             mid_block_additional_residual=mid_block_additional_residual,
         ).sample.to(input_dtype)
+    
+    @torch.cuda.amp.autocast(enabled=False)
+    def inverse_forward_control_unet(
+        self,
+        latents: Float[Tensor, "..."],
+        t: Float[Tensor, "..."],
+        encoder_hidden_states: Float[Tensor, "..."],
+        cross_attention_kwargs,
+        down_block_additional_residuals,
+        mid_block_additional_residual,
+    ) -> Float[Tensor, "..."]:
+        input_dtype = latents.dtype
+        return self.inverse_unet(
+            latents.to(self.weights_dtype),
+            t.to(self.weights_dtype),
+            encoder_hidden_states=encoder_hidden_states.to(self.weights_dtype),
+            cross_attention_kwargs=cross_attention_kwargs,
+            down_block_additional_residuals=down_block_additional_residuals,
+            mid_block_additional_residual=mid_block_additional_residual,
+        ).sample.to(input_dtype)
 
     @torch.cuda.amp.autocast(enabled=False)
     def encode_images(
@@ -227,6 +285,152 @@ class ControlNetGuidance(BaseObject):
         image = self.vae.decode(latents.to(self.weights_dtype)).sample
         image = (image * 0.5 + 0.5).clamp(0, 1)
         return image.to(input_dtype)
+    
+    def get_chunks(self, flen):
+        x_index = torch.arange(flen)
+
+        # The first chunk has a random length
+        rand_first = np.random.randint(0, self.cfg.chunk_size) + 1
+        chunks = x_index[rand_first:].split(self.cfg.chunk_size, dim=0)
+        chunks = [x_index[:rand_first]] + list(chunks) if len(chunks[0]) > 0 else [x_index[:rand_first]]
+        if np.random.rand() > 0.5:
+            chunks = chunks[::-1]
+        
+        # Chunk order only matter when we do global token merging
+        if self.cfg.merge_global == False:
+            return chunks
+
+        # Chunk order. "seq": sequential order. "rand": full permutation. "mix": partial permutation.
+        if self.cfg.chunk_ord == "rand":
+            order = torch.randperm(len(chunks))
+        elif self.cfg.chunk_ord == "mix":
+            randord = torch.randperm(len(chunks)).tolist()
+            rand_len = int(len(randord) / self.perm_div)
+            seqord = sorted(randord[rand_len:])
+            if rand_len > 0:
+                randord = randord[:rand_len]
+                if abs(seqord[-1] - randord[-1]) < abs(seqord[0] - randord[-1]):
+                    seqord = seqord[::-1]
+                order = randord + seqord
+            else:
+                order = seqord
+        else:
+            order = torch.arange(len(chunks))
+        chunks = [chunks[i] for i in order]
+        return chunks
+
+    def ddim_inversion(self, latents, image_cond, text_embeddings):
+        for t in self.ddim_inverser.timesteps:
+            noises = []
+            x_index = torch.arange(len(latents))
+            batches = x_index.split(self.cfg.batch_size, dim = 0)
+            with torch.no_grad():
+                for batch in batches:
+                # pred noise
+                    latent_model_input = torch.cat([latents[batch]] * 2)
+                    image_cond_input = torch.cat([image_cond[batch]] * 2)
+                    pos, neg = text_embeddings.chunk(2)
+                    text_embeddings_chunk = torch.cat([pos[batch], neg[batch]], dim=0)
+
+                    (
+                        down_block_res_samples,
+                        mid_block_res_sample,
+                    ) = self.forward_controlnet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=text_embeddings_chunk,
+                        image_cond=image_cond_input,
+                        condition_scale=self.cfg.condition_scale,
+                    )
+
+                    noise_pred = self.inverse_forward_control_unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=text_embeddings_chunk,
+                        cross_attention_kwargs=None,
+                        down_block_additional_residuals=down_block_res_samples,
+                        mid_block_additional_residual=mid_block_res_sample,
+                    )
+                    noise_pred_text, noise_pred_uncond = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + self.cfg.guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
+                    noises += [noise_pred]
+            noises = torch.cat(noises)
+            # get previous sample, continue loop
+            latents = self.ddim_inverser.step(noises, t, latents).prev_sample
+
+        threestudio.debug("DDIM Inversion finished.")
+        return latents
+
+    def edit_all_latents(
+        self,
+        text_embeddings: Float[Tensor, "BB 77 768"],
+        origin_text_embeddings: Float[Tensor, "BB 77 768"],
+        latents: Float[Tensor, "B 4 DH DW"],
+        image_cond_latents: Float[Tensor, "B 3 DH DW"],
+        t: Int[Tensor, "B"],
+        cams= None,
+    ) -> Float[Tensor, "B 4 DH DW"]:
+        
+        self.scheduler.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
+        self.scheduler.set_timesteps(self.cfg.diffusion_steps)
+
+        self.ddim_inverser.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
+        self.ddim_inverser.set_timesteps(self.cfg.diffusion_steps)
+
+        print("Start editing images...")
+
+        with torch.no_grad():
+            # add noise
+            # noise = torch.randn_like(latents)
+            # latents = self.scheduler.add_noise(latents, noise, t) 
+            latents = self.ddim_inversion(latents, image_cond_latents, origin_text_embeddings)
+
+            # sections of code used from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_instruct_pix2pix.py
+            for t in self.scheduler.timesteps:
+                # pred noise
+                chunks = self.get_chunks(len(latents))
+                
+                noise_preds = torch.zeros_like(latents)
+                
+                for chunk in chunks:
+                    with torch.no_grad():
+                        latent_model_input = torch.cat([latents[chunk]] * 2)
+                        image_cond_latent = torch.cat([image_cond_latents[chunk]] * 2)
+ 
+                        pos, neg = text_embeddings.chunk(2)
+                        text_embeddings_chunk = torch.cat([pos[chunk], neg[chunk]], dim=0)
+                    (
+                        down_block_res_samples,
+                        mid_block_res_sample,
+                    ) = self.forward_controlnet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=text_embeddings_chunk,
+                        image_cond=image_cond_latent,
+                        condition_scale=self.cfg.condition_scale,
+                    )
+                    noise_pred = self.forward_control_unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=text_embeddings_chunk,
+                        cross_attention_kwargs=None,
+                        down_block_additional_residuals=down_block_res_samples,
+                        mid_block_additional_residual=mid_block_res_sample,
+                    )
+                    noise_pred_text, noise_pred_uncond = noise_pred.chunk(2)
+                    # perform classifier-free guidance
+                    noise_pred = (
+                        noise_pred_uncond
+                        + self.cfg.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    )
+                    noise_preds[chunk] = noise_pred
+                # get previous sample, continue loop
+                latents = self.scheduler.step(noise_preds, t, latents).prev_sample
+                # vidtome.update_patch(self.pipe, global_tokens = None)
+        print("Editing finished.")
+        return latents
 
     def edit_latents(
         self,
@@ -235,7 +439,7 @@ class ControlNetGuidance(BaseObject):
         image_cond: Float[Tensor, "B 3 H W"],
         t: Int[Tensor, "B"],
     ) -> Float[Tensor, "B 4 DH DW"]:
-        self.scheduler.config.num_train_timesteps = t.item()
+        self.scheduler.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
         self.scheduler.set_timesteps(self.cfg.diffusion_steps)
         with torch.no_grad():
             # add noise
@@ -249,6 +453,8 @@ class ControlNetGuidance(BaseObject):
                 with torch.no_grad():
                     # pred noise
                     latent_model_input = torch.cat([latents] * 2)
+                    image_cond_input = torch.cat([image_cond] * 2)
+
                     (
                         down_block_res_samples,
                         mid_block_res_sample,
@@ -256,7 +462,7 @@ class ControlNetGuidance(BaseObject):
                         latent_model_input,
                         t,
                         encoder_hidden_states=text_embeddings,
-                        image_cond=image_cond,
+                        image_cond=image_cond_input,
                         condition_scale=self.cfg.condition_scale,
                     )
 
@@ -303,6 +509,11 @@ class ControlNetGuidance(BaseObject):
             control = control.unsqueeze(-1).repeat(1, 1, 3)
             control = control.unsqueeze(0)
             control = control.permute(0, 3, 1, 2)
+        elif self.cfg.control_type == "depth":
+            control = cond_rgb / torch.max(cond_rgb)
+            # depth_map = cond_rgb
+            control = control.permute(0, 3, 1, 2)
+            control = torch.concatenate([control, control, control], dim=1)
         elif self.cfg.control_type == "p2p":
             control = cond_rgb.permute(0, 3, 1, 2)
         elif self.cfg.control_type == "inpaint":
@@ -355,10 +566,11 @@ class ControlNetGuidance(BaseObject):
         rgb: Float[Tensor, "B H W C"],
         cond_rgb: Float[Tensor, "B H W C"],
         prompt_utils: PromptProcessorOutput,
+        origin_prompt_utils: PromptProcessorOutput,
         **kwargs,
     ):
         batch_size, H, W, _ = rgb.shape
-        assert batch_size == 1
+        # assert batch_size == 1
         assert rgb.shape[:-1] == cond_rgb.shape[:-1]
 
         rgb_BCHW = rgb.permute(0, 3, 1, 2)
@@ -377,17 +589,27 @@ class ControlNetGuidance(BaseObject):
             image_cond, (RH, RW), mode="bilinear", align_corners=False
         )
 
-        temp = torch.zeros(1).to(rgb.device)
+        temp = torch.zeros(batch_size).to(rgb.device)
         text_embeddings = prompt_utils.get_text_embeddings(temp, temp, temp, False)
+        origin_text_embeddings = origin_prompt_utils.get_text_embeddings(temp, temp, temp, False)
 
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
-        t = torch.randint(
-            self.min_step,
-            self.max_step + 1,
-            [batch_size],
-            dtype=torch.long,
-            device=self.device,
-        )
+        if self.cfg.video:
+            t = torch.randint(
+                self.max_step - 1,
+                self.max_step + 1,
+                [batch_size],
+                dtype=torch.long,
+                device=self.device,
+            )
+        else:
+            t = torch.randint(
+                self.min_step,
+                self.max_step + 1,
+                [batch_size],
+                dtype=torch.long,
+                device=self.device,
+            )
 
         if self.cfg.use_sds:
             grad = self.compute_grad_sds(text_embeddings, latents, image_cond, t)
@@ -403,7 +625,10 @@ class ControlNetGuidance(BaseObject):
                 "max_step": self.max_step,
             }
         else:
-            edit_latents = self.edit_latents(text_embeddings, latents, image_cond, t)
+            if self.cfg.video == False:
+                edit_latents = self.edit_latents(text_embeddings, latents, image_cond, t)
+            else:
+                edit_latents = self.edit_all_latents(text_embeddings, origin_text_embeddings, latents, image_cond, t)
             edit_images = self.decode_latents(edit_latents)
             edit_images = F.interpolate(edit_images, (H, W), mode="bilinear")
 
