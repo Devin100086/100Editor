@@ -174,8 +174,11 @@ class EditTrainer(BaseTrainer):
         network = EditorNetwork(host="127.0.0.1",port=8084)
         for step in tqdm(range(self.edit_train_steps)):
             network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
-            if step % self.cameara_update_step == 0 and video:
+            if (step % self.cameara_update_step == 0 and video):
                 self.edit_all_view(sam_option, update_camera= step >= self.cameara_update_step, global_step=step)
+
+            if (step == 999):
+                self.edit_all_view(sam_option, update_camera= False, global_step=step)
 
             if not view_index_stack:
                 view_index_stack = self.n2n_view_index.copy()
@@ -278,7 +281,7 @@ class EditTrainer(BaseTrainer):
             if self.hard_segmentation:
                 edited_images = edited_images * masks + (1-masks) * origin_frames
 
-            save_image(edited_images.permute(0, 3, 1, 2), f'{self.output_dir}/batch_image_{global_step}.png', nrow=4)
+            save_image(edited_images.permute(0, 3, 1, 2), f'{self.output_dir}/batch_image_{global_step}.png', nrow=10)
             for view_index_tmp in range(len(self.view_list)):
                 self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
 

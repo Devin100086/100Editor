@@ -66,7 +66,7 @@ class BaseTrainer:
         self.positive_points3d = []
         self.negative_points3d = []
         self.gaussian = GaussianModel(
-            sh_degree=3,
+            sh_degree=0,
             anchor_weight_init_g0=1.0,
             anchor_weight_init=0.1,
             anchor_weight_multiplier=2,
@@ -434,7 +434,7 @@ class BaseTrainer:
             min(len(self.colmap_cameras), self.edit_cam_num),
         )
 
-    def gaussian_blur(self, mask, kernel_size=21, sigma=5.0):
+    def gaussian_blur(self, mask, kernel_size=21, sigma=8.0):
     
         x = torch.arange(-kernel_size // 2 + 1., kernel_size // 2 + 1.)
         x = torch.exp(-x**2 / (2 * sigma**2))
