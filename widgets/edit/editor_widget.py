@@ -18,6 +18,7 @@ from torchvision.transforms.functional import to_tensor
 import torch
 from lumina3D_utils.dict_utils import EasyDict
 import sys
+
 import tkinter as tk
 from tkinter import filedialog
 
@@ -81,7 +82,7 @@ class EditorWidget(Widget):
         self.hard_segmentation = True
         self.mask_thres = 0.5
 
-        # madding
+        # adding
         self.mask_prompt = "add a red hat"
         self.start_rec_pos = None
         self.end_rec_pos = None
@@ -90,8 +91,6 @@ class EditorWidget(Widget):
         self.drawing_rect = False
         self.traincoarseadd = None
         self.depth = 1
-
-        # adding
         self.editing_option = -1
         self.points = []
         self.current_color = [1.0, 1.0, 1.0, 1.0]
@@ -108,11 +107,9 @@ class EditorWidget(Widget):
         self.video_editing = True
         self.add_output_dir = os.path.join(os.getcwd(), "outputs")
         self.concat = False
-
         self.fine_add_prompt = "a man wear a red hat on head"
         self.fine_seg_prompt = "hat"
 
-        #"A rectangular clean slate"
         # deleting
         self.delete_prompt = "remove the vase"
         self.inpaint_scale = 1.0
@@ -124,6 +121,9 @@ class EditorWidget(Widget):
         self.delete_sam_negative_points = []
         self.delete_use_original_resolution = False
         self.delete_output_dir = os.path.join(os.getcwd(), "outputs")
+
+        # Drag
+        self.animation = False
 
         self.edit_trainer = None
         self.draw_image = False
@@ -699,7 +699,29 @@ class EditorWidget(Widget):
                             self.edit_trainer.wait()
 
                     imgui.end_tab_item()
-            imgui.end_tab_bar()   
+
+                if imgui.begin_tab_item("Drag")[0]:
+                    imgui.text("Instruction:")
+                    imgui.text("1.Pressing 'A' together with the left mouse button allows you to select and drag the corresponding point.")
+                    imgui.text("2.Pressing 'D' together with the left mouse button enables you to extend the corresponding point.")
+                    imgui.text("3.Pressing 'Q' together with the right mouse button allows you to rotate the corresponding point.")
+                    imgui.text("4.Using the right mouse button alone enables translation (moving) of the point.")
+                    self.keypoint_add()
+                    if imgui_utils.button("Init Drag", width=viz.button_w*1.2):
+                        pass
+                    imgui.same_line()
+                    if imgui_utils.button("Clear Graph", width=viz.button_w*1.2):
+                        pass
+                    imgui.same_line()
+                    if imgui_utils.button("Close Overlay", width=viz.button_w*1.2):
+                        pass
+                    imgui.same_line()
+                    if imgui_utils.button("Open Overlay", width=viz.button_w*1.2):
+                        pass
+
+                    imgui.end_tab_item()
+
+            imgui.end_tab_bar() 
 
         if self.edit_trainer!= None and self.edit_trainer.poll() is not None:
             self.edit3D = False
@@ -709,7 +731,6 @@ class EditorWidget(Widget):
         viz.args.edit3D = self.edit3D
         viz.args.edit_single = self.edit_single
         viz.args.single_image = self.single_image
-
 
         viz.args.rec_start = self.rec_start
         viz.args.depth = self.depth
@@ -729,6 +750,8 @@ class EditorWidget(Widget):
         else:
             viz.args.sam_positive_points = []
             viz.args.sam_negative_points = []
+
+        
         
     def handle_mouse_input(self):
         if glfw.get_mouse_button(self.viz._glfw_window, glfw.MOUSE_BUTTON_LEFT) == glfw.PRESS:
@@ -845,13 +868,84 @@ class EditorWidget(Widget):
         print("😚Finally Editing!")
         return np.array(image) 
 
+    def keypoint_add(self):
+        if imgui.is_mouse_double_clicked(0):
+            if not self.animation:
+                from EditorGS.GUIEditor.train_drag import animation_initialize
+                control = animation_initialize(self.viz.args.ply_file_paths[0])
+                for key, value in control.items():
+                    setattr(self, key, value)
+                self.animation = True
+                return 
+            else:
+                # fid = torch.tensor(self.animation_time).cuda().float()
+                with torch.no_grad():
+                    if self.viz.result.p3d is not None:
+                        p3d = self.viz.result.p3d.cuda()
+                        nodes = self.control_nodes + self.animation_trans_bias if self.animation_trans_bias is not None else self.control_nodes
+                        keypoint_idxs = torch.tensor([(p3d - nodes).norm(dim=-1).argmin()]).cuda()
+                        keypoint_idxs = self.animate_tool.add_n_ring_nbs(keypoint_idxs, n=2)
+                        keypoint_3ds = nodes[keypoint_idxs]
+                        self.deform_keypoints.add_kpts(keypoint_3ds, keypoint_idxs)
+                        print(f'Add kpt: {self.deform_keypoints.selective_keypoints_idx_list}')
+                        self.update_control_point_overlay()
+                    else:
+                        # Pick the closest node as the keypoint
+                        self.viz.args.drag_point = (imgui.get_mouse_pos().x-self.viz.pane_w, imgui.get_mouse_pos().y)
+
+    def update_control_point_overlay(self):
+        from skimage.draw import line_aa
+        # should update overlay
+        # if self.need_update_overlay and len(self.keypoint_3ds) > 0:
+        if len(self.deform_keypoints.get_kpt()) > 0:
+            try:
+                buffer_image = np.array(Image.fromarray(self.viz.result.image).convert("RGB")) / 255.0  # [H, W, 3]
+                buffer_overlay = np.zeros_like(buffer_image)
+                mv = self.cam.view # [4, 4]
+                mv[0, 3] *= -1
+                proj = self.cam.perspective # [4, 4]
+                mvp = proj @ mv
+                # do mvp transform for keypoints
+                # source_points = np.array(self.keypoint_3ds)
+                source_points = np.array(self.deform_keypoints.get_kpt())
+                # target_points = source_points + np.array(self.keypoint_3ds_delta)
+                target_points = self.deform_keypoints.get_deformed_kpt_np()
+                points_indices = np.arange(len(source_points))
+
+                source_points_clip = np.matmul(np.pad(source_points, ((0, 0), (0, 1)), constant_values=1.0), mvp.T)  # [N, 4]
+                target_points_clip = np.matmul(np.pad(target_points, ((0, 0), (0, 1)), constant_values=1.0), mvp.T)  # [N, 4]
+                source_points_clip[:, :3] /= source_points_clip[:, 3:] # perspective division
+                target_points_clip[:, :3] /= target_points_clip[:, 3:] # perspective division
+
+                source_points_2d = (((source_points_clip[:, :2] + 1) / 2) * np.array([self.H, self.W])).round().astype(np.int32)
+                target_points_2d = (((target_points_clip[:, :2] + 1) / 2) * np.array([self.H, self.W])).round().astype(np.int32)
+
+                radius = int((self.H + self.W) / 2 * 0.005)
+                keypoint_idxs_to_drag = self.deform_keypoints.selective_keypoints_idx_list
+                for i in range(len(source_points_clip)):
+                    point_idx = points_indices[i]
+                    # draw source point
+                    if source_points_2d[i, 0] >= radius and source_points_2d[i, 0] < self.W - radius and source_points_2d[i, 1] >= radius and source_points_2d[i, 1] < self.H - radius:
+                        buffer_overlay[source_points_2d[i, 1]-radius:source_points_2d[i, 1]+radius, source_points_2d[i, 0]-radius:source_points_2d[i, 0]+radius] += np.array([1,0,0]) if not point_idx in keypoint_idxs_to_drag else np.array([1,0.87,0])
+                        # draw target point
+                        if target_points_2d[i, 0] >= radius and target_points_2d[i, 0] < self.W - radius and target_points_2d[i, 1] >= radius and target_points_2d[i, 1] < self.H - radius:
+                            buffer_overlay[target_points_2d[i, 1]-radius:target_points_2d[i, 1]+radius, target_points_2d[i, 0]-radius:target_points_2d[i, 0]+radius] += np.array([0,0,1]) if not point_idx in keypoint_idxs_to_drag else np.array([0.5,0.5,1])
+                        # draw line
+                        rr, cc, val = line_aa(source_points_2d[i, 1], source_points_2d[i, 0], target_points_2d[i, 1], target_points_2d[i, 0])
+                        in_canvas_mask = (rr >= 0) & (rr < self.H) & (cc >= 0) & (cc < self.W)
+                        buffer_overlay[rr[in_canvas_mask], cc[in_canvas_mask]] += val[in_canvas_mask, None] * np.array([0,1,0]) if not point_idx in keypoint_idxs_to_drag else np.array([0.5,1,0])
+                self.buffer_overlay = buffer_overlay
+            except:
+                print('Async Fault in Overlay Drawing!')
+                self.buffer_overlay = None
+
     def close(self):
         if self.edit_trainer != None:
             self.edit_trainer.terminate()
             self.edit_trainer.wait()
         super().close()
 
-    
+
 
 
 

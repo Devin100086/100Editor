@@ -185,6 +185,7 @@ class GaussianRenderer(Renderer):
         save_concat_ply_path=None,
         slider={},
         roate_point = None,
+        drag_point = None,
         sam_positive_points = [],
         sam_negative_points = [],
         concat = False,
@@ -248,6 +249,12 @@ class GaussianRenderer(Renderer):
                 render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
                 intersection_point = self.pixel_to_3d(roate_point, intrinsic, cam_params, render["depth"].cpu().numpy()[0][int(roate_point[1]),int(roate_point[0])])
                 self.center = torch.tensor(intersection_point).to(torch.float32)
+            if drag_point is not None:
+                render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, extr=cam_params)
+                render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
+                intersection_point = self.pixel_to_3d(drag_point, intrinsic, cam_params, render["depth"].cpu().numpy()[0][int(drag_point[1]),int(drag_point[0])])
+                self.p3d = torch.tensor(intersection_point).to(torch.float32)
+
             R = cam_params.inverse()[:3, :3].T.cpu().numpy()
             T = cam_params.inverse()[:3, 3].cpu().numpy()
             render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, R=R, T=T, extr=cam_params)
@@ -340,6 +347,7 @@ class GaussianRenderer(Renderer):
 
         res.mean_xyz = torch.mean(gs.get_xyz, dim=0)
         res.center = self.center
+        res.p3d = self.p3d if hasattr(self, 'p3d') else None
         res.std_xyz = torch.std(gs.get_xyz)
         if len(eval_text) > 0:
             res.eval = eval(eval_text)
