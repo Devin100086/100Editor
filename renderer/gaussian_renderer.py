@@ -14,7 +14,7 @@ from pathlib import Path
 from PIL import Image
 
 from compression.compression_exp import run_single_decompression
-from gaussiansplatting.gaussian_renderer import render_simple,render
+from gaussiansplatting.gaussian_renderer import render_simple,render, render_drag
 from gaussiansplatting.utils.graphics_utils import fov2focal
 from gaussiansplatting.scene import GaussianModel
 from gaussiansplatting.scene.cameras import CustomCam
@@ -234,6 +234,7 @@ class GaussianRenderer(Renderer):
         source_drag_points = [],
         target_drag_points = [],
         selective_keypoints_idx_list = [],
+        drag = {},
         concat = False,
         stop_concat = False,
         depth = None,
@@ -314,9 +315,17 @@ class GaussianRenderer(Renderer):
                 self.concat_gaussian_models[scene_index] = None
                 torch.cuda.empty_cache()
             if self.concat_gaussian_models[scene_index] is not None:
-                render = render_simple(viewpoint_camera=render_cam, pc=self.concat_gaussian_models[scene_index], bg_color=background_color.to("cuda"))
+                if drag == {}:
+                    render = render_simple(viewpoint_camera=render_cam, pc=self.concat_gaussian_models[scene_index], bg_color=background_color.to("cuda"))
+                else:
+                    render = render_drag(viewpoint_camera=render_cam, pc=self.concat_gaussian_models[scene_index], bg_color=background_color.to("cuda"),
+                                         d_xyz=drag.get("xyz"), d_rotation=drag.get("rotation"), d_scaling=drag.get("scaling"), d_opacity=drag.get("opacity"), d_color=drag.get("color"),d_rotation_bias=drag.get("rotation_bias"))
             else:
-                render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
+                if drag == {}:
+                    render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
+                else:
+                    render = render_drag(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"),
+                                         d_xyz=drag.get("xyz"), d_rotation=drag.get("rotation"), d_scaling=drag.get("scaling"), d_opacity=drag.get("opacity"), d_color=drag.get("color"), d_rotation_bias=drag.get("rotation_bias"))
             if render_alpha:
                 images.append(render["alpha"])
             elif render_depth:

@@ -18,10 +18,18 @@ def equal_dicts(dict1, dict2):
         elif isinstance(dict1[key], list):
             if not np.array_equal(np.array(dict1[key]), np.array(dict2[key])):
                 return False
+        elif isinstance(dict1[key], dict):
+            for sub_key in dict1[key].keys():
+                if sub_key not in dict2[key].keys():
+                    return False
+                elif isinstance(dict1[key][sub_key], torch.Tensor):
+                    if not torch.equal(dict1[key][sub_key], dict2[key][sub_key]):
+                        return False
+                elif dict1[key][sub_key] != dict2[key][sub_key]:
+                    return False
         elif dict1[key] != dict2[key]:
             return False
     return True
-
 
 from typing import Any
 

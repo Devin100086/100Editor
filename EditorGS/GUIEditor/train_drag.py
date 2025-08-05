@@ -208,7 +208,7 @@ class NodeDriver:
         W = torch.zeros([edges.shape[0], K, K], dtype=torch.float32, device=edges.device)
         W[:, range(K), range(K)] = nn_weight
         S = torch.einsum('nka,nkg,ngb->nab', edges, W, edges_t)
-        U, _, V = svd(S)
+        U, _, V = svd(S.float())
         dR = torch.matmul(V, U.permute(0, 2, 1))
         if as_quat:
             dR = matrix_to_quaternion(dR)

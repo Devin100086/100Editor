@@ -215,6 +215,7 @@ def cal_L_from_points(points, return_nn_idx=False):
 
 def lstsq_with_handles(A, b, handle_idx, handle_pos, A_is_degenarate=False):
     b = b - A[:, handle_idx] @ handle_pos
+    b = b.float()
     handle_mask = torch.zeros_like(A[:, 0], dtype=bool)
     handle_mask[handle_idx] = 1
     L = A[:, handle_mask.logical_not()]
@@ -224,7 +225,7 @@ def lstsq_with_handles(A, b, handle_idx, handle_pos, A_is_degenarate=False):
         x = torch.linalg.pinv(L) @ b
     x_out = torch.zeros_like(b)
     x_out[handle_idx] = handle_pos
-    x_out[handle_mask.logical_not()] = x
+    x_out[handle_mask.logical_not()] = x.float()
     return x_out
 
 def rigid_align(x, y):

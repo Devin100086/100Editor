@@ -126,6 +126,7 @@ class EditorWidget(Widget):
 
         # Drag
         self.animation = False
+        self.last_drag_delta = imgui.ImVec2(0, 0)
 
         self.edit_trainer = None
         self.draw_image = False
@@ -721,7 +722,7 @@ class EditorWidget(Widget):
                             self.is_animation = True
                             if hasattr(self, 'animate_tool'):
                                 self.animate_tool.reset()
-                            animation_reset()
+                            control = animation_reset()
                             for key, value in control.items():
                                 setattr(self, key, value)
                     imgui.same_line()
@@ -891,7 +892,7 @@ class EditorWidget(Widget):
                 with torch.no_grad():
                     self.viz.args.drag_point = (imgui.get_mouse_pos().x-self.viz.pane_w, imgui.get_mouse_pos().y)
 
-        if self.viz.result.p3d is not None:
+        if hasattr(self.viz.result,"p3d") and self.viz.result.p3d is not None:
             if not hasattr(self, 'p3d') or not torch.equal(self.p3d, self.viz.result.p3d):
                 p3d = self.viz.result.p3d.cuda()
                 nodes = self.control_nodes + self.animation_trans_bias if self.animation_trans_bias is not None else self.control_nodes
@@ -908,19 +909,19 @@ class EditorWidget(Widget):
             self.viz.args.target_drag_points = self.deform_keypoints.get_deformed_kpt_np()
 
     def keypoint_drag(self):
-        if not self.is_animation:
+        if not self.animation:
             print("Please switch to animation mode!")
             return
         if len(self.deform_keypoints.get_kpt()) == 0:
             return
         if self.animate_tool is None:
             animation_initialize()
-        if "z" in self.viz.current_pressed_keys:
-            if imgui.is_mouse_dragging(0):
-                new_delta = imgui.get_mouse_drag_delta(0)
-                delta = new_delta - self.last_drag_delta
-                dx = delta.x
-                dy = delta.y
+        if imgui.is_mouse_dragging(0):
+            new_delta = imgui.get_mouse_drag_delta(0)
+            delta = new_delta - self.last_drag_delta
+            dx = delta.x
+            dy = delta.y
+            if "z" in self.viz.current_pressed_keys:
                 rot = self.viz.result.cam_params.cpu().numpy()[:3, :3]
                 up = rot[:3, 1]
                 forward = rot[:3, 2]
@@ -928,33 +929,35 @@ class EditorWidget(Widget):
                 rotvec_y = up * np.radians(-0.05 * dy)
                 rot_mat = (R.from_rotvec(rotvec_z)).as_matrix() @ (R.from_rotvec(rotvec_y)).as_matrix()
                 self.deform_keypoints.set_rotation_delta(rot_mat)
-
-                self.last_drag_delta = new_delta
-        elif "x" in self.viz.current_pressed_keys:
-            if imgui.is_mouse_dragging(0):
+                animated_pcl, quat, ani_d_scaling = self.animate_tool.deform_arap(handle_idx=self.deform_keypoints.get_kpt_idx(), handle_pos=self.deform_keypoints.get_deformed_kpt_np(), init_verts=None, return_R=True)
+                self.animation_trans_bias = animated_pcl - self.animate_tool.init_pcl
+                self.animation_rot_bias = quat
+                self.animation_scaling_bias = ani_d_scaling
+            elif "x" in self.viz.current_pressed_keys:
                 delta = 0.00010 * self.viz.result.cam_params.cpu().numpy()[:3, :3] @ np.array([dx, -dy, 0])
                 self.deform_keypoints.update_delta(delta)
+                animated_pcl, quat, ani_d_scaling = self.animate_tool.deform_arap(handle_idx=self.deform_keypoints.get_kpt_idx(), handle_pos=self.deform_keypoints.get_deformed_kpt_np(), init_verts=None, return_R=True)
+                self.animation_trans_bias = animated_pcl - self.animate_tool.init_pcl
+                self.animation_rot_bias = quat
+                self.animation_scaling_bias = ani_d_scaling
+
+            self.last_drag_delta = new_delta
         else:
             self.last_drag_delta = imgui.ImVec2(0, 0)
 
-        animated_pcl, quat, ani_d_scaling = self.animate_tool.deform_arap(handle_idx=self.deform_keypoints.get_kpt_idx(), handle_pos=self.deform_keypoints.get_deformed_kpt_np(), init_verts=None, return_R=True)
-        self.animation_trans_bias = animated_pcl - self.animate_tool.init_pcl
-        self.animation_rot_bias = quat
-        self.animation_scaling_bias = ani_d_scaling
+        if self.animation_trans_bias is not None :
+            d_values = self.animator(self.gaussians_xyz, self.control_nodes, self.animation_trans_bias)
+            d_xyz, d_rotation, d_scaling, d_opacity, d_color = d_values['d_xyz'], d_values['d_rotation'], d_values['d_scaling'], d_values['d_opacity'], d_values['d_color']
+            d_rotation_bias = d_values['d_rotation_bias']
 
-
-        d_values = self.animator(self.gaussians_xyz, self.control_nodes, self.animation_trans_bias)
-        d_xyz, d_rotation, d_scaling, d_opacity, d_color = d_values['d_xyz'], d_values['d_rotation'], d_values['d_scaling'], d_values['d_opacity'], d_values['d_color']
-        d_rotation_bias = d_values['d_rotation_bias']
-
-        self.viz.args.drag = {
-            'translation': d_xyz,
-            'rotation': d_rotation,
-            'scaling': d_scaling,
-            'opacity': d_opacity,
-            'color': d_color,
-            'rotation_bias': d_rotation_bias
-        }
+            self.viz.args.drag = {
+                'xyz': d_xyz,
+                'rotation': d_rotation,
+                'scaling': d_scaling,
+                'opacity': d_opacity,
+                'color': d_color,
+                'rotation_bias': d_rotation_bias
+            }
 
     def close(self):
         if self.edit_trainer != None:

@@ -118,12 +118,12 @@ class ARAPDeformer:
             unchanged_verts = torch.unique(torch.where((P == P_prime).all(dim=1))[0])  # any verts which are undeformed
             S[unchanged_verts] = 0
 
-            U, sig, W = torch.svd(S)
+            U, sig, W = torch.svd(S.float())
             R = torch.bmm(W, U.permute(0, 2, 1))  # compute rotations
 
             # Need to flip the column of U corresponding to smallest singular value
             # for any det(Ri) <= 0
-            entries_to_flip = torch.nonzero(torch.det(R) <= 0, as_tuple=False).flatten()  # idxs where det(R) <= 0
+            entries_to_flip = torch.nonzero(torch.det(R.float()) <= 0, as_tuple=False).flatten()  # idxs where det(R) <= 0
             if len(entries_to_flip) > 0:
                 Umod = U.clone()
                 cols_to_flip = torch.argmin(sig[entries_to_flip], dim=1)  # Get minimum singular value for each entry
@@ -133,7 +133,7 @@ class ARAPDeformer:
             ### RHS of minimum energy equation
             Rsum_shape = (self.N, self.K, 3, 3)
             Rsum = torch.zeros(Rsum_shape).to(self.device)  # Ri + Rj, as in eq (8)
-            Rsum[self.ii, self.nn] = R[self.ii] + R[self.jj]
+            Rsum[self.ii, self.nn] = R[self.ii].float() + R[self.jj].float()
             
             ### Rsum has shape (V, max_neighbours, 3, 3). P has shape (V, max_neighbours, 3)
             ### To batch multiply, collapse first 2 dims into a single batch dim

@@ -110,7 +110,7 @@ class EditcamWidget(cam_widget.CamWidget):
         x_dir = -1 if self.invert_x else 1
         y_dir = -1 if self.invert_y else 1
 
-        if 'z' not in self.viz.current_pressed_keys:
+        if 'z' not in self.viz.current_pressed_keys and 'x' not in self.viz.current_pressed_keys:
             if imgui.is_mouse_dragging(0):  # left mouse button
                 new_delta = imgui.get_mouse_drag_delta(0)
                 if imgui_utils.did_drag_start_in_window(x, y, width, height, new_delta):
