@@ -26,6 +26,7 @@ from threestudio.utils.dpt import DPT
 from threestudio.utils.transform import rotate_gaussians, scale_gaussians, translate_gaussians
 from threestudio.utils.transform import default_model_mtx
 from threestudio.utils.misc import get_device
+from skimage.draw import line_aa
 
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
@@ -162,6 +163,48 @@ class GaussianRenderer(Renderer):
         
         return output
 
+    def add_drag_point(self, image, source_points, target_points, intrinsic, cam_params, selective_keypoints_idx_list):
+        if len(source_points) > 0:
+            try:
+                buffer_overlay = np.zeros_like(image.cpu().numpy()).transpose(1, 2, 0)
+                H = image.shape[1]
+                W = image.shape[2]
+
+                source_points = np.array(source_points)
+                target_points = np.array(target_points)
+                
+                points_indices = np.arange(len(source_points))
+
+                source_points_2d = self.project_3d_to_2d(source_points, intrinsic, cam_params).round().astype(np.int32)
+                target_points_2d = self.project_3d_to_2d(target_points, intrinsic, cam_params).round().astype(np.int32)
+
+                radius = int((H + W) / 2 * 0.005)
+                keypoint_idxs_to_drag = selective_keypoints_idx_list
+                for i in range(len(source_points_2d)):
+                    point_idx = points_indices[i]
+                    # draw source point
+                    if source_points_2d[i, 0] >= radius and source_points_2d[i, 0] < W - radius and source_points_2d[i, 1] >= radius and source_points_2d[i, 1] < H - radius:
+                        buffer_overlay[source_points_2d[i, 1]-radius:source_points_2d[i, 1]+radius, source_points_2d[i, 0]-radius:source_points_2d[i, 0]+radius] += np.array([1,0,0]) if not point_idx in keypoint_idxs_to_drag else np.array([1,0.87,0])
+                        # draw target point
+                        if target_points_2d[i, 0] >= radius and target_points_2d[i, 0] < W - radius and target_points_2d[i, 1] >= radius and target_points_2d[i, 1] < H - radius:
+                            buffer_overlay[target_points_2d[i, 1]-radius:target_points_2d[i, 1]+radius, target_points_2d[i, 0]-radius:target_points_2d[i, 0]+radius] += np.array([0,0,1]) if not point_idx in keypoint_idxs_to_drag else np.array([0.5,0.5,1])
+                        # draw line
+                        rr, cc, val = line_aa(source_points_2d[i, 1], source_points_2d[i, 0], target_points_2d[i, 1], target_points_2d[i, 0])
+                        in_canvas_mask = (rr >= 0) & (rr < H) & (cc >= 0) & (cc < W)
+                        buffer_overlay[rr[in_canvas_mask], cc[in_canvas_mask]] += val[in_canvas_mask, None] * np.array([0,1,0]) if not point_idx in keypoint_idxs_to_drag else np.array([0.5,1,0])
+                overlay_mask = buffer_overlay.sum(axis=-1, keepdims=True) == 0
+                try:
+                    overlay_mask = torch.tensor(overlay_mask, dtype=torch.float32, device=image.device).permute(2, 0, 1)
+                    buffer_overlay = torch.tensor(buffer_overlay, dtype=torch.float32, device=image.device).permute(2, 0, 1)
+                    image = image * overlay_mask + buffer_overlay
+                except:
+                    image = image
+            except:
+                print('Async Fault in Overlay Drawing!')
+                buffer_overlay = None
+        
+        return image
+
     def _render_impl(
         self,
         res,
@@ -188,6 +231,9 @@ class GaussianRenderer(Renderer):
         drag_point = None,
         sam_positive_points = [],
         sam_negative_points = [],
+        source_drag_points = [],
+        target_drag_points = [],
+        selective_keypoints_idx_list = [],
         concat = False,
         stop_concat = False,
         depth = None,
@@ -275,6 +321,9 @@ class GaussianRenderer(Renderer):
                 images.append(render["alpha"])
             elif render_depth:
                 images.append(render["depth"] / render["depth"].max())
+            elif source_drag_points != [] and target_drag_points.tolist() != []:
+                image = self.add_drag_point(render["render"], source_drag_points, target_drag_points, intrinsic, cam_params, selective_keypoints_idx_list)
+                images.append(image)
             else:
                 if sam_positive_points != [] or sam_negative_points != []:
                     self.sam_predictor.set_image(to_pil_image(render["render"]))
