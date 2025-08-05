@@ -7,17 +7,19 @@ def equal_dicts(dict1, dict2):
         return False
 
     for key in dict1.keys():
+        if key not in dict2.keys():
+            return False
         if isinstance(dict1[key], torch.Tensor):
             if not torch.equal(dict1[key], dict2[key]):
                 return False
         elif isinstance(dict1[key], np.ndarray):
             if not np.array_equal(dict1[key], dict2[key]):
                 return False
-        else:
-            if key not in dict2.keys():
+        elif isinstance(dict1[key], list):
+            if not np.array_equal(np.array(dict1[key]), np.array(dict2[key])):
                 return False
-            if dict1[key] != dict2[key]:
-                return False
+        elif dict1[key] != dict2[key]:
+            return False
     return True
 
 

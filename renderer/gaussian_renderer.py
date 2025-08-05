@@ -398,6 +398,7 @@ class GaussianRenderer(Renderer):
         res.center = self.center
         res.p3d = self.p3d if hasattr(self, 'p3d') else None
         res.std_xyz = torch.std(gs.get_xyz)
+        res.cam_params = cam_params
         if len(eval_text) > 0:
             res.eval = eval(eval_text)
 

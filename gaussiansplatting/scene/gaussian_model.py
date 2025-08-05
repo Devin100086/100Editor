@@ -114,6 +114,10 @@ class GaussianModel:
     def get_rotation(self):
         return self.rotation_activation(self._rotation)
     
+    def get_rotation_bias(self, rotation_bias=None):
+        rotation_bias = rotation_bias if rotation_bias is not None else 0.
+        return self.rotation_activation(self._rotation + rotation_bias)
+
     @property
     def get_xyz(self):
         activated = self.xyz_activation(self._xyz)

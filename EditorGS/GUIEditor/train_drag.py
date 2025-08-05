@@ -344,4 +344,22 @@ def animation_initialize(ply_file):
         'buffer_overlay': buffer_overlay,
         'control_nodes_gaussians': control_nodes_gaussians,
         'animator': animator,
+        'gaussians_xyz': gaussian.get_xyz,
     }
+
+def animation_reset():
+    reset_dict = {
+        'keypoint_idxs': [],
+        'keypoint_3ds': [],
+        'keypoint_labels': [],
+        'keypoint_3ds_delta': [],
+        'keypoint_idxs_to_drag': [],
+        'deform_keypoints': DeformKeypoints(),
+        'animation_trans_bias': None,
+        'animation_rot_bias': None,
+        'buffer_overlay': None,
+        'motion_animation_d_values': None,
+        'animator': NodeDriver()
+    }
+    print('Reset Animation Model ...')
+    return reset_dict

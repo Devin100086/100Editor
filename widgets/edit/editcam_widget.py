@@ -105,3 +105,42 @@ class EditcamWidget(cam_widget.CamWidget):
         # params for the video widget
         viz.args.lookat_point = self.lookat_point
         viz.args.up_vector = self.up_vector
+    
+    def handle_dragging_in_window(self, x, y, width, height):
+        x_dir = -1 if self.invert_x else 1
+        y_dir = -1 if self.invert_y else 1
+
+        if 'z' not in self.viz.current_pressed_keys:
+            if imgui.is_mouse_dragging(0):  # left mouse button
+                new_delta = imgui.get_mouse_drag_delta(0)
+                if imgui_utils.did_drag_start_in_window(x, y, width, height, new_delta):
+                    delta = new_delta - self.last_drag_delta
+                    self.last_drag_delta = new_delta
+                    self.pose.yaw += x_dir * delta.x * self.rotate_speed * 0.1
+                    self.pose.pitch += y_dir * delta.y * self.rotate_speed * 0.1
+                    self.pose.pitch = np.clip(self.pose.pitch, -np.pi / 2, np.pi / 2)
+            elif imgui.is_mouse_clicked(1):  # middle mouse button
+                # TODO: dragging with the middle mouse button could be used for yet another purpose
+                self.viz.args.roate_point = (imgui.get_mouse_pos().x-self.viz.pane_w, imgui.get_mouse_pos().y)
+            elif imgui.is_mouse_dragging(2):  # right mouse button
+                new_delta = imgui.get_mouse_drag_delta(2)
+                if imgui_utils.did_drag_start_in_window(x, y, width, height, new_delta):
+                    delta = new_delta - self.last_drag_delta
+                    self.last_drag_delta = new_delta
+
+                    right = torch.linalg.cross(self.forward, self.up_vector)
+                    right = right / torch.linalg.norm(right)
+                    cam_up = torch.linalg.cross(right, self.forward)
+                    cam_up = cam_up / torch.linalg.norm(cam_up)
+
+                    x_change = x_dir * right * -delta.x * self.drag_speed
+                    y_change = y_dir * cam_up * delta.y * self.drag_speed
+                    self.cam_pos += x_change
+                    self.cam_pos += y_change
+                    if self.control_modes[self.current_control_mode] == "Orbit":
+                        self.lookat_point += x_change
+                        self.lookat_point += y_change
+            else:
+                self.last_drag_delta = imgui.ImVec2(0, 0)
+        else:
+            self.last_drag_delta = imgui.ImVec2(0, 0)
