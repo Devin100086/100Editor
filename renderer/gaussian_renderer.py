@@ -229,6 +229,7 @@ class GaussianRenderer(Renderer):
         slider={},
         roate_point = None,
         drag_point = None,
+        showing_overlay = False,
         sam_positive_points = [],
         sam_negative_points = [],
         source_drag_points = [],
@@ -330,7 +331,7 @@ class GaussianRenderer(Renderer):
                 images.append(render["alpha"])
             elif render_depth:
                 images.append(render["depth"] / render["depth"].max())
-            elif source_drag_points != [] and target_drag_points.tolist() != []:
+            elif showing_overlay and source_drag_points != [] and target_drag_points.tolist() != []:
                 image = self.add_drag_point(render["render"], source_drag_points, target_drag_points, intrinsic, cam_params, selective_keypoints_idx_list)
                 images.append(image)
             else:

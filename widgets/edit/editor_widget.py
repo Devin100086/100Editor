@@ -127,6 +127,7 @@ class EditorWidget(Widget):
         # Drag
         self.animation = False
         self.last_drag_delta = imgui.ImVec2(0, 0)
+        self.showing_overlay = True
 
         self.edit_trainer = None
         self.draw_image = False
@@ -705,10 +706,10 @@ class EditorWidget(Widget):
 
                 if imgui.begin_tab_item("Drag")[0]:
                     imgui.text("Instruction:")
-                    imgui.text("1.Pressing 'A' together with the left mouse button allows you to select and drag the corresponding point.")
-                    imgui.text("2.Pressing 'D' together with the left mouse button enables you to extend the corresponding point.")
-                    imgui.text("3.Pressing 'Q' together with the right mouse button allows you to rotate the corresponding point.")
-                    imgui.text("4.Using the right mouse button alone enables translation (moving) of the point.")
+                    imgui.text("1.Pressing 'q' together with the left mouse button allows you to select and drag the corresponding point.")
+                    imgui.text("2.Pressing 'e' together with the left mouse button enables you to extend the corresponding point.")
+                    imgui.text("3.Pressing 'z' together with the left mouse button allows you to rotate the corresponding point.")
+                    imgui.text("4.Pressing 'c' together with the left mouse button allows you to translation (moving) of the point.")
                     self.keypoint_add()
                     self.keypoint_drag()
                     if imgui_utils.button("Init Drag", width=viz.button_w*1.2):
@@ -727,10 +728,10 @@ class EditorWidget(Widget):
                                 setattr(self, key, value)
                     imgui.same_line()
                     if imgui_utils.button("Close Overlay", width=viz.button_w*1.2):
-                        pass
+                        self.showing_overlay = False
                     imgui.same_line()
                     if imgui_utils.button("Open Overlay", width=viz.button_w*1.2):
-                        pass
+                        self.showing_overlay = True
 
                     imgui.end_tab_item()
 
@@ -754,6 +755,7 @@ class EditorWidget(Widget):
         viz.args.points = self.points
         viz.args.current_color = self.current_color
         viz.args.line_width = self.line_width
+        viz.args.showing_overlay = self.showing_overlay
         if self.text_sam_positive_points != [] or self.text_sam_negative_points != []:
             viz.args.sam_positive_points = self.text_sam_positive_points
             viz.args.sam_negative_points = self.text_sam_negative_points
@@ -880,7 +882,7 @@ class EditorWidget(Widget):
         return np.array(image) 
 
     def keypoint_add(self):
-        if imgui.is_mouse_double_clicked(0):
+        if imgui.is_mouse_clicked(0) and ('q' in self.viz.current_pressed_keys or 'e' in self.viz.current_pressed_keys):
             if not self.animation:
                 control = animation_initialize(self.viz.args.ply_file_paths[0])
                 for key, value in control.items():
@@ -899,9 +901,13 @@ class EditorWidget(Widget):
                 keypoint_idxs = torch.tensor([(p3d - nodes).norm(dim=-1).argmin()]).cuda()
                 keypoint_idxs = self.animate_tool.add_n_ring_nbs(keypoint_idxs, n=2)
                 keypoint_3ds = nodes[keypoint_idxs]
-                self.deform_keypoints.add_kpts(keypoint_3ds, keypoint_idxs)
+                if 'e' in self.viz.current_pressed_keys:
+                    self.deform_keypoints.add_kpts(keypoint_3ds, keypoint_idxs, expand=True)
+                elif 'q' in self.viz.current_pressed_keys:
+                    self.deform_keypoints.add_kpts(keypoint_3ds, keypoint_idxs, expand=False)
                 print(f'Add kpt: {self.deform_keypoints.selective_keypoints_idx_list}')
                 self.p3d = self.viz.result.p3d
+        
 
         if hasattr(self, 'deform_keypoints'):
             self.viz.args.selective_keypoints_idx_list = self.deform_keypoints.selective_keypoints_idx_list
@@ -934,7 +940,7 @@ class EditorWidget(Widget):
                 self.animation_rot_bias = quat
                 self.animation_scaling_bias = ani_d_scaling
             elif "x" in self.viz.current_pressed_keys:
-                delta = 0.00010 * self.viz.result.cam_params.cpu().numpy()[:3, :3] @ np.array([dx, -dy, 0])
+                delta = 0.0010 * self.viz.result.cam_params.cpu().numpy()[:3, :3] @ np.array([dx, -dy, 0])
                 self.deform_keypoints.update_delta(delta)
                 animated_pcl, quat, ani_d_scaling = self.animate_tool.deform_arap(handle_idx=self.deform_keypoints.get_kpt_idx(), handle_pos=self.deform_keypoints.get_deformed_kpt_np(), init_verts=None, return_R=True)
                 self.animation_trans_bias = animated_pcl - self.animate_tool.init_pcl
