@@ -15,6 +15,7 @@ import numpy as np
 from diff_gauss import GaussianRasterizationSettings, GaussianRasterizer
 from scene.gaussian_model import GaussianModel
 from utils.sh_utils import eval_sh
+import os
 
 def standardize_quaternion(quaternions: torch.Tensor) -> torch.Tensor:
     return torch.where(quaternions[..., 0:1] < 0, -quaternions, quaternions)
@@ -239,13 +240,18 @@ def render_drag(viewpoint_camera, pc: GaussianModel, bg_color: torch.Tensor, d_x
 
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
 
-    means3D = pc.get_xyz + d_xyz
+    if os.path.exists("tmp_drag/mask.pt"):
+        mask = torch.load("tmp_drag/mask.pt")
+    else:
+        mask = torch.ones_like(pc.get_xyz[..., 0], dtype=torch.bool, device=pc.get_xyz.device)
+
+    means3D = pc.get_xyz + d_xyz * mask.unsqueeze(-1)
     means2D = screenspace_points
 
     if scale_const is not None:
         opacity = torch.ones_like(pc.get_opacity)
     else:
-        opacity = pc.get_opacity if d_opacity is None else pc.get_opacity + d_opacity
+        opacity = pc.get_opacity if d_opacity is None else pc.get_opacity + d_opacity * mask.unsqueeze(-1)
 
     # If precomputed 3d covariance is provided, use it. If not, then it will be computed from
     # scaling / rotation by the rasterizer.
@@ -253,10 +259,10 @@ def render_drag(viewpoint_camera, pc: GaussianModel, bg_color: torch.Tensor, d_x
     rotations = None
     cov3D_precomp = None
 
-    scales = pc.get_scaling + d_scaling
-    rotations = pc.get_rotation_bias(d_rotation)
+    scales = pc.get_scaling + d_scaling * mask.unsqueeze(-1)
+    rotations = pc.get_rotation_bias(d_rotation * mask.unsqueeze(-1))
     if d_rotation_bias is not None:
-        rotations = quaternion_multiply(d_rotation_bias, rotations)
+        rotations = quaternion_multiply(d_rotation_bias * mask.unsqueeze(-1), rotations)
   
         # If precomputed colors are provided, use them. Otherwise, if it is desired to precompute colors
         # from SHs in Python, do it. If not, then SH -> RGB conversion will be done by rasterizer.

@@ -23,7 +23,7 @@ from torchvision.utils import save_image
 from threestudio.models.guidance.brushnet_guidance import (
             BrushNetGuidance,
         )
-
+import cv2
 class TrainFineeAdd(BaseTrainer):
     def __init__(self, cfg):
         super().__init__(cfg)

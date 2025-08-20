@@ -93,7 +93,7 @@ class EditFineGuidance:
 
         # nerf2nerf loss
             
-        masks = (masks / 255)
+        # masks = (masks / 255)
         masks = torch.from_numpy(masks).permute(0,2,3,1).repeat(1,1,1,3).float().to(frames.device)
         rgb = frames * (1-masks)
         result = self.guidance(

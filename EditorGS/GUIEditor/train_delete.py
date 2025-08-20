@@ -52,6 +52,17 @@ class DeleteTrainer(BaseTrainer):
 
         with open(args.camera, 'rb') as f:
             self.cam  = pickle.load(f)
+    
+    def sample_train_camera(self, colmap_cameras, edit_cam_num):
+        total_view_num = len(colmap_cameras)
+        random.seed(0)  # make sure same views
+        view_index = random.sample(
+            range(0, total_view_num),
+            min(total_view_num, edit_cam_num),
+        )
+        edit_cameras = [colmap_cameras[idx] for idx in view_index]
+
+        return edit_cameras
 
     def delete(self,video):
         now = datetime.datetime.now()
@@ -59,7 +70,7 @@ class DeleteTrainer(BaseTrainer):
         self.output_dir = os.path.join(self.output_dir, now)
         os.makedirs(self.output_dir, exist_ok=True)
 
-        edit_cameras = sample_train_camera(self.colmap_cameras,
+        edit_cameras = self.sample_train_camera(self.colmap_cameras,
                                            self.edit_cam_num,
                                           )
         # for cam in self.colmap_cameras:

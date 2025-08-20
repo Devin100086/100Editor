@@ -128,6 +128,11 @@ class EditorWidget(Widget):
         self.animation = False
         self.last_drag_delta = imgui.ImVec2(0, 0)
         self.showing_overlay = True
+        self.drag_sam_option = 0
+        self.drag_point_option = 0
+        self.drag_seg_prompt = "face"
+        self.drag_sam_positive_points = []
+        self.drag_sam_negative_points = []
 
         self.edit_trainer = None
         self.draw_image = False
@@ -182,7 +187,7 @@ class EditorWidget(Widget):
                     imgui.same_line()
                     if imgui.radio_button("Fine-VideoAdding", self.select_option == 3):
                         self.select_option = 3
-                        self.edit_cam_num = 18
+                        self.edit_cam_num = 12
                         self.per_editing_step = 10000
                         self.edit_train_steps = 1500
                         self.edit_until_step = 4000
@@ -319,6 +324,7 @@ class EditorWidget(Widget):
                     if not self.edit3D:
                         if imgui_utils.button("Edit", width=viz.button_w):
                             self.edit3D = True
+                            os.makedirs("tmp_edit", exist_ok=True)
                             np.save("tmp_edit/sam2_positive_points.npy", np.array(self.text_sam_positive_points))
                             np.save("tmp_edit/sam2_negative_points.npy", np.array(self.text_sam_negative_points))
                             origin = Image.fromarray(viz.result.image).convert("RGB")
@@ -579,7 +585,7 @@ class EditorWidget(Widget):
                                                                                     densification_interval=self.densification_interval, densify_until_step=self.densify_until_step,
                                                                                     output_dir = self.add_output_dir, camera = "tmp_add/camera.pkl",)
                         else:
-                            if imgui_utils.button("Stop", width=viz.button_w):
+                            if imgui_utils.button("Stop Adding", width=viz.button_w):
                                 self.edit3D = False
                                 self.edit_trainer.terminate()
                                 self.edit_trainer.wait()
@@ -706,10 +712,68 @@ class EditorWidget(Widget):
 
                 if imgui.begin_tab_item("Drag")[0]:
                     imgui.text("Instruction:")
-                    imgui.text("1.Pressing 'q' together with the left mouse button allows you to select and drag the corresponding point.")
-                    imgui.text("2.Pressing 'e' together with the left mouse button enables you to extend the corresponding point.")
-                    imgui.text("3.Pressing 'z' together with the left mouse button allows you to rotate the corresponding point.")
-                    imgui.text("4.Pressing 'c' together with the left mouse button allows you to translation (moving) of the point.")
+                    imgui.text("1.You should first select the area to be dragged. After that, you can turn off the mask display.")
+                    imgui.text("2.Pressing 'q' together with the left mouse button allows you to select and drag the corresponding point.")
+                    imgui.text("3.Pressing 'e' together with the left mouse button enables you to extend the corresponding point.")
+                    imgui.text("4.Pressing 'z' together with the left mouse button allows you to rotate the corresponding point.")
+                    imgui.text("5.Pressing 'c' together with the left mouse button allows you to translation (moving) of the point.")
+                    imgui.separator_text("SAM Option")
+                    label("Sam Type", viz.label_w)
+                    _, self.drag_sam_option = imgui.combo(
+                        "##SAM Type", 
+                        self.drag_sam_option, 
+                        ["No Sam", "Lang-sam", "SAM2(image)","SAM2(video)"]  
+                    )
+
+                    if self.drag_sam_option == 1:
+                        label("Seg prompt", viz.label_w)
+                        _, self.drag_seg_prompt = imgui.input_text("##seg prompt", self.drag_seg_prompt, 256)
+                        self.drag_change = True if imgui.is_item_active() else False
+
+                    if self.drag_sam_option == 2 or self.drag_sam_option == 3:
+                        if imgui.radio_button("No Points", self.drag_point_option == 0):
+                            self.drag_point_option = 0
+                        imgui.same_line()
+                        if imgui.radio_button("Positive Point", self.drag_point_option == 1):
+                            self.drag_point_option = 1
+                        imgui.same_line()
+                        if imgui.radio_button("Negative Point", self.drag_point_option == 2):
+                            self.drag_point_option = 2
+                        imgui.same_line()
+                        if self.drag_point_option == 1 or self.drag_point_option == 2:
+                            if imgui.get_mouse_pos().x > self.viz.pane_w and imgui.is_mouse_clicked(0):
+                                if self.drag_point_option == 1:
+                                    self.drag_sam_positive_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                                elif self.drag_point_option == 2:
+                                    self.drag_sam_negative_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                        if imgui_utils.button("clean SAM", width=viz.button_w):
+                            self.drag_sam_positive_points = []
+                            self.drag_sam_negative_points = []
+
+                    if imgui_utils.button("Seg 3DGS", width=viz.button_w * 1.2):
+                        os.makedirs("tmp_drag", exist_ok=True)
+                        np.save("tmp_drag/sam2_positive_points.npy", np.array(self.drag_sam_positive_points))
+                        np.save("tmp_drag/sam2_negative_points.npy", np.array(self.drag_sam_negative_points))
+                        origin = Image.fromarray(viz.result.image).convert("RGB")
+                        os.makedirs("tmp_drag/render", exist_ok=True)
+                        os.system(f"rm -rf tmp_drag/render/*")
+                        R = viz.extr.inverse()[:3, :3].T.numpy()
+                        T = viz.extr.inverse()[:3, 3].numpy()
+                        fov_rad = viz.fov / 360 * 2 * np.pi
+                        cam = CustomCam(origin.size[0]//2, origin.size[1]//2, fov_rad, fov_rad, R, T, viz.extr.cuda())
+                        with open(f'tmp_drag/camera.pkl', 'wb') as f:
+                            pickle.dump(cam, f)  
+                        mask_trainer = get_3DGS_mask_command(
+                            gs_source=viz.args.ply_file_paths[0],colmap_dir=viz.args.data_source,
+                            sam_option=self.drag_sam_option,
+                            seg_prompt=self.drag_seg_prompt,
+                            camera="tmp_drag/camera.pkl",
+                            positive_sam_points="tmp_drag/sam2_positive_points.npy",
+                            negative_sam_points="tmp_drag/sam2_negative_points.npy",
+                        )
+                        mask_trainer.wait()
+
+                    imgui.separator_text("Drag Option")
                     self.keypoint_add()
                     self.keypoint_drag()
                     if imgui_utils.button("Init Drag", width=viz.button_w*1.2):
@@ -762,6 +826,9 @@ class EditorWidget(Widget):
         elif self.delete_sam_positive_points != [] or self.delete_sam_negative_points != []:
             viz.args.sam_positive_points = self.delete_sam_positive_points
             viz.args.sam_negative_points = self.delete_sam_negative_points
+        elif self.drag_sam_positive_points != [] or self.drag_sam_negative_points != []:
+            viz.args.sam_positive_points = self.drag_sam_positive_points
+            viz.args.sam_negative_points = self.drag_sam_negative_points
         else:
             viz.args.sam_positive_points = []
             viz.args.sam_negative_points = []
@@ -916,7 +983,7 @@ class EditorWidget(Widget):
 
     def keypoint_drag(self):
         if not self.animation:
-            print("Please switch to animation mode!")
+            # print("Please switch to animation mode!")
             return
         if len(self.deform_keypoints.get_kpt()) == 0:
             return

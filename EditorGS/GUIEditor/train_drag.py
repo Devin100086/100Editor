@@ -295,13 +295,13 @@ def animation_initialize(ply_file):
     gaussian.max_radii2D = torch.zeros(
         (gaussian.get_xyz.shape[0]), device="cuda"
     )
-    mask = (gaussian.get_opacity > 0.9)[:, 0]
+    mask = (gaussian.get_opacity > 0.90)[:, 0]
     pcl = gaussian.get_xyz[mask]
 
     pts_idx = farthest_point_sample(pcl[None], 512)[0]
     pcl = pcl[pts_idx]
     scale = torch.norm(pcl.max(0).values - pcl.min(0).values)
-    node_radius = scale / 20
+    node_radius = scale /20
     print(f'Static scene node radius: {node_radius}')
     
     control_nodes = pcl

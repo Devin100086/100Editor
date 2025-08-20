@@ -126,6 +126,23 @@ def training_delete_command(gs_source, colmap_dir, inpaint_scale, mask_dilate, e
     ])
     return process
 
+def get_3DGS_mask_command(
+    gs_source, colmap_dir,sam_option, seg_prompt,
+    camera, positive_sam_points, negative_sam_points
+):
+    process = subprocess.Popen([
+        "python",
+        "EditorGS/GUIEditor/get_GSMask.py",
+        "--gs_source", str(gs_source),
+        "--colmap_dir", str(colmap_dir),
+        "--sam_option",str(sam_option),
+        "--positive_sam_points", str(positive_sam_points),
+        "--negative_sam_points", str(negative_sam_points),
+        "--seg_prompt",str(seg_prompt),
+        "--camera", str(camera),
+    ])
+    return process
+
 def showing_colmap_command(data_path):
     process = subprocess.Popen([
         "python",
