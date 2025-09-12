@@ -244,6 +244,8 @@ def render_drag(viewpoint_camera, pc: GaussianModel, bg_color: torch.Tensor, d_x
         mask = torch.load("tmp_drag/mask.pt")
     else:
         mask = torch.ones_like(pc.get_xyz[..., 0], dtype=torch.bool, device=pc.get_xyz.device)
+    
+    mask = mask if mask.shape[0] == pc.get_xyz.shape[0] else torch.ones_like(pc.get_xyz[..., 0], dtype=torch.bool, device=pc.get_xyz.device)
 
     means3D = pc.get_xyz + d_xyz * mask.unsqueeze(-1)
     means2D = screenspace_points

@@ -37,6 +37,10 @@ from EditorGS.gaussiansplatting.knn import K_nearest_neighbors
 
 MAX_ANCHOR_WEIGHT = 10
 
+try:
+    from diff_gaussian_rasterization import SparseGaussianAdam
+except:
+    pass
 
 class GaussianModel:
     def setup_functions(self):
@@ -62,8 +66,10 @@ class GaussianModel:
             anchor_weight_init_g0: float,
             anchor_weight_init: float,
             anchor_weight_multiplier: float,
+            optimizer_type="default"
     ):
         self.active_sh_degree = 0
+        self.optimizer_type = optimizer_type
         self.anchor_weight_init = anchor_weight_init
         self.anchor_weight_multiplier = anchor_weight_multiplier
         self._anchor_loss_schedule = torch.tensor(
@@ -371,7 +377,15 @@ class GaussianModel:
             },
         ]
         self.params_list = l
-        self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
+        if self.optimizer_type == "default":
+            self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
+        elif self.optimizer_type == "sparse_adam":
+            try:
+                self.optimizer = SparseGaussianAdam(l, lr=0.0, eps=1e-15)
+            except:
+                # A special version of the rasterizer is required to enable sparse adam
+                self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
+
         self.xyz_scheduler_args = get_expon_lr_func(
             lr_init=training_args.position_lr_init * self.spatial_lr_scale,
             lr_final=training_args.position_lr_final * self.spatial_lr_scale,

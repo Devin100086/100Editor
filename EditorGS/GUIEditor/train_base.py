@@ -31,11 +31,18 @@ from transformers import pipeline
 from tqdm import tqdm
 from torchvision.utils import save_image
 
+try:
+    from acc_diff_gaussian_rasterization_editor import SparseGaussianAdam
+    SPARSE_ADAM_AVAILABLE = True
+except:
+    SPARSE_ADAM_AVAILABLE = False
+
 
 class BaseTrainer:
     def __init__(self,cfg):
         self.gs_source = cfg.gs_source
         self.colmap_dir = cfg.colmap_dir
+        self.use_sparse_adam = cfg.optimizer_type == "sparse_adam" and SPARSE_ADAM_AVAILABLE 
         self.edit_text = None if cfg.text_prompt=="" else cfg.text_prompt
         self.edit_train_steps = None if cfg.edit_train_steps==-1 else cfg.edit_train_steps
 
@@ -70,6 +77,7 @@ class BaseTrainer:
             anchor_weight_init_g0=1.0,
             anchor_weight_init=0.1,
             anchor_weight_multiplier=2,
+            optimizer_type=cfg.optimizer_type,
         )
 
         # load
@@ -133,13 +141,14 @@ class BaseTrainer:
         local=False,
         sam=False,
         train=False,
-        mask = False
+        mask = False,
+        separate_sh = False
     ) -> Dict[str, Any]:
         self.gaussian.localize = local
         if mask:
             render_pkg = render(cam, self.gaussian2, self.pipe, self.background_tensor)
         else:
-            render_pkg = render(cam, self.gaussian, self.pipe, self.background_tensor)
+            render_pkg = render(cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=separate_sh)
         image, viewspace_point_tensor, _, radii = (
             render_pkg["render"],
             render_pkg["viewspace_points"],

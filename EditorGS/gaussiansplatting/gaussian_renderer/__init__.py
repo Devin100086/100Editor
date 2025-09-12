@@ -11,9 +11,13 @@
 
 import torch
 import math
-from diff_gaussian_rasterization import (
-    GaussianRasterizationSettings,
-    GaussianRasterizer,
+# from diff_gaussian_rasterization import (
+#     GaussianRasterizationSettings,
+#     GaussianRasterizer,
+# )
+from acc_diff_gaussian_rasterization_editor import (
+    GaussianRasterizationSettings, 
+    GaussianRasterizer
 )
 from gaussiansplatting.utils.sh_utils import eval_sh
 
@@ -50,6 +54,7 @@ def render(
     bg_color: torch.Tensor,
     scaling_modifier=1.0,
     override_color=None,
+    separate_sh=False
 ):
     """
     Render the scene.
@@ -122,7 +127,10 @@ def render(
             sh2rgb = eval_sh(pc.active_sh_degree, shs_view, dir_pp_normalized)
             colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
         else:
-            shs = pc.get_features
+            if separate_sh:
+                dc, shs = pc.get_features_dc, pc.get_features_rest
+            else:
+                shs = pc.get_features
 
         shs = shs.float()
     else:
@@ -130,16 +138,29 @@ def render(
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen).
     # import pdb; pdb.set_trace()
-    rendered_image, radii, depth = rasterizer(
-        means3D=means3D.float(),
-        means2D=means2D.float(),
-        shs=shs,
-        colors_precomp=colors_precomp,
-        opacities=opacity.float(),
-        scales=scales.float(),
-        rotations=rotations.float(),
-        cov3D_precomp=cov3D_precomp,
-    )
+
+    if separate_sh:
+        rendered_image, radii, depth = rasterizer(
+            means3D = means3D.float(),
+            means2D = means2D.float(),
+            dc = dc,
+            shs = shs,
+            colors_precomp = colors_precomp,
+            opacities = opacity.float(),
+            scales = scales.float(),
+            rotations = rotations.float(),
+            cov3D_precomp = cov3D_precomp)
+    else:
+        rendered_image, radii, depth = rasterizer(
+            means3D=means3D.float(),
+            means2D=means2D.float(),
+            shs=shs,
+            colors_precomp=colors_precomp,
+            opacities=opacity.float(),
+            scales=scales.float(),
+            rotations=rotations.float(),
+            cov3D_precomp=cov3D_precomp,
+        )
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.

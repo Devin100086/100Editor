@@ -200,8 +200,14 @@ class EditTrainer(BaseTrainer):
 
             self.densify_and_prune(step)
 
-            self.gaussian.optimizer.step()
-            self.gaussian.optimizer.zero_grad(set_to_none=True)
+            if self.use_sparse_adam:
+                    visible = self.visibility_filter > 0
+                    self.gaussian.optimizer.step(visible, self.radii.shape[0])
+                    self.gaussian.optimizer.zero_grad(set_to_none=True)
+            else:
+                self.gaussian.optimizer.step()
+                self.gaussian.optimizer.zero_grad(set_to_none=True)
+
             if self.stop_training:
                 self.stop_training = False
                 return
@@ -291,6 +297,7 @@ if __name__ == "__main__":
     parser.add_argument("--gs_source", type=str, required=True)  # gs ply or obj file?
     parser.add_argument("--colmap_dir", type=str, required=True)
     parser.add_argument("--edit_cam_num", type=int, default=0, help="Camera number.")
+    parser.add_argument("--optimizer_type", type=str, default="sparse_adam", help="adam or sparse_adam")
     parser.add_argument("--guidance_type", type=str, default="InstructPix2Pix")
     parser.add_argument("--text_prompt", default="default_text", help="Text prompt.")
     parser.add_argument("--origin_prompt", default="default_origin_text", help="Origin text prompt.")
