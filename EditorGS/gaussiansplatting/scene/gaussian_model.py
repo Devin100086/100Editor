@@ -38,7 +38,7 @@ from EditorGS.gaussiansplatting.knn import K_nearest_neighbors
 MAX_ANCHOR_WEIGHT = 10
 
 try:
-    from diff_gaussian_rasterization import SparseGaussianAdam
+    from acc_diff_gaussian_rasterization_editor import SparseGaussianAdam
 except:
     pass
 
@@ -255,6 +255,14 @@ class GaussianModel:
             features_rest = self._features_rest
 
         return torch.cat((features_dc, features_rest), dim=1)
+
+    @property
+    def get_features_dc(self):
+        return self._features_dc
+    
+    @property
+    def get_features_rest(self):
+        return self._features_rest
 
     @property
     def get_opacity(self):

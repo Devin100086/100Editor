@@ -88,7 +88,7 @@ def render(
         viewmatrix=viewpoint_camera.world_view_transform,
         projmatrix=viewpoint_camera.full_proj_transform.float(),
         sh_degree=pc.active_sh_degree,
-        campos=viewpoint_camera.camera_center,
+        campos=viewpoint_camera.camera_center.float(),
         prefiltered=False,
         debug=False,
         antialiasing=pipe.antialiasing

@@ -86,7 +86,7 @@ class EditorNetwork:
                 traceback.print_exc()
                 raise e
 
-    def render(self, pipe, gaussians, loss, render, background, iteration, opt, show = False):
+    def render(self, pipe, gaussians, loss, render, background, iteration, opt, use_sparse_adam=False, show = False):
         if self.conn == None:
             self.try_connect()
         while self.conn != None:
@@ -101,7 +101,7 @@ class EditorNetwork:
 
                 if self.custom_cam != None:
                     with torch.no_grad():
-                        net_image = render(self.custom_cam, gs, pipe, background, self.scaling_modifer)["render"]
+                        net_image = render(self.custom_cam, gs, pipe, background, self.scaling_modifer, separate_sh=use_sparse_adam)["render"]
                     net_image_bytes = memoryview((torch.clamp(net_image, min=0, max=1.0) * 255).byte().permute(1, 2, 0).contiguous().cpu().numpy())
                 training_stats = json.dumps({
                     "loss": loss,

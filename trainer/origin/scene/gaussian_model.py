@@ -24,7 +24,7 @@ from utils.graphics_utils import BasicPointCloud
 from utils.general_utils import strip_symmetric, build_scaling_rotation
 
 try:
-    from diff_gaussian_rasterization import SparseGaussianAdam
+    from acc_diff_gaussian_rasterization_editor import SparseGaussianAdam
 except:
     pass
 

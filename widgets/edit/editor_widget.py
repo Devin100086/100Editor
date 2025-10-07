@@ -71,7 +71,7 @@ class EditorWidget(Widget):
         # text-edit
         self.guidance_type = ["InstructPix2Pix","ControlNet-Depth","pds","pds-refine"]
         self.guidance_item = 0
-        self.text_prompt = "Put makeup on her"
+        self.text_prompt = "Turn his face into Kevin Durant"
         self.origin_prompt = "a photo of a bear statue in the forest"
         self.text_sam_option = 0
         self.text_point_option = 0

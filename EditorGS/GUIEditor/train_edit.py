@@ -50,10 +50,11 @@ class EditTrainer(BaseTrainer):
             self.cam  = pickle.load(f)
 
     def edit(self, sam_option, seg_prompt, video):
-        # start_time = datetime.datetime.now()
+        start_time = datetime.datetime.now()
         now = datetime.datetime.now()
         now = f"{self.edit_text}@{now.strftime('%Y_%m_%d_%H_%M')}"
         now = now.replace(" ", "_")
+
         self.output_dir = os.path.join(self.output_dir, now)
         os.makedirs(self.output_dir, exist_ok=True)
         # edit_cameras = sample_train_camera(self.colmap_cameras,
@@ -90,7 +91,7 @@ class EditTrainer(BaseTrainer):
             cur_2D_guidance = self.ctn_ip2p
             print("using ControlNet-Depth!")
         
-        self.origin_frames, self.depths = self.render_cameras_list(self.colmap_cameras)
+        self.origin_frames, self.depths = self.render_cameras_list(self.colmap_cameras, separate_sh=self.use_sparse_adam)
 
         random.seed(0)  # make sure same views
         self.n2n_view_index = random.sample(
@@ -109,7 +110,7 @@ class EditTrainer(BaseTrainer):
             negative_points3d = []
             # positive
             for i, sam_point in enumerate(self.positive_sam_points):
-                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor)[
+                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)[
                     "depth_3dgs"
                 ]
                 # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
@@ -173,19 +174,19 @@ class EditTrainer(BaseTrainer):
 
         network = EditorNetwork(host="127.0.0.1",port=8084)
         for step in tqdm(range(self.edit_train_steps)):
-            network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
+            network.render(self.pipe,self.gaussian,ema_loss_for_log, render,self.background_tensor,step,self.opt, self.use_sparse_adam)
             if (step % self.cameara_update_step == 0 and video):
                 self.edit_all_view(sam_option, update_camera= step >= self.cameara_update_step, global_step=step)
 
-            if (step == 999):
-                self.edit_all_view(sam_option, update_camera= False, global_step=step)
+            # if (step == 999):
+            #     self.edit_all_view(sam_option, update_camera= False, global_step=step)
 
             if not view_index_stack:
                 view_index_stack = self.n2n_view_index.copy()
             view_index = random.choice(view_index_stack)
             view_index_stack.remove(view_index)
 
-            rendering = self.render(self.colmap_cameras[view_index], train=True)["comp_rgb"]
+            rendering = self.render(self.colmap_cameras[view_index], train=True, separate_sh=self.use_sparse_adam)["comp_rgb"]
             # import torchvision.utils as vutils
             # vutils.save_image(rendering.permute(0,3,1,2), "output_images.png", nrow=1)
             # if (step+1) % 250 == 0:
@@ -201,7 +202,7 @@ class EditTrainer(BaseTrainer):
             self.densify_and_prune(step)
 
             if self.use_sparse_adam:
-                    visible = self.visibility_filter > 0
+                    visible = self.radii > 0
                     self.gaussian.optimizer.step(visible, self.radii.shape[0])
                     self.gaussian.optimizer.zero_grad(set_to_none=True)
             else:
@@ -221,15 +222,15 @@ class EditTrainer(BaseTrainer):
         # save_image(Renderings1, f"batch_image1_{self.edit_train_steps}.png", nrow=Renderings1.shape[0])
         # save_image(Renderings2, f"batch_image2_{self.edit_train_steps}.png", nrow=Renderings2.shape[0])
 
-        # end_time = datetime.datetime.now()
-        # run_time = end_time - start_time
-        # total_seconds = run_time.total_seconds()
+        end_time = datetime.datetime.now()
+        run_time = end_time - start_time
+        total_seconds = run_time.total_seconds()
 
-        # hours = int(total_seconds // 3600)  
-        # minutes = int((total_seconds % 3600) // 60) 
-        # seconds = total_seconds % 60 
+        hours = int(total_seconds // 3600)  
+        minutes = int((total_seconds % 3600) // 60) 
+        seconds = total_seconds % 60 
 
-        # print(f"Time: {hours} h {minutes} min {seconds:.2f} s")
+        print(f"Time: {hours} h {minutes} min {seconds:.2f} s")
         self.gaussian.save_ply(f"{self.output_dir}/result.ply")
     
     def edit_all_view(self, sam_option, update_camera=False, global_step=0):
@@ -255,7 +256,7 @@ class EditTrainer(BaseTrainer):
                 
             for id in view_sorted:
                 cur_cam = self.colmap_cameras[id]
-                out_pkg = self.render(cur_cam)
+                out_pkg = self.render(cur_cam, separate_sh=self.use_sparse_adam)
                 out = out_pkg["comp_rgb"]
                 if self.use_masked_image:
                     out = out * out_pkg["masks"].unsqueeze(-1)
@@ -297,7 +298,7 @@ if __name__ == "__main__":
     parser.add_argument("--gs_source", type=str, required=True)  # gs ply or obj file?
     parser.add_argument("--colmap_dir", type=str, required=True)
     parser.add_argument("--edit_cam_num", type=int, default=0, help="Camera number.")
-    parser.add_argument("--optimizer_type", type=str, default="sparse_adam", help="adam or sparse_adam")
+    parser.add_argument("--optimizer_type", type=str, default="sparse_adam", help="default or sparse_adam")
     parser.add_argument("--guidance_type", type=str, default="InstructPix2Pix")
     parser.add_argument("--text_prompt", default="default_text", help="Text prompt.")
     parser.add_argument("--origin_prompt", default="default_origin_text", help="Origin text prompt.")

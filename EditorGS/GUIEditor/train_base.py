@@ -6,7 +6,6 @@ import os
 import torchvision
 import torch.nn.functional as F
 from torchvision.transforms.functional import to_pil_image, to_tensor
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import sys
 import gc
 
@@ -125,11 +124,12 @@ class BaseTrainer:
         self.scale_depth = True
 
     @torch.no_grad()
-    def render_cameras_list(self, edit_cameras):
+    def render_cameras_list(self, edit_cameras, separate_sh=False):
         origin_frames = []
         depths = []
         for cam in edit_cameras:
-            out, depth = self.render(cam)["comp_rgb"], self.render(cam)["depth"]
+            render_pkg = self.render(cam, separate_sh=separate_sh)
+            out, depth = render_pkg["comp_rgb"], render_pkg["depth"]
             origin_frames.append(out)
             depths.append(depth)
 
@@ -295,11 +295,11 @@ class BaseTrainer:
             positive_points2ds = project_3d_to_2d(positive_points3d, cur_cam) if len(positive_points3d) > 0 else np.empty((0,2))
             negative_points2ds = project_3d_to_2d(negative_points3d, cur_cam) if len(negative_points3d) > 0 else np.empty((0,2))
             if type == "default":
-                img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)[
+                img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)[
                     "render"
                 ]
             else:
-                img = render(cur_cam, self.gaussian2, self.pipe, self.background_tensor)[
+                img = render(cur_cam, self.gaussian2, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)[
                     "render"
                 ]
             sam2_predictor.set_image(
