@@ -1,5 +1,6 @@
 import math
 
+from diffusers.utils import logging
 import torch
 import torch.nn.functional as F
 from einops import rearrange
@@ -12,6 +13,8 @@ from copy import deepcopy
 import torch
 import torch.nn.functional as F
 
+
+logger = logging.get_logger(__name__)
 
 def isinstance_str(x: object, cls_name: str):
     """
@@ -238,8 +241,8 @@ def register_faster_forward(model, mod = '50ls'):
                 upsample_size = None
 
                 if any(s % default_overall_up_factor != 0 for s in sample.shape[-2:]):
-                    # logger.info("Forward upsample size to force interpolation output size.")
-                    print("Forward upsample size to force interpolation output size.")
+                    logger.info("Forward upsample size to force interpolation output size.")
+                    # print("Forward upsample size to force interpolation output size.")
                     forward_upsample_size = True
 
                 # prepare attention_mask

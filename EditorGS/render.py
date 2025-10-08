@@ -25,12 +25,16 @@ def render_cameras_list(gaussian, colmap_dir, save_dir, use_original_resolution)
         scene = CamScene(colmap_dir, h=512, w=512)
     colmap_cameras = scene.cameras
 
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    save_dir = f"{save_dir}_{current_time}"
+    # current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # save_dir = f"{save_dir}_{current_time}"
+    if use_original_resolution:
+        save_dir = os.path.join(save_dir,"rendered_origin")
+    else:
+        save_dir = os.path.join(save_dir,"rendered_no_origin")
     os.makedirs(save_dir, exist_ok=True)
 
     for cam in tqdm(colmap_cameras):
-        render_pkg = render(cam, gaussian, pipe, background_tensor)
+        render_pkg = render(cam, gaussian, pipe, background_tensor, separate_sh=True)
         out = render_pkg["render"]
         image = out[None]
         save_image(image, f"{save_dir}/{cam.image_name}.png")
