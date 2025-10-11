@@ -128,8 +128,9 @@ class InstructPix2PixGuidance(BaseObject):
 
         threestudio.info(f"Loaded InstructPix2Pix!")
 
+        register_faster_forward(self.unet)
+
         if self.cfg.video:
-            register_faster_forward(self.unet)
             self.activate_vidtome()
 
     def activate_vidtome(self):
@@ -231,16 +232,34 @@ class InstructPix2PixGuidance(BaseObject):
         t: Int[Tensor, "B"],
     ) -> Float[Tensor, "B 4 DH DW"]:
         
-        self.scheduler.config.num_train_timesteps = t.item()
+        self.scheduler.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
         self.scheduler.set_timesteps(self.cfg.diffusion_steps)
         with torch.no_grad():
             # add noise
             noise = torch.randn_like(latents)
             latents = self.scheduler.add_noise(latents, noise, t)  # type: ignore
+
+            cond = lambda timestep: timestep in [0, 1, 2, 3, 5, 8, 12, 16]
+            curr_step = 0
+            all_steps = len(self.scheduler.timesteps)
+
             threestudio.debug("Start editing...")
             # sections of code used from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_instruct_pix2pix.py
             for i, t in enumerate(self.scheduler.timesteps):
                 # predict the noise residual with unet, NO grad!
+
+                if curr_step > i:
+                    continue
+                setattr(self.unet, 'order', curr_step)
+                time_ls = [self.scheduler.timesteps[curr_step]]
+                curr_step += 1
+                while not cond(curr_step):
+                    if curr_step<all_steps:
+                        time_ls.append(self.scheduler.timesteps[curr_step])
+                        curr_step += 1
+                    else:
+                        break
+
 
                 with torch.no_grad():
                     # pred noise
@@ -250,7 +269,7 @@ class InstructPix2PixGuidance(BaseObject):
                     )
 
                     noise_pred = self.forward_unet(
-                        latent_model_input, t, encoder_hidden_states=text_embeddings
+                        latent_model_input, time_ls, encoder_hidden_states=text_embeddings
                     )
 
                 # perform classifier-free guidance
@@ -262,9 +281,15 @@ class InstructPix2PixGuidance(BaseObject):
                     + self.cfg.guidance_scale * (noise_pred_text - noise_pred_image)
                     + self.cfg.condition_scale * (noise_pred_image - noise_pred_uncond)
                 )
+                
+                bs = noise_pred.shape[0]
+                bs_perstep = bs//len(time_ls)
 
+                for i, timestep in enumerate(time_ls):
+                    curr_noise = noise_pred[i*bs_perstep:(i+1)*bs_perstep]
+                    latents = self.scheduler.step(curr_noise, timestep, latents).prev_sample
                 # get previous sample, continue loop
-                latents = self.scheduler.step(noise_pred, t, latents).prev_sample
+                
             threestudio.debug("Editing finished.")
         return latents
 
@@ -319,7 +344,7 @@ class InstructPix2PixGuidance(BaseObject):
             noise = torch.randn_like(latents)
             latents = self.scheduler.add_noise(latents, noise, t) 
 
-            cond = lambda timestep: timestep in [0,1,2,3,5,10,15]
+            cond = lambda timestep: timestep in [0, 1, 2, 3, 5, 8, 12, 16]
             curr_step = 0
             all_steps = len(self.scheduler.timesteps)
 

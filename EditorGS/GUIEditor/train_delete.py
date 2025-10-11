@@ -140,7 +140,7 @@ class DeleteTrainer(BaseTrainer):
 
             # positive
             for i, sam_point in enumerate(self.positive_sam_points):
-                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor)[
+                depth = render(self.cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)[
                     "depth_3dgs"
                 ]
                 # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
@@ -152,7 +152,7 @@ class DeleteTrainer(BaseTrainer):
             
             # negative
             for i, sam_point in enumerate(self.negative_sam_points):
-                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor)[
+                depth = render(self.cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)[
                     "depth_3dgs"
                 ]
                 # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
@@ -171,7 +171,7 @@ class DeleteTrainer(BaseTrainer):
             self.positive_sam_points = np.empty((0,2)) if self.positive_sam_points.shape[0] == 0 else self.positive_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             self.negative_sam_points = np.empty((0,2)) if self.negative_sam_points.shape[0] == 0 else self.negative_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
-            init_render = render(self.cam, self.gaussian, self.pipe ,self.background_tensor)["render"]
+            init_render = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
             save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
             self.update_sam2_mask_with_point_prompt(edit_cameras, 
                                                                     self.positive_sam_points ,
@@ -220,7 +220,7 @@ class DeleteTrainer(BaseTrainer):
         ema_loss_for_log = 0.0
         network = EditorNetwork(host="127.0.0.1",port=8084)
         for step in tqdm(range(self.edit_train_steps)):
-            network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
+            network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt, self.use_sparse_adam)
             if step % self.cameara_update_step == 0 and video:
                 self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
 
@@ -229,7 +229,7 @@ class DeleteTrainer(BaseTrainer):
             view_index = random.choice(view_index_stack)
             view_index_stack.remove(view_index)
 
-            rendering = self.render(self.colmap_cameras[view_index], train=True)["comp_rgb"]
+            rendering = self.render(self.colmap_cameras[view_index], train=True, separate_sh=self.use_sparse_adam)["comp_rgb"]
             # depth_rendering = render_pkg["depth"]
             loss = self.guidance(
                 rendering,
@@ -242,8 +242,14 @@ class DeleteTrainer(BaseTrainer):
 
             self.densify_and_prune(step)
 
-            self.gaussian.optimizer.step()
-            self.gaussian.optimizer.zero_grad(set_to_none=True)
+            if self.use_sparse_adam:
+                    visible = self.radii > 0
+                    self.gaussian.optimizer.step(visible, self.radii.shape[0])
+                    self.gaussian.optimizer.zero_grad(set_to_none=True)
+            else:
+                self.gaussian.optimizer.step()
+                self.gaussian.optimizer.zero_grad(set_to_none=True)
+
             if self.stop_training:
                 self.stop_training = False
                 return
@@ -258,7 +264,7 @@ class DeleteTrainer(BaseTrainer):
         origin_frames = []
 
         for _, cam in enumerate(edit_cameras):
-            res = self.render(cam)
+            res = self.render(cam, separate_sh=self.use_sparse_adam)
             rgb, mask = res["comp_rgb"], res["masks"]
             mask = dilate_mask(mask.to(torch.float32), self.mask_dilate)
             if self.fix_holes:
@@ -310,6 +316,7 @@ if __name__ == "__main__":
     parser.add_argument("--gs_source", type=str, required=True)  # gs ply or obj file?
     parser.add_argument("--colmap_dir", type=str, required=True)
     parser.add_argument("--edit_cam_num", type=int, default=0, help="Camera number.")
+    parser.add_argument("--optimizer_type", type=str, default="sparse_adam", help="default or sparse_adam")
     parser.add_argument("--delete_prompt", type=str, default="man", help="Delete Prompt.")
     parser.add_argument("--text_prompt", type=str, default="", help="text prompt.")
     parser.add_argument("--edit_train_steps", type=int, default=1500, help="Edit train steps.")

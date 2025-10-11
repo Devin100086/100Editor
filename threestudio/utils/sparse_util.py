@@ -326,7 +326,7 @@ def register_faster_forward(model, mod = '50ls'):
                 elif mod == "pro":
                     cond = ipow * ipow == (9 + 8 * order)
                 elif mod == "50ls":
-                    cond = order in [0, 1, 2, 3, 5, 10, 15] #40 #[0,1,2,3, 5, 10, 15] #[0, 1, 2, 3, 5, 10, 15, 25, 35, 40]
+                    cond = order in [0, 1, 2, 3, 5, 8, 12, 16] #40 #[0,1,2,3, 5, 10, 15] #[0, 1, 2, 3, 5, 10, 15, 25, 35, 40]
                 if cond:
                     # print('current timestep:', order)
                     # 2. pre-process

@@ -50,13 +50,16 @@ class EditTrainer(BaseTrainer):
             self.cam  = pickle.load(f)
 
     def edit(self, sam_option, seg_prompt, video):
-        start_time = datetime.datetime.now()
         now = datetime.datetime.now()
         now = f"{self.edit_text}@{now.strftime('%Y_%m_%d_%H_%M')}"
         now = now.replace(" ", "_")
-
         self.output_dir = os.path.join(self.output_dir, now)
         os.makedirs(self.output_dir, exist_ok=True)
+
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
+
         # edit_cameras = sample_train_camera(self.colmap_cameras,
         #                                    self.edit_cam_num,
         #                                   )
@@ -122,7 +125,7 @@ class EditTrainer(BaseTrainer):
             
             # negative
             for i, sam_point in enumerate(self.negative_sam_points):
-                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor)[
+                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)[
                     "depth_3dgs"
                 ]
                 # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
@@ -141,7 +144,7 @@ class EditTrainer(BaseTrainer):
             self.positive_sam_points = np.empty((0,2)) if self.positive_sam_points.shape[0] == 0 else self.positive_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             self.negative_sam_points = np.empty((0,2)) if self.negative_sam_points.shape[0] == 0 else self.negative_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
-            init_render = render(self.cam, self.gaussian, self.pipe ,self.background_tensor)["render"]
+            init_render = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
             save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
             self.masks, _ = self.update_sam2_mask_with_point_prompt(self.colmap_cameras, 
                                                                     self.positive_sam_points ,
@@ -190,8 +193,8 @@ class EditTrainer(BaseTrainer):
             # import torchvision.utils as vutils
             # vutils.save_image(rendering.permute(0,3,1,2), "output_images.png", nrow=1)
             # if (step+1) % 250 == 0:
-            #     image1 = self.render(self.colmap_cameras[37])["comp_rgb"]
-            #     image2 = self.render(self.colmap_cameras[29])["comp_rgb"]
+            #     image1 = self.render(self.colmap_cameras[5],separate_sh=self.use_sparse_adam)["comp_rgb"]
+            #     image2 = self.render(self.colmap_cameras[10],separate_sh=self.use_sparse_adam)["comp_rgb"]
             #     Renderings1.append(image1.permute(0,3,1,2).cpu())
             #     Renderings2.append(image2.permute(0,3,1,2).cpu())
             
@@ -222,13 +225,15 @@ class EditTrainer(BaseTrainer):
         # save_image(Renderings1, f"batch_image1_{self.edit_train_steps}.png", nrow=Renderings1.shape[0])
         # save_image(Renderings2, f"batch_image2_{self.edit_train_steps}.png", nrow=Renderings2.shape[0])
 
-        end_time = datetime.datetime.now()
-        run_time = end_time - start_time
-        total_seconds = run_time.total_seconds()
+        end_event.record()
+        torch.cuda.synchronize()
 
-        hours = int(total_seconds // 3600)  
-        minutes = int((total_seconds % 3600) // 60) 
-        seconds = total_seconds % 60 
+        elapsed_time_ms = start_event.elapsed_time(end_event)
+
+        elapsed_time_s = elapsed_time_ms / 1000
+
+        hours, remainder = divmod(elapsed_time_s, 3600)
+        minutes, seconds = divmod(remainder, 60)
 
         print(f"Time: {hours} h {minutes} min {seconds:.2f} s")
         self.gaussian.save_ply(f"{self.output_dir}/result.ply")
