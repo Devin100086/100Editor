@@ -10,6 +10,11 @@ from EditorGS.GUIEditor.utils import *
 from threestudio.utils.camera import pixel_to_3d
 
 from torchvision.utils import save_image
+try:
+    from acc_diff_gaussian_rasterization_editor import SparseGaussianAdam
+    SPARSE_ADAM_AVAILABLE = True
+except:
+    SPARSE_ADAM_AVAILABLE = False
 
 class MaskCatcher:
     def __init__(self, cfg):
@@ -42,6 +47,8 @@ class MaskCatcher:
         self.save_mask_tmp =  os.path.join(os.path.dirname(cfg.positive_sam_points),"mask")
         with open(args.camera, 'rb') as f:
             self.cam  = pickle.load(f)
+        
+        self.use_sparse_adam = cfg.optimizer_type == "sparse_adam" and SPARSE_ADAM_AVAILABLE 
 
     def get_mask(self, sam_option, seg_prompt):
     
@@ -55,7 +62,7 @@ class MaskCatcher:
             negative_points3d = []
             # positive
             for i, sam_point in enumerate(self.positive_sam_points):
-                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor)[
+                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)[
                     "depth_3dgs"
                 ]
                 # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
@@ -67,7 +74,7 @@ class MaskCatcher:
             
             # negative
             for i, sam_point in enumerate(self.negative_sam_points):
-                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor)[
+                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)[
                     "depth_3dgs"
                 ]
                 # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
@@ -86,7 +93,7 @@ class MaskCatcher:
             self.positive_sam_points = np.empty((0,2)) if self.positive_sam_points.shape[0] == 0 else self.positive_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             self.negative_sam_points = np.empty((0,2)) if self.negative_sam_points.shape[0] == 0 else self.negative_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
-            init_render = render(self.cam, self.gaussian, self.pipe ,self.background_tensor)["render"]
+            init_render = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
             save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
             self.masks, _ = self.update_sam2_mask_with_point_prompt(self.colmap_cameras, 
                                                                     self.positive_sam_points ,
@@ -131,7 +138,7 @@ class MaskCatcher:
         return masks, selected_mask
     
     def update_sam_mask_with_point_prompt(
-        self, edit_cameras, positive_points3d=None, negative_points3d=None, type = "default"
+        self, edit_cameras, positive_points3d=None, negative_points3d=None
     ):
         os.makedirs(self.save_mask_tmp, exist_ok=True)
         os.system(f"rm -rf {self.save_mask_tmp}/*")
@@ -150,14 +157,9 @@ class MaskCatcher:
             assert len(positive_points3d) > 0
             positive_points2ds = project_3d_to_2d(positive_points3d, cur_cam) if len(positive_points3d) > 0 else np.empty((0,2))
             negative_points2ds = project_3d_to_2d(negative_points3d, cur_cam) if len(negative_points3d) > 0 else np.empty((0,2))
-            if type == "default":
-                img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)[
-                    "render"
-                ]
-            else:
-                img = render(cur_cam, self.gaussian2, self.pipe, self.background_tensor)[
-                    "render"
-                ]
+            img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)[
+                "render"
+            ]
             sam2_predictor.set_image(
                 np.asarray(to_pil_image(img.cpu())),
             )
@@ -269,6 +271,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--gs_source", type=str, required=True)  # gs ply or obj file?
     parser.add_argument("--colmap_dir", type=str, required=True)
+    parser.add_argument("--optimizer_type", type=str, default="sparse_adam", help="default or sparse_adam")
     parser.add_argument("--sam_option", type=int, default=-1, help="Sam Option.")
     parser.add_argument("--seg_prompt", type=str, default="face", help="seg Prompt.")
     parser.add_argument("--positive_sam_points", type=str, default="/", help="the path of the positive sam points.")

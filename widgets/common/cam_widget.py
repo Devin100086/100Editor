@@ -33,7 +33,7 @@ class CamWidget(Widget):
         self.wasd_move_speed = 0.1
         self.drag_speed = 0.005
         self.rotate_speed = 0.02
-        self.control_modes = ["Orbit", "WASD"]
+        self.control_modes = ["Orbit", "FPS"]
         self.current_control_mode = 0
         self.last_drag_delta = imgui.ImVec2(0, 0)
 
@@ -63,7 +63,7 @@ class CamWidget(Widget):
             label("Camera Mode", viz.label_w)
             _, self.current_control_mode = imgui.combo("##cam_modes", self.current_control_mode, self.control_modes)
 
-            if self.control_modes[self.current_control_mode] == "WASD":
+            if self.control_modes[self.current_control_mode] == "FPS":
                 label("Move Speed", viz.label_w)
                 self.wasd_move_speed = slider(self.wasd_move_speed, "move_speed", 0.001, 1, log=True)
 
@@ -160,7 +160,7 @@ class CamWidget(Widget):
             self.last_drag_delta = imgui.ImVec2(0, 0)
 
     def handle_wasd(self):
-        if self.control_modes[self.current_control_mode] == "WASD":
+        if self.control_modes[self.current_control_mode] == "FPS":
             self.forward = get_forward_vector(
                 lookat_position=self.cam_pos,
                 horizontal_mean=self.pose.yaw + np.pi / 2,
@@ -204,7 +204,7 @@ class CamWidget(Widget):
         mouse_pos = imgui.get_io().mouse_pos
         if mouse_pos.x >= self.viz.pane_w:
             wheel = imgui.get_io().mouse_wheel
-            if self.control_modes[self.current_control_mode] == "WASD":
+            if self.control_modes[self.current_control_mode] == "FPS":
                 self.cam_pos += self.forward * self.move_speed * wheel
             elif self.control_modes[self.current_control_mode] == "Orbit":
                 self.radius -= wheel / 10
