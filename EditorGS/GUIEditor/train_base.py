@@ -349,9 +349,9 @@ class BaseTrainer:
         for i, cam in tqdm(enumerate(edit_cameras)):
             cur_cam = cam
             if type == "default":
-                img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)["render"]
+                img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
             else:
-                img = render(cur_cam, self.gaussian2, self.pipe, self.background_tensor)["render"]
+                img = render(cur_cam, self.gaussian2, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
             save_image(img[None], f"{render_folder}/{i+1:05d}" + ".jpg")
 
         frame_names = [
@@ -456,21 +456,27 @@ class BaseTrainer:
         blurred_mask = F.conv2d(mask, kernel2d, padding=kernel_size // 2, groups=mask.size(1))
         return blurred_mask
 
-    def compute_clip(self, clip_prompt_origin = "a photo of a face of a man", clip_prompt_target = "a photo of a face of vampire"):
+    def compute_clip(self, step, clip_prompt_origin = "a photo of a face of a man", clip_prompt_target = "a photo of a face of vampire"):
         clip_metrics = ClipSimilarity().to(self.gaussian.get_xyz.device)
         total_cos = 0
         total_sim = 0
         with torch.no_grad():
             for id, cam in enumerate(self.colmap_cameras):
                 cur_cam = cam
-                out = self.render(cur_cam, train=False)["comp_rgb"]
+                out = self.render(cur_cam, train=False, separate_sh=self.use_sparse_adam)["comp_rgb"]
                 _, sim, cos_sim, _ = clip_metrics(self.origin_frames[id].permute(0, 3, 1, 2), out.permute(0, 3, 1, 2),
                                                 clip_prompt_origin, clip_prompt_target)
                 total_cos += abs(cos_sim.item())
                 total_sim += abs(sim.item())
         print(clip_prompt_origin, clip_prompt_target, "cos:", total_cos / len(self.colmap_cameras), "sim:", total_sim / len(self.colmap_cameras))
-        with open("/home/wucunqi/Desktop/exp/Time/Ours(CLIP_DIRECTION).txt", "a") as f:
-            f.write(str(total_cos / len(self.colmap_cameras))+"\n")
-        with open("/home/wucunqi/Desktop/exp/Time/Ours(CLIP).txt", "a") as f:
-            f.write(str(total_sim / len(self.colmap_cameras))+ "\n")
+        with open("Ours(CLIP_DIRECTION).txt", "a") as f:
+            if step == 0:
+                f.write(str(total_cos / len(self.colmap_cameras)))
+            else:
+                f.write(","+str(total_cos / len(self.colmap_cameras)))
+        with open("Ours(CLIP).txt", "a") as f:
+            if step == 0:
+                f.write(str(total_cos / len(self.colmap_cameras)))
+            else:
+                f.write(","+str(total_sim / len(self.colmap_cameras)))
         return total_sim / len(self.colmap_cameras), total_cos / len(self.colmap_cameras)

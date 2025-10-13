@@ -44,7 +44,7 @@ class EditcamWidget(cam_widget.CamWidget):
             label("Camera Mode", viz.label_w)
             _, self.current_control_mode = imgui.combo("##cam_modes", self.current_control_mode, self.control_modes)
 
-            if self.control_modes[self.current_control_mode] == "WASD":
+            if self.control_modes[self.current_control_mode] == "FPS":
                 label("Move Speed", viz.label_w)
                 self.wasd_move_speed = slider(self.wasd_move_speed, "move_speed", 0.001, 1, log=True)
 
