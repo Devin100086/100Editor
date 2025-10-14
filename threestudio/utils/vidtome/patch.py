@@ -43,7 +43,7 @@ def compute_merge(module: torch.nn.Module, x: torch.Tensor, tome_info: Dict[str,
         # Recursive merge multi-frame tokens into one set. Such as 4->1 for 4 frames and 8->2->1 for 8 frames when target stride is 4.
         while curF > 1:
             m, u, ret_dict = merge.bipartite_soft_matching_randframe(
-                local_tokens, curF, args["local_merge_ratio"], unm, generator, args["target_stride"], args["align_batch"])
+                local_tokens, curF, args["local_merge_ratio"], unm, generator, args["target_stride"], args["align_batch"], "replace")
             unm += ret_dict["unm_num"]
             m_ls.append(m)
             u_ls.append(u)
