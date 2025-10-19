@@ -82,7 +82,7 @@ class TrainFineeAdd(BaseTrainer):
         # self.edit_cameras = sample_train_camera(self.colmap_cameras,
         #                                    self.edit_cam_num,
         #                                   )
-        self.origin_frames = self.render_cameras_list(self.colmap_cameras)
+        self.origin_frames = self.render_cameras_list(self.colmap_cameras, separate_sh=self.use_sparse_adam)
 
         random.seed(0)  # make sure same views
         self.n2n_view_index = random.sample(
@@ -96,7 +96,7 @@ class TrainFineeAdd(BaseTrainer):
         points3d = np.load("tmp_add/center_3D.npy")
         points2d = project_3d_to_2d(points3d, self.cam) if len(points3d) > 0 else np.empty((0,2))
         render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
-        init_render = render(self.cam, self.gaussian2, self.pipe ,self.background_tensor)["render"]
+        init_render = render(self.cam, self.gaussian2, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
         save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
         self.masks, _ = self.update_sam2_mask_with_point_prompt(self.colmap_cameras, points2d, np.empty((0,2)), type = "add")
 
@@ -121,7 +121,7 @@ class TrainFineeAdd(BaseTrainer):
         network = EditorNetwork(host="127.0.0.1",port=8084)
         
         for step in tqdm(range(self.edit_train_steps)):
-            network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt)
+            network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt, self.use_sparse_adam)
             if step % self.cameara_update_step == 0 and video:
                 self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
 
@@ -130,16 +130,22 @@ class TrainFineeAdd(BaseTrainer):
             view_index = random.choice(view_index_stack)
             view_index_stack.remove(view_index)
 
-            rendering = self.render(self.colmap_cameras[view_index], train=True)["comp_rgb"]
-            
+            rendering = self.render(self.colmap_cameras[view_index], train=True, separate_sh=self.use_sparse_adam)["comp_rgb"]
+
             loss = self.guidance(rendering, view_index, step)
 
             loss.backward()
 
             self.densify_and_prune(step)
 
-            self.gaussian.optimizer.step()
-            self.gaussian.optimizer.zero_grad(set_to_none=True)
+            if self.use_sparse_adam:
+                visible = self.radii > 0
+                self.gaussian.optimizer.step(visible, self.radii.shape[0])
+                self.gaussian.optimizer.zero_grad(set_to_none=True)
+            else:
+                self.gaussian.optimizer.step()
+                self.gaussian.optimizer.zero_grad(set_to_none=True)
+                
             if self.stop_training:
                 self.stop_training = False
                 return
@@ -167,7 +173,7 @@ class TrainFineeAdd(BaseTrainer):
                    
             for id in view_sorted:
                 cur_cam = self.colmap_cameras[id]
-                out_pkg = self.render(cur_cam)
+                out_pkg = self.render(cur_cam, separate_sh=self.use_sparse_adam)
                 out = out_pkg["comp_rgb"]
                 if self.use_masked_image:
                     out = out * out_pkg["masks"].unsqueeze(-1)
@@ -259,6 +265,7 @@ if __name__ == "__main__":
     parser.add_argument("--text_prompt", type=str ,default="turn him a clown", help="Text prompt.")
     parser.add_argument("--edit_train_steps", type=int, default=1500, help="Edit train steps.")
     parser.add_argument("--cameara_update_step", type=int, default=500, help="Cameara Update Step.")
+    parser.add_argument("--optimizer_type", type=str, default="sparse_adam", help="default or sparse_adam")
 
     parser.add_argument("--guidance_type", type=str, default="InstructPix2Pix")
     parser.add_argument("--edit_cam_num", type=int, default=0, help="Camera number.")

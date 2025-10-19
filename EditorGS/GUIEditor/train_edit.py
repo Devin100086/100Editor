@@ -30,7 +30,6 @@ class EditTrainer(BaseTrainer):
         self.lambda_anchor_scale = cfg.lambda_anchor_scale
         self.lambda_anchor_opacity = cfg.lambda_anchor_opacity
         self.per_editing_step = cfg.per_editing_step
-        self.lang_sam = LangSAMTextSegmentor().to(get_device())
         self.edit_begin_step = cfg.edit_begin_step
         self.edit_until_step = cfg.edit_until_step
         self.output_dir = cfg.output_dir
@@ -58,7 +57,7 @@ class EditTrainer(BaseTrainer):
 
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
-        start_event.record()
+        # start_event.record()
 
         # edit_cameras = sample_train_camera(self.colmap_cameras,
         #                                    self.edit_cam_num,
@@ -106,6 +105,7 @@ class EditTrainer(BaseTrainer):
         if sam_option == 0:
             pass
         elif sam_option == 1:
+            self.lang_sam = LangSAMTextSegmentor().to(get_device())
             self.masks, _ = self.update_mask(self.colmap_cameras, text_prompt=seg_prompt)
         elif sam_option == 2:
 
@@ -176,6 +176,7 @@ class EditTrainer(BaseTrainer):
         # Renderings2 = []
 
         network = EditorNetwork(host="127.0.0.1",port=8084)
+        start_event.record()
         for step in tqdm(range(self.edit_train_steps)):
             network.render(self.pipe,self.gaussian,ema_loss_for_log, render,self.background_tensor,step,self.opt, self.use_sparse_adam)
             if (step % self.cameara_update_step == 0 and video):

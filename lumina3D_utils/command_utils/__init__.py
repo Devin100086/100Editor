@@ -59,7 +59,7 @@ def training_fine_adding_command(
 ):
     process = subprocess.Popen([
         "python",
-        "EditorGS/GUIEditor/train_fine_add.py",
+        "EditorGS/GUIEditor/train_add.py",
         "--gs_source", str(gs_source),
         "--colmap_dir", str(colmap_dir),
         "--text_prompt", str(text_prompt),

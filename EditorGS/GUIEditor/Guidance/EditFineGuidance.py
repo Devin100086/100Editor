@@ -58,7 +58,7 @@ class EditFineGuidance:
         ):
             
             mask = (self.masks[view_index]/255)[:,:,:,np.newaxis]
-            mask = torch.from_numpy(mask).repeat(1,1,1,3).float().to(rendering.device)
+            mask = mask.repeat(1,1,1,3).float().to(rendering.device)
             rgb = rendering * (1-mask)
             result = self.guidance(
                 rgb,

@@ -4,7 +4,7 @@ import pickle
 from imgui_bundle import imgui
 from omegaconf import OmegaConf
 from EditorGS.gaussiansplatting.scene.cameras import CustomCam             
-from EditorGS.GUIEditor.train_fine_add import add_sketch                   
+from EditorGS.GUIEditor.train_add import add_sketch                   
 from lumina3D_utils.gui_utils import imgui_utils
 from imgui_bundle import implot
 from lumina3D_utils.command_utils import *
@@ -71,7 +71,7 @@ class EditorWidget(Widget):
         # text-edit
         self.guidance_type = ["InstructPix2Pix","ControlNet-Depth","pds","pds-refine"]
         self.guidance_item = 0
-        self.text_prompt = "Turn his face into Kevin Durant"
+        self.text_prompt = "Turn the bear into a Corgi"
         self.origin_prompt = "a photo of a bear statue in the forest"
         self.text_sam_option = 0
         self.text_point_option = 0
@@ -158,25 +158,25 @@ class EditorWidget(Widget):
             if imgui.begin_tab_bar("EditBar"):
                 if imgui.begin_tab_item("Option")[0]:
 
-                    if imgui.radio_button("Text-Editing", self.select_option == 0):
+                    if imgui.radio_button("Editing", self.select_option == 0):
                         self.select_option = 0
-                        self.edit_cam_num = 48
-                        self.edit_train_steps = 1000
-                        self.edit_until_step = 3000
+                        self.edit_cam_num = 60
+                        self.edit_train_steps = 1500
+                        self.edit_until_step = 2000
                         self.per_editing_step = 10
                         self.densification_interval = 50
                         self.densify_until_step = 1500
                     imgui.same_line()
-                    if imgui.radio_button("Text-VideoEditing", self.select_option == 1):
+                    if imgui.radio_button("BatchEditing", self.select_option == 1):
                         self.select_option = 1
                         self.edit_cam_num = 20
                         self.per_editing_step = 10000
-                        self.edit_train_steps = 1000
+                        self.edit_train_steps = 1500
                         self.edit_until_step = 4000
                         self.densification_interval = 100
                         self.densify_until_step = 4000
                     imgui.same_line()
-                    if imgui.radio_button("Fine-Adding", self.select_option == 2):
+                    if imgui.radio_button("Adding", self.select_option == 2):
                         self.select_option = 2
                         self.edit_cam_num = 48
                         self.per_editing_step = 10
@@ -185,7 +185,7 @@ class EditorWidget(Widget):
                         self.edit_until_step = 1000
                         self.densify_until_step = 1300
                     imgui.same_line()
-                    if imgui.radio_button("Fine-VideoAdding", self.select_option == 3):
+                    if imgui.radio_button("BatchAdding", self.select_option == 3):
                         self.select_option = 3
                         self.edit_cam_num = 12
                         self.per_editing_step = 10000

@@ -155,49 +155,72 @@ def register_sparge_attention(model):
             module.attn2.forward = sa_forward(module.attn2)
 
 
-def warpped_feature(sample, step):
+def warpped_feature(sample, step, is_brushnet):
     """
     sample: batch_size*dim*h*w, uncond: 0 - batch_size//2, cond: batch_size//2 - batch_size
     step: timestep span
     """
     bs, dim, h, w = sample.shape
-    uncond_fea, cond_fea1, cond_fea2 = sample.chunk(3)
-    uncond_fea = uncond_fea.repeat(step,1,1,1) # (step * bs//3) * dim * h *w
-    cond_fea1 = cond_fea1.repeat(step,1,1,1) # (step * bs//3) * dim * h *w
-    cond_fea2 = cond_fea2.repeat(step,1,1,1) # (step * bs//3) * dim * h *w
-    return torch.cat([uncond_fea, cond_fea1, cond_fea2])
+    if is_brushnet:
+        uncond_fea, cond_fea1 = sample.chunk(2)
+        uncond_fea = uncond_fea.repeat(step,1,1,1) # (step * bs//3) * dim * h *w
+        cond_fea1 = cond_fea1.repeat(step,1,1,1) # (step * bs//3) * dim * h *w
+        return torch.cat([uncond_fea, cond_fea1])
+    else:
+        uncond_fea, cond_fea1, cond_fea2 = sample.chunk(3)
+        uncond_fea = uncond_fea.repeat(step,1,1,1) # (step * bs//3) * dim * h *w
+        cond_fea1 = cond_fea1.repeat(step,1,1,1) # (step * bs//3) * dim * h *w
+        cond_fea2 = cond_fea2.repeat(step,1,1,1) # (step * bs//3) * dim * h *w
+        return torch.cat([uncond_fea, cond_fea1, cond_fea2])
 
-def warpped_skip_feature(block_samples, step):
+def warpped_skip_feature(block_samples, step, is_brushnet):
     down_block_res_samples = []
     for sample in block_samples:
-        sample_expand = warpped_feature(sample, step)
+        sample_expand = warpped_feature(sample, step, is_brushnet)
         down_block_res_samples.append(sample_expand)
     return tuple(down_block_res_samples)
 
-def warpped_text_emb(text_emb, step):
+def warpped_text_emb(text_emb, step, is_brushnet):
     """
     text_emb: batch_size*77*768, uncond: 0 - batch_size//2, cond: batch_size//2 - batch_size
     step: timestep span
     """
-    bs, token_len, dim = text_emb.shape
-    pos_fea, neg_fea1, neg_fea2 = text_emb.chunk(3)
-    pos_fea = pos_fea.repeat(step,1,1) # (step * bs//3) * 77 *768
-    neg_fea1 = neg_fea1.repeat(step,1,1) # (step * bs//3) * 77 * 768
-    neg_fea2 = neg_fea2.repeat(step,1,1) # (step * bs//3) * 77 * 768
-    return torch.cat([pos_fea, neg_fea1, neg_fea2]) # (step*bs) * 77 *768
+    if is_brushnet:
+        bs, token_len, dim = text_emb.shape
+        uncond_fea, cond_fea = text_emb.chunk(2)
+        uncond_fea = uncond_fea.repeat(step,1,1) # (step * bs//2) * 77 *768
+        cond_fea = cond_fea.repeat(step,1,1) # (step * bs//2) * 77 * 768
+        return torch.cat([uncond_fea, cond_fea]) # (step*bs) * 77 *768
+    else:
+        bs, token_len, dim = text_emb.shape
+        pos_fea, neg_fea1, neg_fea2 = text_emb.chunk(3)
+        pos_fea = pos_fea.repeat(step,1,1) # (step * bs//3) * 77 *768
+        neg_fea1 = neg_fea1.repeat(step,1,1) # (step * bs//3) * 77 * 768
+        neg_fea2 = neg_fea2.repeat(step,1,1) # (step * bs//3) * 77 * 768
+        return torch.cat([pos_fea, neg_fea1, neg_fea2]) # (step*bs) * 77 *768
 
-def warpped_timestep(timesteps, bs):
+def warpped_timestep(timesteps, bs, is_brushnet):
     """
     timestpes: list, such as [981, 961, 941]
     """
-    semi_bs = bs//3
-    ts = []
-    for timestep in timesteps:
-        timestep = timestep[None]
-        texp = timestep.expand(semi_bs)
-        ts.append(texp)
-    timesteps = torch.cat(ts)
-    return timesteps.repeat(3,1).reshape(-1)
+    if is_brushnet:
+        semi_bs = bs//2
+        ts = []
+        for timestep in timesteps:
+            timestep = timestep[None]
+            texp = timestep.expand(semi_bs)
+            ts.append(texp)
+        timesteps = torch.cat(ts)
+        return timesteps.repeat(2,1).reshape(-1)
+    else:
+        semi_bs = bs//3
+        ts = []
+        for timestep in timesteps:
+            timestep = timestep[None]
+            texp = timestep.expand(semi_bs)
+            ts.append(texp)
+        timesteps = torch.cat(ts)
+        return timesteps.repeat(3,1).reshape(-1)
 
 def register_faster_forward(model, mod = '50ls'):
     def faster_forward(self):
@@ -211,6 +234,10 @@ def register_faster_forward(model, mod = '50ls'):
                 cross_attention_kwargs: Optional[Dict[str, Any]] = None,
                 down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
                 mid_block_additional_residual: Optional[torch.Tensor] = None,
+                down_block_add_samples: Optional[Tuple[torch.Tensor]] = None,
+                mid_block_add_sample: Optional[torch.Tensor] = None,
+                up_block_add_samples: Optional[Tuple[torch.Tensor]] = None,
+
                 return_dict: bool = True,
             ) -> Union[UNet2DConditionOutput, Tuple]:
                 r"""
@@ -278,7 +305,7 @@ def register_faster_forward(model, mod = '50ls'):
                     timesteps = timesteps.expand(sample.shape[0])
                 elif isinstance(timesteps, list):
                     #timesteps list, such as [981,961,941]
-                    timesteps = warpped_timestep(timesteps, sample.shape[0]).to(sample.device)
+                    timesteps = warpped_timestep(timesteps, sample.shape[0], is_brushnet).to(sample.device)
                 t_emb = self.time_proj(timesteps)
 
                 # `Timesteps` does not contain any weights and will always return f32 tensors
@@ -321,6 +348,7 @@ def register_faster_forward(model, mod = '50ls'):
                 #===============
                 ipow = int(np.sqrt(9 + 8*order))
                 cond = order in [0, 1, 2, 3, 5, 10, 15, 25, 35]
+                is_brushnet = down_block_add_samples is not None or mid_block_add_sample is not None or up_block_add_samples is not None
                 if isinstance(mod, int):
                     cond = order % mod == 0
                 elif mod == "pro":
@@ -332,19 +360,33 @@ def register_faster_forward(model, mod = '50ls'):
                     # 2. pre-process
                     sample = self.conv_in(sample)
 
+                    if down_block_add_samples is not None:
+                        sample = sample + down_block_add_samples.pop(0)
+
                     # 3. down
                     down_block_res_samples = (sample,)
                     for downsample_block in self.down_blocks:
                         if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
+                            additional_residuals = {}
+                            if down_block_add_samples is not None:
+                                bs = sample.shape[0] // down_block_add_samples[0].shape[0]
+                                additional_residuals["down_block_add_samples"] = [down_block_add_samples.pop(0).repeat(bs, 1, 1, 1) 
+                                                                    for _ in range(len(downsample_block.resnets)+(downsample_block.downsamplers !=None))]
                             sample, res_samples = downsample_block(
                                 hidden_states=sample,
                                 temb=emb,
                                 encoder_hidden_states=encoder_hidden_states,
                                 attention_mask=attention_mask,
                                 cross_attention_kwargs=cross_attention_kwargs,
+                                 **additional_residuals
                             )
                         else:
-                            sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+                            additional_residuals = {}
+                            if down_block_add_samples is not None:
+                                bs = sample.shape[0] // down_block_add_samples[0].shape[0]
+                                additional_residuals["down_block_add_samples"] = [down_block_add_samples.pop(0).repeat(bs, 1, 1, 1) 
+                                                                    for _ in range(len(downsample_block.resnets)+(downsample_block.downsamplers !=None))]
+                            sample, res_samples = downsample_block(hidden_states=sample, temb=emb,  **additional_residuals)
 
                         down_block_res_samples += res_samples
 
@@ -371,6 +413,8 @@ def register_faster_forward(model, mod = '50ls'):
 
                     if mid_block_additional_residual is not None:
                         sample = sample + mid_block_additional_residual
+                    if mid_block_add_sample is not None:
+                        sample = sample + mid_block_add_sample
 
                     #----------------------save feature-------------------------
                     # setattr(self, 'skip_feature', (tmp_sample.clone() for tmp_sample in down_block_res_samples))
@@ -383,7 +427,7 @@ def register_faster_forward(model, mod = '50ls'):
                     #-------------------expand feature for parallel---------------
                     if isinstance(timestep, list):
                         #timesteps list, such as [981,961,941]
-                        timesteps = warpped_timestep(timestep, sample.shape[0]).to(sample.device)
+                        timesteps = warpped_timestep(timestep, sample.shape[0], is_brushnet).to(sample.device)
                         t_emb = self.time_proj(timesteps)
 
                         # `Timesteps` does not contain any weights and will always return f32 tensors
@@ -393,9 +437,9 @@ def register_faster_forward(model, mod = '50ls'):
 
                         emb = self.time_embedding(t_emb, timestep_cond)
 
-                    down_block_res_samples = warpped_skip_feature(down_block_res_samples, step)
-                    sample = warpped_feature(sample, step)
-                    encoder_hidden_states = warpped_text_emb(encoder_hidden_states, step)
+                    down_block_res_samples = warpped_skip_feature(down_block_res_samples, step, is_brushnet)
+                    sample = warpped_feature(sample, step, is_brushnet)
+                    encoder_hidden_states = warpped_text_emb(encoder_hidden_states, step, is_brushnet)
                     #-------------------expand feature for parallel---------------
                     
                 else:
@@ -404,8 +448,8 @@ def register_faster_forward(model, mod = '50ls'):
 
                     #-------------------expand feature for parallel---------------
                     down_block_res_samples = warpped_skip_feature(down_block_res_samples, step)
-                    sample = warpped_feature(sample, step)
-                    encoder_hidden_states = warpped_text_emb(encoder_hidden_states, step)
+                    sample = warpped_feature(sample, step, is_brushnet)
+                    encoder_hidden_states = warpped_text_emb(encoder_hidden_states, step, is_brushnet)
                     #-------------------expand feature for parallel---------------
 
                 # 5. up
@@ -421,6 +465,12 @@ def register_faster_forward(model, mod = '50ls'):
                         upsample_size = down_block_res_samples[-1].shape[2:]
 
                     if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
+                        additional_residuals = {}
+                        if up_block_add_samples is not None and len(up_block_add_samples) > 0:
+                            bs = sample.shape[0] // up_block_add_samples[0].shape[0]
+                            additional_residuals["up_block_add_samples"] = [up_block_add_samples.pop(0).repeat(bs, 1, 1, 1) 
+                                                                for _ in range(len(upsample_block.resnets)+(upsample_block.upsamplers !=None))]
+
                         sample = upsample_block(
                             hidden_states=sample,
                             temb=emb,
@@ -429,10 +479,17 @@ def register_faster_forward(model, mod = '50ls'):
                             cross_attention_kwargs=cross_attention_kwargs,
                             upsample_size=upsample_size,
                             attention_mask=attention_mask,
+                            **additional_residuals
                         )
                     else:
+                        additional_residuals = {}
+                        if up_block_add_samples is not None and len(up_block_add_samples) >0:
+                            bs = sample.shape[0] // up_block_add_samples[0].shape[0]
+                            additional_residuals["up_block_add_samples"] = [up_block_add_samples.pop(0).repeat(bs, 1, 1, 1) 
+                                                                for _ in range(len(upsample_block.resnets)+(upsample_block.upsamplers !=None))]
+
                         sample = upsample_block(
-                            hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size
+                            hidden_states=sample, temb=emb, res_hidden_states_tuple=res_samples, upsample_size=upsample_size, **additional_residuals
                         )
 
                 # 6. post-process

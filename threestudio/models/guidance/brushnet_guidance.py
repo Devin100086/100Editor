@@ -13,6 +13,7 @@ import threestudio
 from threestudio.models.prompt_processors.base import PromptProcessorOutput
 from threestudio.utils.base import BaseObject
 from threestudio.utils.misc import C, parse_version
+from threestudio.utils.sparse_util import register_faster_forward
 from threestudio.utils.typing import *
 import threestudio.utils.vidtome as vidtome
 
@@ -140,6 +141,8 @@ class BrushNetGuidance(BaseObject):
 
         threestudio.info(f"Loaded BrushNet!")
 
+        register_faster_forward(self.unet)
+
         if self.cfg.video:
             self.activate_vidtome()
 
@@ -163,7 +166,7 @@ class BrushNetGuidance(BaseObject):
     ) -> Float[Tensor, "..."]:
         return self.brushnet(
             latents.to(self.weights_dtype),
-            t.to(self.weights_dtype),
+            t,
             encoder_hidden_states=encoder_hidden_states.to(self.weights_dtype),
             brushnet_cond=brushnet_cond.to(self.weights_dtype),
             conditioning_scale=condition_scale,
@@ -185,7 +188,7 @@ class BrushNetGuidance(BaseObject):
         input_dtype = latents.dtype
         return self.unet(
             latents.to(self.weights_dtype),
-            t.to(self.weights_dtype),
+            t,
             encoder_hidden_states=encoder_hidden_states.to(self.weights_dtype),
             cross_attention_kwargs=cross_attention_kwargs,
             down_block_add_samples=down_block_res_samples,
@@ -197,20 +200,45 @@ class BrushNetGuidance(BaseObject):
     def encode_images(
         self, imgs: Float[Tensor, "B 3 H W"]
     ) -> Float[Tensor, "B 4 DH DW"]:
+        # input_dtype = imgs.dtype
+        # imgs = imgs * 2.0 - 1.0
+        # posterior = self.vae.encode(imgs.to(self.weights_dtype)).latent_dist
+        # latents = posterior.sample() * self.vae.config.scaling_factor
+        # return latents.to(input_dtype)
+
+
+        latents = []
         input_dtype = imgs.dtype
-        imgs = imgs * 2.0 - 1.0
-        posterior = self.vae.encode(imgs.to(self.weights_dtype)).latent_dist
-        latents = posterior.sample() * self.vae.config.scaling_factor
+        batch_imgs = imgs.split(self.cfg.batch_size, dim=0)
+        for img in batch_imgs:
+            img = img * 2.0 - 1.0
+            posterior = self.vae.encode(img.to(self.weights_dtype)).latent_dist
+            latent = posterior.sample() * self.vae.config.scaling_factor
+            latents += [latent]
+        latents = torch.cat(latents)
         return latents.to(input_dtype)
 
     @torch.cuda.amp.autocast(enabled=False)
     def encode_cond_images(
         self, imgs: Float[Tensor, "B 3 H W"]
     ) -> Float[Tensor, "B 4 DH DW"]:
+        # input_dtype = imgs.dtype
+        # imgs = imgs * 2.0 - 1.0
+        # posterior = self.vae.encode(imgs.to(self.weights_dtype)).latent_dist
+        # latents = posterior.mode()
+        # uncond_image_latents = torch.zeros_like(latents)
+        # latents = torch.cat([latents, latents, uncond_image_latents], dim=0)
+        # return latents.to(input_dtype)
+
+        latents = []
         input_dtype = imgs.dtype
-        imgs = imgs * 2.0 - 1.0
-        posterior = self.vae.encode(imgs.to(self.weights_dtype)).latent_dist
-        latents = posterior.mode()
+        batch_imgs = imgs.split(self.cfg.batch_size, dim=0)
+        for img in batch_imgs:
+            img = img * 2.0 - 1.0
+            posterior = self.vae.encode(img.to(self.weights_dtype)).latent_dist
+            latent = posterior.mode()
+            latents += [latent]
+        latents = torch.cat(latents)
         uncond_image_latents = torch.zeros_like(latents)
         latents = torch.cat([latents, latents, uncond_image_latents], dim=0)
         return latents.to(input_dtype)
@@ -219,11 +247,22 @@ class BrushNetGuidance(BaseObject):
     def decode_latents(
         self, latents: Float[Tensor, "B 4 DH DW"]
     ) -> Float[Tensor, "B 3 H W"]:
+        # input_dtype = latents.dtype
+        # latents = 1 / self.vae.config.scaling_factor * latents
+        # image = self.vae.decode(latents.to(self.weights_dtype)).sample
+        # image = (image * 0.5 + 0.5).clamp(0, 1)
+        # return image.to(input_dtype)
+    
+        imgs = []
         input_dtype = latents.dtype
-        latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents.to(self.weights_dtype)).sample
-        image = (image * 0.5 + 0.5).clamp(0, 1)
-        return image.to(input_dtype)
+        batch_latents = latents.split(self.cfg.batch_size, dim=0)
+        for latent in batch_latents:
+            latent = 1 / self.vae.config.scaling_factor * latent
+            image = self.vae.decode(latent.to(self.weights_dtype)).sample
+            image = (image * 0.5 + 0.5).clamp(0, 1)
+            imgs += [image]
+        imgs = torch.cat(imgs)
+        return imgs.to(input_dtype)
 
     def get_chunks(self, flen):
         x_index = torch.arange(flen)
@@ -323,32 +362,56 @@ class BrushNetGuidance(BaseObject):
             # noise = torch.randn_like(latents)
             # latents = self.scheduler.add_noise(latents, noise, t)  # type: ignore
             # sections of code used from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_instruct_pix2pix.py
+            
+            cond = lambda timestep: timestep in [0, 1, 2, 3, 5, 8, 12, 16]
+            curr_step = 0
+            all_steps = len(self.scheduler.timesteps)
+            
             for i, t in enumerate(self.scheduler.timesteps):
+                if curr_step > i:
+                    continue
+
+                setattr(self.unet, 'order', curr_step)
+                time_ls = [self.scheduler.timesteps[curr_step]]
+                curr_step += 1
+                while not cond(curr_step):
+                    if curr_step<all_steps:
+                        time_ls.append(self.scheduler.timesteps[curr_step])
+                        curr_step += 1
+                    else:
+                        break
+
                 # predict the noise residual with unet, NO grad!
                 chunks = self.get_chunks(len(noise_latents))
                 noise_preds = torch.zeros_like(noise_latents)
+                noise_preds = noise_preds.unsqueeze(0).repeat(10, 1, 1, 1, 1)
 
                 for chunk in chunks:
                     
                     with torch.no_grad():
                         # pred noise
                         latent_model_input = torch.cat([noise_latents[chunk]] * 2)
+                        latent_model_input = self.scheduler.scale_model_input(latent_model_input, time_ls[0])
                         image_latent, mask = latents.chunk(2)
                         latents_chunks = torch.cat([image_latent[chunk], mask[chunk]], dim=0)
                         pos, neg = text_embeddings.chunk(2)
                         text_embeddings_chunk = torch.cat([pos[chunk], neg[chunk]], dim=0)
 
-                        down_block_res_samples, mid_block_res_sample, up_block_res_samples = self.forward_brushnet(
-                            latent_model_input,
-                            t,
-                            encoder_hidden_states=text_embeddings_chunk,
-                            brushnet_cond=latents_chunks,
-                            condition_scale=self.cfg.condition_scale,
-                        )
+                        if curr_step in [0, 1, 2, 3, 5, 8, 12, 16]:
+                            down_block_res_samples, mid_block_res_sample, up_block_res_samples = self.forward_brushnet(
+                                latent_model_input,
+                                time_ls[0],
+                                encoder_hidden_states=text_embeddings_chunk,
+                                brushnet_cond=latents_chunks,
+                                condition_scale=self.cfg.condition_scale,
+                            )
+                        else:
+                            down_block_res_samples = None #self.downres_samples
+                            mid_block_res_sample = None #self.midres_sample
 
                         noise_pred = self.forward_brushnet_unet(
                             latent_model_input, 
-                            t, 
+                            time_ls, 
                             encoder_hidden_states=text_embeddings_chunk,
                             cross_attention_kwargs=None,
                             down_block_res_samples=down_block_res_samples,
@@ -361,9 +424,19 @@ class BrushNetGuidance(BaseObject):
                     noise_pred = noise_pred_uncond + self.cfg.guidance_scale * (
                         noise_pred_text - noise_pred_uncond
                     )
-                    noise_preds[chunk] = noise_pred
+                    # noise_preds[chunk] = noise_pred
+                    bs = noise_pred.shape[0]
+                    bs_perstep = bs//len(time_ls)
+
+                    for i, timestep in enumerate(time_ls):
+                        noise_preds[i,chunk] = noise_pred[i*bs_perstep:(i+1)*bs_perstep]
+
                 # get previous sample, continue loop
-                noise_latents = self.scheduler.step(noise_preds, t, noise_latents).prev_sample
+                # noise_latents = self.scheduler.step(noise_preds, t, noise_latents).prev_sample
+
+                for i, timestep in enumerate(time_ls):
+                    noise_latents = self.scheduler.step(noise_preds[i], timestep, noise_latents).prev_sample
+                vidtome.update_patch(self.pipe, global_tokens = None)
         
         print("Editing finished.")
 
