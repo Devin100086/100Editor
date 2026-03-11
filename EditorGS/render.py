@@ -12,6 +12,7 @@ from EditorGS.gaussiansplatting.gaussian_renderer import render
 from EditorGS.gaussiansplatting.scene.camera_scene import CamScene
 
 from torchvision.utils import save_image
+import numpy as np
 
 def render_cameras_list(gaussian, colmap_dir, save_dir, use_original_resolution):
     parser = ArgumentParser(description="Training script parameters")

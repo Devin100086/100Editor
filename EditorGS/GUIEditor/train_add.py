@@ -210,49 +210,69 @@ def add_sketch(image_pil, text_prompt):
 
     cache_dir = Path("tmp_add").absolute().as_posix()
     os.makedirs(cache_dir, exist_ok=True)
-    mv_image_dir = os.path.join(cache_dir, "multiview_pred_images")
-    os.makedirs(mv_image_dir, exist_ok=True)
+    # mv_image_dir = os.path.join(cache_dir, "multiview_pred_images")
+    # os.makedirs(mv_image_dir, exist_ok=True)
     inpaint_path = os.path.join(cache_dir, "inpainted.png")
     removed_bg_path = os.path.join(cache_dir, "removed_bg.png")
     mesh_path = os.path.join(cache_dir, "inpaint_mesh.obj")
-    gs_path = os.path.join(cache_dir, "inpaint_gs.obj")
+    gs_path = os.path.join(cache_dir, "inpaint_gs.ply")
     image_pil.save(inpaint_path)
     removed_bg.save(removed_bg_path)
 
-    p1 = subprocess.Popen(
-        f"{sys.prefix}/bin/accelerate launch --config_file 1gpu.yaml test_mvdiffusion_seq.py "
-        f"--save_dir {mv_image_dir} --config configs/mvdiffusion-joint-ortho-6views.yaml"
-        f" validation_dataset.root_dir={cache_dir} validation_dataset.filepaths=[removed_bg.png]".split(
-            " "
-        ),
-        cwd="threestudio/utils/wonder3D",
-    )
-    p1.wait()
+    # p1 = subprocess.Popen(
+    #     f"{sys.prefix}/bin/accelerate launch --config_file 1gpu.yaml test_mvdiffusion_seq.py "
+    #     f"--save_dir {mv_image_dir} --config configs/mvdiffusion-joint-ortho-6views.yaml"
+    #     f" validation_dataset.root_dir={cache_dir} validation_dataset.filepaths=[removed_bg.png]".split(
+    #         " "
+    #     ),
+    #     cwd="threestudio/utils/wonder3D",
+    # )
+    # p1.wait()
 
-    print(
-        f"{sys.prefix}/bin/python launch.py --config configs/neuralangelo-ortho-wmask.yaml --save_dir {cache_dir} --gpu 0 --train dataset.root_dir={os.path.dirname(mv_image_dir)} dataset.scene={os.path.basename(mv_image_dir)}"
-    )
-    cmd = f"{sys.prefix}/bin/python launch.py --config configs/neuralangelo-ortho-wmask.yaml --save_dir {cache_dir} --gpu 0 --train dataset.root_dir={os.path.dirname(mv_image_dir)} dataset.scene={os.path.basename(mv_image_dir)}".split(
-        " "
-    )
-    p2 = subprocess.Popen(
-        cmd,
-        cwd="threestudio/utils/wonder3D/instant-nsr-pl",
-    )
-    p2.wait()
-    p3 = subprocess.Popen(
+    # print(
+    #     f"{sys.prefix}/bin/python launch.py --config configs/neuralangelo-ortho-wmask.yaml --save_dir {cache_dir} --gpu 0 --train dataset.root_dir={os.path.dirname(mv_image_dir)} dataset.scene={os.path.basename(mv_image_dir)}"
+    # )
+    # cmd = f"{sys.prefix}/bin/python launch.py --config configs/neuralangelo-ortho-wmask.yaml --save_dir {cache_dir} --gpu 0 --train dataset.root_dir={os.path.dirname(mv_image_dir)} dataset.scene={os.path.basename(mv_image_dir)}".split(
+    #     " "
+    # )
+    # p2 = subprocess.Popen(
+    #     cmd,
+    #     cwd="threestudio/utils/wonder3D/instant-nsr-pl",
+    # )
+    # p2.wait()
+    # p3 = subprocess.Popen(
+    #     [
+    #         f"{sys.prefix}/bin/python",
+    #         "train_from_mesh.py",
+    #         "--mesh",
+    #         mesh_path,
+    #         "--save_path",
+    #         gs_path,
+    #         "--prompt",
+    #         "",
+    #     ]
+    # )
+    # p3.wait()
+    p0 = subprocess.Popen(
         [
             f"{sys.prefix}/bin/python",
-            "train_from_mesh.py",
-            "--mesh",
-            mesh_path,
-            "--save_path",
-            gs_path,
-            "--prompt",
-            "",
+            "EditorGS/dreamgaussian/process.py",
+            f"{removed_bg_path}"
         ]
     )
-    p3.wait()
+    p0.wait()
+
+    p1 = subprocess.Popen(
+        [
+            f"{sys.prefix}/bin/python",
+            "EditorGS/dreamgaussian/main.py",
+            "--config",
+            "EditorGS/dreamgaussian/configs/image_sai.yaml",
+            f"input={removed_bg_path.replace('.png', '_rgba.png')}",
+            "outdir=tmp_add"
+        ]
+    )
+    p1.wait()
 
 if __name__ == "__main__":
     import time 

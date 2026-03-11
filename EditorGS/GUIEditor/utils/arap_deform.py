@@ -67,9 +67,9 @@ class ARAPDeformer:
     def cal_L_opt(self):
         self.normalized_weight = self.weight
         self.L_opt[self.ii, self.jj] = - self.normalized_weight[self.ii, self.nn]  # [Nv, Nv]
-        self.L_is_degenerate = (torch.linalg.matrix_rank(self.L_opt) < self.L_opt.shape[0]) 
-        if self.L_is_degenerate:
-            print("L_opt is not invertible, use pseudo inverse instead")
+        # self.L_is_degenerate = (torch.linalg.matrix_rank(self.L_opt) < self.L_opt.shape[0]) 
+        # if self.L_is_degenerate:
+        #     print("L_opt is not invertible, use pseudo inverse instead")
 
     def reset(self):
         self.verts = self.verts_copy.clone()

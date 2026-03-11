@@ -16,7 +16,7 @@ def equal_dicts(dict1, dict2):
             if not np.array_equal(dict1[key], dict2[key]):
                 return False
         elif isinstance(dict1[key], list):
-            if None in dict1[key] or not np.array_equal(np.array(dict1[key]), np.array(dict2[key])):
+            if np.any(dict1[key] == None) or not np.array_equal(np.array(dict1[key]), np.array(dict2[key])):
                 return False
         elif isinstance(dict1[key], dict):
             for sub_key in dict1[key].keys():

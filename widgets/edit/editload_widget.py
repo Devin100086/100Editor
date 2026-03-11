@@ -10,7 +10,7 @@ class EditLoadWidget(LoadWidget):
     def __init__(self, viz, root):
         super().__init__(viz, root)
         self.plys = [root]
-        self.data_source = "/home/wucunqi/Desktop/results/face"
+        self.data_source = "/media/wucunqi/data/results/garden_8"
 
     @imgui_utils.scoped_by_object_id
     def __call__(self, show=True):

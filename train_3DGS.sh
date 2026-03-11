@@ -1,0 +1,10 @@
+python trainer/origin/train.py -s "/home/wucunqi/Desktop/datasets/yuseung" --checkpoint_iterations 7000 --eval -m "output/yuseung"
+python trainer/origin/train.py -s "/home/wucunqi/Desktop/results/garden_8" --checkpoint_iterations 7000 --eval -m "output/garden"
+python trainer/origin/train.py -s "/home/wucunqi/Desktop/results/Room" --checkpoint_iterations 7000 --eval -m "output/Room"
+python trainer/origin/train.py -s "/home/wucunqi/Desktop/results/fangzhou-small" --checkpoint_iterations 7000 --eval -m "output/fangzhou_small"
+python trainer/origin/train.py -s "/home/wucunqi/Desktop/results/dtu_scan" --checkpoint_iterations 7000 --eval -m "output/dtu_scan"
+python trainer/origin/train.py -s "/home/wucunqi/Desktop/results/person-small" --checkpoint_iterations 7000 --eval -m "output/person_small"
+python trainer/origin/train.py -s "/home/wucunqi/Desktop/results/three_people_standing" --checkpoint_iterations 7000 --eval -m "output/three_people_standing"
+python trainer/origin/train.py -s "/home/wucunqi/Desktop/results/plant" --checkpoint_iterations 7000 --eval -m "output/plant"
+
+python trainer/origin/train.py -s "/media/wucunqi/data/results/dinosaur" -r "1" --checkpoint_iterations 7000 -m "output/dinosaur"

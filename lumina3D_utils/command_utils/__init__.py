@@ -10,7 +10,7 @@ def training_text_editing_command(
     lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,
     sam_option, seg_prompt, text_videoEditing, gs_lr_scaler, gs_lr_end_scaler, color_lr_scaler, 
     opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler, camera, positive_sam_points, negative_sam_points, use_original_resolution,
-    output_dir, hard_segmentation, mask_thres
+    output_dir, hard_segmentation, mask_thres, earlystop, clip_origin_prompt, clip_target_prompt
 ):
     process = subprocess.Popen([
         "python",
@@ -46,7 +46,10 @@ def training_text_editing_command(
         "--use_original_resolution", str(use_original_resolution),
         "--output_dir", str(output_dir),
         "--hard_segmentation", str(hard_segmentation),
-        "--mask_thres", str(mask_thres)
+        "--mask_thres", str(mask_thres),
+        "--earlystop", str(earlystop),
+        "--clip_origin_prompt", str(clip_origin_prompt),
+        "--clip_target_prompt", str(clip_target_prompt)
     ])
     return process
 

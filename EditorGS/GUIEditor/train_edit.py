@@ -13,7 +13,7 @@ from EditorGS.gaussiansplatting.gaussian_renderer import render
 from EditorGS.GUIEditor.utils import *
 from EditorGS.GUIEditor.Network import EditorNetwork
 from threestudio.utils.camera import pixel_to_3d
-
+from threestudio.models.guidance.brushnet_guidance import BrushNetGuidance
 from torchvision.utils import save_image
 import datetime
 
@@ -33,6 +33,10 @@ class EditTrainer(BaseTrainer):
         self.edit_begin_step = cfg.edit_begin_step
         self.edit_until_step = cfg.edit_until_step
         self.output_dir = cfg.output_dir
+        self.earlystop = eval(cfg.earlystop)
+        self.clip_origin_prompt = cfg.clip_origin_prompt
+        self.clip_target_prompt = cfg.clip_target_prompt
+        self.eval = cfg.eval
 
         self.t_max_step = [999, 300, 300, 21]
         self.cameara_update_step = 500
@@ -84,29 +88,57 @@ class EditTrainer(BaseTrainer):
                     ControlNetGuidance,
                 )
 
-                self.ctn_ip2p = ControlNetGuidance(
+                self.ctn_controlnet = ControlNetGuidance(
                     OmegaConf.create({"min_step_percent": 0.02,
                                       "max_step_percent": 0.98,
                                       "video":video,
                                       "control_type": "depth"})
                 )
-            cur_2D_guidance = self.ctn_ip2p
+            cur_2D_guidance = self.ctn_controlnet
             print("using ControlNet-Depth!")
+        elif self.guidance_type == "BrushNet":
+            self.brushnet = BrushNetGuidance(
+                OmegaConf.create({"min_step_percent": 0.02,
+                                    "max_step_percent": 0.98,
+                                    "video": video})
+            )
+            self.origin_prompt = None
+            cur_2D_guidance = self.brushnet
+            print("using BrushNet!")
         
-        self.origin_frames, self.depths = self.render_cameras_list(self.colmap_cameras, separate_sh=self.use_sparse_adam)
+        if self.eval:
+            self.origin_frames_eval, self.depths_eval = self.render_cameras_list(self.colmap_cameras, separate_sh=self.use_sparse_adam)
+
+        if self.earlystop:
+            num_test_views = min(6, len(self.colmap_cameras))
+            self.test_view_indices = random.sample(range(len(self.colmap_cameras)), num_test_views)
+            # self.train_view_indices = [i for i in range(len(self.colmap_cameras)) if i not in self.test_view_indices]
+            self.test_cameras = [self.colmap_cameras[i] for i in self.test_view_indices]
+            self.test_origin_frames, self.test_depths = self.render_cameras_list(self.test_cameras, separate_sh=self.use_sparse_adam)
+            self.train_cameras = [cam for i, cam in enumerate(self.colmap_cameras) if i not in self.test_view_indices]
+        else:
+            self.train_cameras = self.colmap_cameras
+        
+        self.origin_frames, self.depths = self.render_cameras_list(self.train_cameras, separate_sh=self.use_sparse_adam)
 
         random.seed(0)  # make sure same views
         self.n2n_view_index = random.sample(
-            range(0, len(self.colmap_cameras)),
-            min(len(self.colmap_cameras), self.edit_cam_num),
+            range(0, len(self.train_cameras)),
+            min(len(self.train_cameras), self.edit_cam_num),
         )
+
         self.view_list = self.n2n_view_index
 
         if sam_option == 0:
             pass
         elif sam_option == 1:
             self.lang_sam = LangSAMTextSegmentor().to(get_device())
-            self.masks, _ = self.update_mask(self.colmap_cameras, text_prompt=seg_prompt)
+            self.masks, _ = self.update_mask(self.train_cameras, text_prompt=seg_prompt)
+            
+            del self.lang_sam
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
         elif sam_option == 2:
 
             positive_points3d = []
@@ -137,7 +169,11 @@ class EditTrainer(BaseTrainer):
             
             positive_points3d = np.array(positive_points3d)
             negative_points3d = np.array(negative_points3d)
-            self.masks, _ = self.update_sam_mask_with_point_prompt(self.colmap_cameras, positive_points3d, negative_points3d)
+            self.masks, _ = self.update_sam_mask_with_point_prompt(self.train_cameras, positive_points3d, negative_points3d)
+
+            del depth, positive_points3d, negative_points3d, unprojected_points3d
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         elif sam_option == 3:
 
@@ -146,9 +182,12 @@ class EditTrainer(BaseTrainer):
             render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
             init_render = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
             save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
-            self.masks, _ = self.update_sam2_mask_with_point_prompt(self.colmap_cameras, 
+            self.masks, _ = self.update_sam2_mask_with_point_prompt(self.train_cameras, 
                                                                     self.positive_sam_points ,
-                                                                    self.negative_sam_points)
+                                                                   self.negative_sam_points)
+            del init_render
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         
         self.guidance = EditGuidance(
             guidance=cur_2D_guidance,
@@ -174,13 +213,87 @@ class EditTrainer(BaseTrainer):
 
         # Renderings1 = []
         # Renderings2 = []
+        best_metric = float('-inf')
+        max_delta = 0.006
+        patience_counter = 0
+        patience = 5
+        Batch_flag = False
+        Batch_count = 0
 
         network = EditorNetwork(host="127.0.0.1",port=8084)
         start_event.record()
+        
+        # 创建时间记录文件
+        time_log_path = os.path.join(self.output_dir, "time_log.txt")
+        training_start_time = torch.cuda.Event(enable_timing=True)
+        step_end_time = torch.cuda.Event(enable_timing=True)
+        training_start_time.record()
+        
+        # 初始化显存监控
+        max_memory_allocated = 0.0
+        max_memory_reserved = 0.0
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+        
+        # 创建保存相机45渲染结果的目录
+        camera_45_dir = os.path.join(self.output_dir, "camera_45_renders")
+        os.makedirs(camera_45_dir, exist_ok=True)
+        
         for step in tqdm(range(self.edit_train_steps)):
             network.render(self.pipe,self.gaussian,ema_loss_for_log, render,self.background_tensor,step,self.opt, self.use_sparse_adam)
-            if (step % self.cameara_update_step == 0 and video):
-                self.edit_all_view(sam_option, update_camera= step >= self.cameara_update_step, global_step=step)
+            
+            # 保存相机索引45的渲染结果
+            # if len(self.colmap_cameras2) > 45:
+            #     with torch.no_grad():
+            #         camera_45_render = self.render(self.colmap_cameras2[45], train=False, separate_sh=self.use_sparse_adam)["comp_rgb"]
+            #         save_image(camera_45_render.permute(0,3,1,2), os.path.join(camera_45_dir, f"step_{step:05d}.png"))
+            
+            # 更新显存峰值
+            if torch.cuda.is_available():
+                current_memory_allocated = torch.cuda.max_memory_allocated() / (1024 ** 3)  # 转换为GB
+                current_memory_reserved = torch.cuda.max_memory_reserved() / (1024 ** 3)  # 转换为GB
+                max_memory_allocated = max(max_memory_allocated, current_memory_allocated)
+                max_memory_reserved = max(max_memory_reserved, current_memory_reserved)
+            
+            # if step % 50 == 0 :
+            #     if step == 0:
+            #         elapsed_time_s = 0.0
+            #     else:
+            #         step_end_time.record()
+            #         torch.cuda.synchronize()
+            #         elapsed_time_ms = training_start_time.elapsed_time(step_end_time)
+            #         elapsed_time_s = elapsed_time_ms / 1000
+                
+            #     with open(time_log_path, 'a') as f:
+            #         f.write(f"{elapsed_time_s:.4f},")
+            
+            if self.earlystop:
+                if step % 20 == 0:
+                    _, metric = self.compute_metric(clip_prompt_origin=self.clip_origin_prompt, clip_prompt_target=self.clip_target_prompt)
+                    if metric > best_metric + max_delta:
+                        best_metric = metric
+                        patience_counter = 0
+                    else:
+                        patience_counter += 1
+                    if patience_counter >= patience:
+                        patience_counter = 0
+                        print(f"Early stopping at step {step} with best metric {best_metric:.4f}")
+                        Batch_flag = True
+                        continue
+                if ((step == 0 or Batch_flag == True) and video):
+                    if Batch_count >= 1:
+                        print(f"Finish all batches at step {step}.")
+                        break
+                    self.edit_all_view(sam_option, update_camera= step >= self.cameara_update_step, global_step=step)
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    Batch_flag = False
+                    Batch_count += 1
+            else:
+                if (step % self.cameara_update_step == 0 and video):
+                    self.edit_all_view(sam_option, update_camera= step >= self.cameara_update_step, global_step=step)
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
 
             # if (step == 999):
             #     self.edit_all_view(sam_option, update_camera= False, global_step=step)
@@ -190,7 +303,7 @@ class EditTrainer(BaseTrainer):
             view_index = random.choice(view_index_stack)
             view_index_stack.remove(view_index)
 
-            rendering = self.render(self.colmap_cameras[view_index], train=True, separate_sh=self.use_sparse_adam)["comp_rgb"]
+            rendering = self.render(self.train_cameras[view_index], train=True, separate_sh=self.use_sparse_adam)["comp_rgb"]
             # import torchvision.utils as vutils
             # vutils.save_image(rendering.permute(0,3,1,2), "output_images.png", nrow=1)
             # if (step+1) % 250 == 0:
@@ -237,6 +350,18 @@ class EditTrainer(BaseTrainer):
         minutes, seconds = divmod(remainder, 60)
 
         print(f"Time: {hours} h {minutes} min {seconds:.2f} s")
+        print(f"Max GPU Memory Allocated: {max_memory_allocated:.2f} GB")
+        print(f"Max GPU Memory Reserved: {max_memory_reserved:.2f} GB")
+        
+        # 保存显存信息到文件
+        memory_log_path = os.path.join(self.output_dir, "memory_log.txt")
+        with open(memory_log_path, 'w') as f:
+            f.write(f"Max Memory Allocated: {max_memory_allocated:.4f} GB\n")
+            f.write(f"Max Memory Reserved: {max_memory_reserved:.4f} GB\n")
+
+        if self.eval:
+            self.compute_clip(self.edit_train_steps, clip_prompt_origin=self.clip_origin_prompt, clip_prompt_target=self.clip_target_prompt)
+
         self.gaussian.save_ply(f"{self.output_dir}/result.ply")
     
     def edit_all_view(self, sam_option, update_camera=False, global_step=0):
@@ -251,17 +376,21 @@ class EditTrainer(BaseTrainer):
         origin_frames = []
         depths = []
         masks = []
+        brushnet_masks = []
 
         self.guidance.guidance.max_step = self.t_max_step[min(len(self.t_max_step)-1, global_step// self.cameara_update_step)]
         with torch.no_grad():
             for id in self.view_list:
-                cameras.append(self.colmap_cameras[id])
-            sorted_cam_idx = self.sort_the_cameras_idx(cameras)
+                cameras.append(self.train_cameras[id])
+            if len(cameras) == 1:
+                sorted_cam_idx = [0]
+            else:
+                sorted_cam_idx = self.sort_the_cameras_idx(cameras)
             # sorted_cam_idx = range(len(cameras))
             view_sorted = [self.view_list[idx] for idx in sorted_cam_idx]  
                 
             for id in view_sorted:
-                cur_cam = self.colmap_cameras[id]
+                cur_cam = self.train_cameras[id]
                 out_pkg = self.render(cur_cam, separate_sh=self.use_sparse_adam)
                 out = out_pkg["comp_rgb"]
                 if self.use_masked_image:
@@ -273,8 +402,15 @@ class EditTrainer(BaseTrainer):
                         mask = mask.to(torch.float32).to(get_device())
                     else:
                         mask = self.masks[id].unsqueeze(0)
-                    mask = self.gaussian_blur(mask)
-                    masks.append(mask)
+                    mask_blur = self.gaussian_blur(mask)
+                    masks.append(mask_blur)
+                    if self.guidance_type == "BrushNet":
+                        import torch.nn.functional as F
+                        kernel_size = 25 
+                        kernel = torch.ones(1, 1, kernel_size, kernel_size, device=mask.device) / (kernel_size * kernel_size)
+                        dilated_mask = F.conv2d(mask.float(), kernel, padding=kernel_size//2)
+                        dilated_mask = (dilated_mask > 0.02).float() 
+                        brushnet_masks.append(dilated_mask)
                 origin_frames.append(self.origin_frames[id])
                 depths.append(self.depths[id])
 
@@ -282,8 +418,12 @@ class EditTrainer(BaseTrainer):
             if sam_option != 0:
                 masks = torch.cat(masks, dim=0)
                 masks = masks.permute(0, 2, 3, 1) # B H W C
+                if self.guidance_type == "BrushNet":
+                    brushnet_masks = torch.cat(brushnet_masks, dim=0)
+                    brushnet_masks = brushnet_masks.permute(0, 2, 3, 1) # B H W C
             else:
                 masks = torch.ones_like(images)
+                brushnet_masks = torch.ones_like(images)
             origin_frames = torch.cat(origin_frames, dim=0)
             depths = torch.cat(depths, dim=0)
             
@@ -291,10 +431,15 @@ class EditTrainer(BaseTrainer):
                 edited_images = self.guidance.edit_all(images, origin_frames)
             elif self.guidance_type == "ControlNet-Depth":
                 edited_images = self.guidance.edit_all(images, depths)
-            if self.hard_segmentation:
+            elif self.guidance_type == "BrushNet":
+                brushnet_masks = brushnet_masks.repeat(1, 1, 1, 3)
+                images = images * (1 - brushnet_masks)
+                edited_images = self.guidance.edit_all(images, brushnet_masks)
+                edited_images = edited_images * brushnet_masks + (1-brushnet_masks) * origin_frames
+            if self.hard_segmentation and self.guidance_type != "BrushNet":
                 edited_images = edited_images * masks + (1-masks) * origin_frames
 
-            save_image(edited_images.permute(0, 3, 1, 2), f'{self.output_dir}/batch_image_{global_step}.png', nrow=10)
+            # save_image(edited_images.permute(0, 3, 1, 2), f'{self.output_dir}/batch_image_{global_step}.png', nrow=10)
             for view_index_tmp in range(len(self.view_list)):
                 self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
 
@@ -334,7 +479,11 @@ if __name__ == "__main__":
     parser.add_argument("--camera", type=str, default="tmd_delete/camera.pkl", help="camera.")
     parser.add_argument("--output_dir", type=str, default="save/", help="output dir.")
     parser.add_argument("--hard_segmentation", type=str, default="True", help="hard segmentation.")
-    parser.add_argument("--mask_thres", type=float, default=0.5, help="mask threshold.")
+    parser.add_argument("--mask_thres", type=float, default=0.8, help="mask threshold.")
+    parser.add_argument("--earlystop", type=str, default="True", help="Early stopping.")
+    parser.add_argument("--clip_origin_prompt", type=str, default="a photo of a face of a man", help="Clip origin prompt.")
+    parser.add_argument("--clip_target_prompt", type=str, default="a photo of a face of a Kevin Durant", help="Clip target prompt.")
+    parser.add_argument("--eval", type=bool, default=False, help="Eval or not.")
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):

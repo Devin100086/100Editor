@@ -291,6 +291,8 @@ def apply_patch(
 
     if isinstance_str(model, "StableDiffusionControlNetPipeline") and include_control:
         diffusion_models = [diffusion_model, model.controlnet]
+    elif isinstance_str(model, "StableDiffusionBrushNetPipeline"):
+        diffusion_models = [diffusion_model, model.brushnet]
     else:
         diffusion_models = [diffusion_model]
 

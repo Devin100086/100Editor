@@ -22,3 +22,6 @@ tmp_*/
 shap_e_model_cache/
 LeftRefill/pretrained_models/
 *.pt
+others/
+exp1/
+ablation/

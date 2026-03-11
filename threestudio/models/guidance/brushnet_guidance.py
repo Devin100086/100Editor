@@ -89,13 +89,13 @@ class BrushNetGuidance(BaseObject):
             self.cfg.pretrained_model_name_or_path, brushnet=brushnet, **pipe_kwargs
         ).to(self.device)
 
-        # self.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
-        self.scheduler = DDIMScheduler.from_pretrained(
-            self.cfg.ddim_scheduler_name_or_path,
-            subfolder="scheduler",
-            torch_dtype=self.weights_dtype,
-            cache_dir=self.cfg.cache_dir,
-        )
+        # self.scheduler = DDIMScheduler.from_pretrained(
+        #     self.cfg.ddim_scheduler_name_or_path,
+        #     subfolder="scheduler",
+        #     torch_dtype=self.weights_dtype,
+        #     cache_dir=self.cfg.cache_dir,
+        # )
+        self.scheduler = UniPCMultistepScheduler.from_config(self.pipe.scheduler.config)
         self.scheduler.set_timesteps(self.cfg.diffusion_steps)
  
         if self.cfg.enable_memory_efficient_attention:
@@ -306,12 +306,28 @@ class BrushNetGuidance(BaseObject):
         # self.scheduler.config.num_train_timesteps = t.item() if len(t.shape) < 1 else t[0].item()
         self.scheduler.set_timesteps(self.cfg.diffusion_steps)
         with torch.no_grad():
+            cond = lambda timestep: timestep in [0, 1, 2, 3, 5, 8, 12, 16]
+            curr_step = 0
+            all_steps = len(self.scheduler.timesteps)
             # add noise
             # noise = torch.randn_like(latents)
             # latents = self.scheduler.add_noise(latents, noise, t)  # type: ignore
             threestudio.debug("Start editing...")
             # sections of code used from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_instruct_pix2pix.py
             for i, t in enumerate(self.scheduler.timesteps):
+                if curr_step > i:
+                    continue
+
+                setattr(self.unet, 'order', curr_step)
+                time_ls = [self.scheduler.timesteps[curr_step]]
+                curr_step += 1
+                while not cond(curr_step):
+                    if curr_step<all_steps:
+                        time_ls.append(self.scheduler.timesteps[curr_step])
+                        curr_step += 1
+                    else:
+                        break
+
                 # predict the noise residual with unet, NO grad!
                 with torch.no_grad():
                     # pred noise
@@ -319,7 +335,7 @@ class BrushNetGuidance(BaseObject):
 
                     down_block_res_samples, mid_block_res_sample, up_block_res_samples = self.forward_brushnet(
                         latent_model_input,
-                        t,
+                        time_ls[0],
                         encoder_hidden_states=text_embeddings,
                         brushnet_cond=latents,
                         condition_scale=self.cfg.condition_scale,
@@ -327,7 +343,7 @@ class BrushNetGuidance(BaseObject):
 
                     noise_pred = self.forward_brushnet_unet(
                         latent_model_input, 
-                        t, 
+                        time_ls, 
                         encoder_hidden_states=text_embeddings,
                         cross_attention_kwargs=None,
                         down_block_res_samples=down_block_res_samples,
@@ -341,8 +357,15 @@ class BrushNetGuidance(BaseObject):
                     noise_pred_text - noise_pred_uncond
                 )
 
+                bs = noise_pred.shape[0]
+                bs_perstep = bs//len(time_ls)
+
+                for i, timestep in enumerate(time_ls):
+                    curr_noise = noise_pred[i*bs_perstep:(i+1)*bs_perstep]
+                    noise_latents = self.scheduler.step(curr_noise, timestep, noise_latents).prev_sample
+
                 # get previous sample, continue loop
-                noise_latents = self.scheduler.step(noise_pred, t, noise_latents).prev_sample
+                # noise_latents = self.scheduler.step(noise_pred, t, noise_latents).prev_sample
             threestudio.debug("Editing finished.")
 
         return noise_latents
@@ -397,17 +420,13 @@ class BrushNetGuidance(BaseObject):
                         pos, neg = text_embeddings.chunk(2)
                         text_embeddings_chunk = torch.cat([pos[chunk], neg[chunk]], dim=0)
 
-                        if curr_step in [0, 1, 2, 3, 5, 8, 12, 16]:
-                            down_block_res_samples, mid_block_res_sample, up_block_res_samples = self.forward_brushnet(
-                                latent_model_input,
-                                time_ls[0],
-                                encoder_hidden_states=text_embeddings_chunk,
-                                brushnet_cond=latents_chunks,
-                                condition_scale=self.cfg.condition_scale,
-                            )
-                        else:
-                            down_block_res_samples = None #self.downres_samples
-                            mid_block_res_sample = None #self.midres_sample
+                        down_block_res_samples, mid_block_res_sample, up_block_res_samples = self.forward_brushnet(
+                            latent_model_input,
+                            time_ls[0],
+                            encoder_hidden_states=text_embeddings_chunk,
+                            brushnet_cond=latents_chunks,
+                            condition_scale=self.cfg.condition_scale,
+                        )
 
                         noise_pred = self.forward_brushnet_unet(
                             latent_model_input, 
@@ -488,6 +507,7 @@ class BrushNetGuidance(BaseObject):
         rgb: Float[Tensor, "B H W C"],
         mask: Float[Tensor, "B H W C"],
         prompt_utils: PromptProcessorOutput,
+
         **kwargs,
     ):
         batch_size, H, W, _ = rgb.shape

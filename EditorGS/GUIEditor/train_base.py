@@ -122,6 +122,7 @@ class BaseTrainer:
         self.system_need_update = False
         self.inpaint_again = True
         self.scale_depth = True
+        self.clip_metrics = ClipSimilarity().to(self.gaussian.get_xyz.device)
 
     @torch.no_grad()
     def render_cameras_list(self, edit_cameras, separate_sh=False):
@@ -252,11 +253,11 @@ class BaseTrainer:
             cur_cam = cam
             if type == "default":
                 this_frame = render(
-                    cur_cam, self.gaussian, self.pipe, self.background_tensor
+                    cur_cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam
                 )["render"]
             else:
                 this_frame = render(
-                    cur_cam, self.gaussian2, self.pipe, self.background_tensor
+                    cur_cam, self.gaussian2, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam
                 )["render"]
             
             mask = lang_sam(this_frame.unsqueeze(0).permute(0,2,3,1), text_prompt)[
@@ -427,10 +428,10 @@ class BaseTrainer:
         foward_vectos = np.array(foward_vectos)
         cams_center_x = np.array([cam.camera_center[0].item() for cam in cams])
         most_left_vecotr = foward_vectos[np.argmin(cams_center_x)]
-        distances = [np.arccos(np.clip(np.dot(most_left_vecotr, cam.R[:, 2]), 0, 1)) for cam in cams]
+        distances = [np.arccos(np.clip(np.dot(most_left_vecotr, cam.R[:, 2]), -1, 1)) for cam in cams]
         sorted_cams = [cam for _, cam in sorted(zip(distances, cams), key=lambda pair: pair[0])]
         reference_axis = np.cross(most_left_vecotr, sorted_cams[1].R[:, 2])
-        distances_with_sign = [np.arccos(np.dot(most_left_vecotr, cam.R[:, 2])) if np.dot(reference_axis,  np.cross(most_left_vecotr, cam.R[:, 2])) >= 0 else 2 * np.pi - np.arccos(np.dot(most_left_vecotr, cam.R[:, 2])) for cam in cams]
+        distances_with_sign = [np.arccos(np.clip(np.dot(most_left_vecotr, cam.R[:, 2]), -1, 1)) if np.dot(reference_axis,  np.cross(most_left_vecotr, cam.R[:, 2])) >= 0 else 2 * np.pi - np.arccos(np.clip(np.dot(most_left_vecotr, cam.R[:, 2]), -1, 1)) for cam in cams]
         
         sorted_cam_idx = [idx for _, idx in sorted(zip(distances_with_sign, range(len(cams))), key=lambda pair: pair[0])]
 
@@ -439,8 +440,8 @@ class BaseTrainer:
     def update_cameras(self, random_seed=0):
         random.seed(random_seed)
         self.n2n_view_index = random.sample(
-            range(0, len(self.colmap_cameras)),
-            min(len(self.colmap_cameras), self.edit_cam_num),
+            range(0, len(self.train_cameras)),
+            min(len(self.train_cameras), self.edit_cam_num),
         )
 
     def gaussian_blur(self, mask, kernel_size=21, sigma=8.0):
@@ -457,14 +458,13 @@ class BaseTrainer:
         return blurred_mask
 
     def compute_clip(self, step, clip_prompt_origin = "a photo of a face of a man", clip_prompt_target = "a photo of a face of vampire"):
-        clip_metrics = ClipSimilarity().to(self.gaussian.get_xyz.device)
         total_cos = 0
         total_sim = 0
         with torch.no_grad():
             for id, cam in enumerate(self.colmap_cameras):
                 cur_cam = cam
                 out = self.render(cur_cam, train=False, separate_sh=self.use_sparse_adam)["comp_rgb"]
-                _, sim, cos_sim, _ = clip_metrics(self.origin_frames[id].permute(0, 3, 1, 2), out.permute(0, 3, 1, 2),
+                _, sim, cos_sim, _ = self.clip_metrics(self.origin_frames_eval[id].permute(0, 3, 1, 2), out.permute(0, 3, 1, 2),
                                                 clip_prompt_origin, clip_prompt_target)
                 total_cos += abs(cos_sim.item())
                 total_sim += abs(sim.item())
@@ -480,3 +480,18 @@ class BaseTrainer:
             else:
                 f.write(","+str(total_sim / len(self.colmap_cameras)))
         return total_sim / len(self.colmap_cameras), total_cos / len(self.colmap_cameras)
+
+    def compute_metric(self, clip_prompt_origin = "a photo of a face of a man", clip_prompt_target = "a photo of a face of Harry Potter"):
+        # clip_metrics = ClipSimilarity().to(self.gaussian.get_xyz.device)
+        total_cos = 0
+        total_sim = 0
+        with torch.no_grad():
+            for id, cam in enumerate(self.test_cameras):
+                cur_cam = cam
+                out = self.render(cur_cam, train=False, separate_sh=self.use_sparse_adam)["comp_rgb"]
+                _, sim, cos_sim, _ = self.clip_metrics(self.test_origin_frames[id].permute(0, 3, 1, 2), out.permute(0, 3, 1, 2),
+                                                clip_prompt_origin, clip_prompt_target)
+                total_cos += abs(cos_sim.item())
+                total_sim += abs(sim.item())
+        print(clip_prompt_origin, clip_prompt_target, "cos:", total_cos / len(self.test_cameras), "sim:", total_sim / len(self.test_cameras))
+        return total_sim / len(self.test_cameras), total_cos / len(self.test_cameras)

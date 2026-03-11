@@ -173,7 +173,7 @@ class DeleteTrainer(BaseTrainer):
             render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
             init_render = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
             save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
-            self.update_sam2_mask_with_point_prompt(edit_cameras, 
+            self.update_sam2_mask_with_point_prompt(self.colmap_cameras, 
                                                                     self.positive_sam_points ,
                                                                     self.negative_sam_points)
 

@@ -422,7 +422,7 @@ class InstructPix2PixGuidance(BaseObject):
             noise = torch.randn_like(latents)
             latents = self.scheduler.add_noise(latents, noise, t) 
             
-            cond = lambda timestep: timestep in [0,1,2,3,5,10,15,25,35]
+            cond = lambda timestep: timestep in [0, 1, 2, 3, 5, 8, 12, 16]
 
             # sections of code used from https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion_instruct_pix2pix.py
             curr_step = 0
@@ -431,7 +431,17 @@ class InstructPix2PixGuidance(BaseObject):
                 # pred noise
                 if curr_step > i:
                     continue
-                
+
+                setattr(self.unet, 'order', curr_step)
+                time_ls = [self.scheduler.timesteps[curr_step]]
+                curr_step += 1
+                while not cond(curr_step):
+                    if curr_step<all_steps:
+                        time_ls.append(self.scheduler.timesteps[curr_step])
+                        curr_step += 1
+                    else:
+                        break
+
                 noise_preds = torch.zeros_like(latents)
                 
                 with torch.no_grad():
@@ -440,16 +450,6 @@ class InstructPix2PixGuidance(BaseObject):
                     latent_model_input = torch.cat(
                     [latent_model_input, image_cond_latents], dim=1
                     )
-
-                    setattr(self.unet, 'order', curr_step)
-                    time_ls = [self.scheduler.timesteps[curr_step]]
-                    curr_step += 1
-                    while not cond(curr_step):
-                        if curr_step<all_steps:
-                            time_ls.append(self.scheduler.timesteps[curr_step])
-                            curr_step += 1
-                        else:
-                            break
 
                     eps = self.forward_unet(
                     latent_model_input, time_ls, encoder_hidden_states=text_embeddings
@@ -465,7 +465,9 @@ class InstructPix2PixGuidance(BaseObject):
                 )
                 noise_preds = noise_pred
                 # get previous sample, continue loop
-                latents = self.scheduler.step(noise_preds, t, latents).prev_sample
+                for i, timestep in enumerate(time_ls):
+                    latents = self.scheduler.step(noise_preds[:latents.shape[0],:,:,:], timestep, latents).prev_sample
+                    # latents = self.scheduler.step(noise_preds, t, latents).prev_sample
                 # vidtome.update_patch(self.pipe, global_tokens = None)
             threestudio.debug("Editing finished.")
         return latents

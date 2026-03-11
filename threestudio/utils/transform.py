@@ -27,7 +27,7 @@ def translate_gaussians(gaussian, tvec):
 from scipy.spatial.transform import Rotation as R
 
 default_model_mtx = (
-    torch.from_numpy(R.from_rotvec(-np.pi / 2 * np.array([1.0, 0.0, 0.0])).as_matrix())
+    torch.from_numpy(R.from_rotvec(-np.pi * np.array([1.0, 0.0, 0.0])).as_matrix())
     .float()
     .cuda()
 )

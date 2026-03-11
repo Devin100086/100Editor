@@ -1,11 +1,12 @@
 #!/bin/bash
 
-GS_SOURCE="/home/wucunqi/Desktop/results/face/edit/Hulk/save/last.ply"
-COLMAP_DIR="/home/wucunqi/Desktop/results/face"
-SAVE_DIR="save/render_edited"
-USE_ORIGIN=0
+GS_SOURCE="outputs/Turn_it_into_basketball@2026_01_30_09_51/result.ply"
+COLMAP_DIR="/home/wucunqi/Desktop/orange"
+SAVE_DIR="outputs/Turn_it_into_basketball@2026_01_30_09_51"
+# SAVE_DIR="save/render_edited"
+USE_ORIGIN=1
 
-rm -rf ${SAVE_DIR}/*
+# rm -rf ${SAVE_DIR}/*  
 
 if [ ! -z "$1" ]; then
     GS_SOURCE="$1"

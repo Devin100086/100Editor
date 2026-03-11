@@ -69,9 +69,9 @@ class EditorWidget(Widget):
         self.rotation_lr_scaler = 1.0
         
         # text-edit
-        self.guidance_type = ["InstructPix2Pix","ControlNet-Depth","pds","pds-refine"]
+        self.guidance_type = ["InstructPix2Pix","ControlNet-Depth","BrushNet"]
         self.guidance_item = 0
-        self.text_prompt = "Turn the bear into a Corgi"
+        self.text_prompt = "Make it winter"
         self.origin_prompt = "a photo of a bear statue in the forest"
         self.text_sam_option = 0
         self.text_point_option = 0
@@ -83,6 +83,9 @@ class EditorWidget(Widget):
         self.edit_output_dir = os.path.join(os.getcwd(), "outputs")
         self.hard_segmentation = True
         self.mask_thres = 0.5
+        self.early_stopping = True
+        self.clip_origin_prompt = "a photo of an outdoor garden"
+        self.clip_target_prompt = "a photo of an outdoor garden in winter"
 
         # adding
         self.mask_prompt = "add a red hat"
@@ -97,7 +100,7 @@ class EditorWidget(Widget):
         self.points = []
         self.current_color = [1.0, 1.0, 1.0, 1.0]
         self.line_width = 2.0
-        self.sketch_prompt = "a man wear a red hat on head"
+        self.sketch_prompt = "A man wears a red hat on head"
         self.generate_3D_prompt = "a red hat"
         self.is_drawing = False
         self.adding = False
@@ -280,7 +283,13 @@ class EditorWidget(Widget):
                     _, self.edit_use_original_resolution = imgui.checkbox("##Use Original Resolution", self.edit_use_original_resolution)
                     label("hard segmentation", viz.label_w)
                     _, self.hard_segmentation = imgui.checkbox("##Hard Segmentation", self.hard_segmentation)
-
+                    label("early stopping", viz.label_w)
+                    _, self.early_stopping = imgui.checkbox("##Early Stopping", self.early_stopping)
+                    if self.early_stopping:
+                        label("clip origin prompt", viz.label_w)
+                        _, self.clip_origin_prompt = imgui.input_text("##CLIP Origin Prompt", self.clip_origin_prompt, 256)
+                        label("clip target prompt", viz.label_w)
+                        _, self.clip_target_prompt = imgui.input_text("##CLIP Target Prompt", self.clip_target_prompt, 256)
                     imgui.separator_text("SAM Option")
                     label("Sam Type", viz.label_w)
                     _, self.text_sam_option = imgui.combo(
@@ -350,7 +359,8 @@ class EditorWidget(Widget):
                                                                              scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler, 
                                                                              positive_sam_points = "tmp_edit/sam2_positive_points.npy", negative_sam_points = "tmp_edit/sam2_negative_points.npy",
                                                                              camera = "tmp_edit/camera.pkl", use_original_resolution = self.edit_use_original_resolution, output_dir = self.edit_output_dir,
-                                                                             hard_segmentation = self.hard_segmentation, mask_thres=self.mask_thres
+                                                                             hard_segmentation = self.hard_segmentation, mask_thres=self.mask_thres, earlystop=self.early_stopping,
+                                                                             clip_origin_prompt=self.clip_origin_prompt, clip_target_prompt=self.clip_target_prompt
                                                                             )
                     else:
                         if imgui_utils.button("Stop", width=viz.button_w):
@@ -389,7 +399,7 @@ class EditorWidget(Widget):
                         self.edit_single = False
                         label("Depth", viz.label_w)
                         _, self.depth = imgui.slider_float("##Depth", self.depth, 0, 10, format="%.2f")
-                        if os.path.exists("tmp_add/inpaint_gs.obj") and os.path.exists("tmp_edit/camera.pkl"):
+                        if os.path.exists("tmp_add/inpaint_gs.ply"):
                             if imgui_utils.button("Show", width=viz.button_w): 
                                 self.edit_single = False
                                 self.concat = True
@@ -399,7 +409,7 @@ class EditorWidget(Widget):
                                 T = viz.extr.inverse()[:3, 3].numpy()
                                 fov_rad = viz.fov / 360 * 2 * np.pi
                                 cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
-                                with open(f'tmp_edit/camera.pkl', 'wb') as f:
+                                with open(f'tmp_add/camera.pkl', 'wb') as f:
                                     pickle.dump(cam, f)    
             
                             else:
@@ -505,7 +515,7 @@ class EditorWidget(Widget):
                         
                         label("Depth", viz.label_w)
                         _, self.depth = imgui.slider_float("##Depth", self.depth, 0, 10, format="%.2f")
-                        if os.path.exists("tmp_add/inpaint_gs.obj") and os.path.exists("tmp_edit/camera.pkl"):
+                        if os.path.exists("tmp_add/inpaint_gs.ply"):
                             if imgui_utils.button("Show", width=viz.button_w): 
                                 self.edit_single = False
                                 self.edit3D = False 
@@ -516,7 +526,7 @@ class EditorWidget(Widget):
                                 T = viz.extr.inverse()[:3, 3].numpy()
                                 fov_rad = viz.fov / 360 * 2 * np.pi
                                 cam = CustomCam(origin.size[0], origin.size[1], fov_rad, fov_rad, R, T, viz.extr.cuda())
-                                with open(f'tmp_edit/camera.pkl', 'wb') as f:
+                                with open(f'tmp_add/camera.pkl', 'wb') as f:
                                     pickle.dump(cam, f)    
 
                             else:
@@ -797,6 +807,12 @@ class EditorWidget(Widget):
                     if imgui_utils.button("Open Overlay", width=viz.button_w*1.2):
                         self.showing_overlay = True
 
+                    label("Save PLY", viz.label_w)
+                    if imgui_utils.button("Save ply", width=viz.button_w):
+                        viz.args.save_ply_path = "output"
+                    else:
+                        viz.args.save_ply_path = None
+
                     imgui.end_tab_item()
 
             imgui.end_tab_bar() 
@@ -928,14 +944,14 @@ class EditorWidget(Widget):
 
     def remove_single_image(self, prompts, image):
         image = Image.fromarray(image)
-        client = genai.Client(api_key="AIzaSyDzhGiyxkTNdnee0iUeL8ItUxZRrGHvRFI")
+        client = genai.Client(api_key="AIzaSyBPuC6_bg5DP92bkjpF-_4kYMpmqSV8LBg")
         text_input = (f'{prompts}, After removal, make sure the background of the area is filled consistently with the surrounding area so that the modified image looks authentic and without any abrupt traces.')
         response = client.models.generate_content(
-            model="gemini-2.0-flash-preview-image-generation",
+            model="gemini-2.5-flash-image",
             contents=[text_input, image],
-            config=types.GenerateContentConfig(
-            response_modalities=['TEXT', 'IMAGE']
-            )
+            # config=types.GenerateContentConfig(
+            # response_modalities=['TEXT', 'IMAGE']
+            # )
         )
         for part in response.candidates[0].content.parts:
             if part.text is not None:

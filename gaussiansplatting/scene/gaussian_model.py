@@ -500,6 +500,7 @@ class GaussianModel:
         ):
         self._xyz = torch.cat((self._xyz, new_xyz), dim=0)
         self._features_dc = torch.cat((self._features_dc, new_features_dc), dim=0)
+        new_features_rest = torch.zeros((new_features_rest.shape[0], (self.max_sh_degree + 1) ** 2 - 1, 3), device="cuda")
         self._features_rest = torch.cat((self._features_rest, new_features_rest), dim=0)
         self._opacity = torch.cat((self._opacity, new_opacities), dim=0)
         self._scaling = torch.cat((self._scaling, new_scaling), dim=0)

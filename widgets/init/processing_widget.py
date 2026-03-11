@@ -63,7 +63,7 @@ class ProcessingWidget(Widget):
         video = cv2.VideoCapture(video_path)
         fps = video.get(cv2.CAP_PROP_FPS)
         fps = fps * 5
-        frame_interval = round(fps / 30)
+        frame_interval = round(fps / 50)
         frame_count = 0
         while True:
             ret, frame = video.read()

@@ -170,6 +170,8 @@ class LapDeform(nn.Module):
         unchanged = torch.unique(torch.where((edges == old_edges).all(dim=1))[0])
         S[unchanged] = 0
         U, _, W = torch.svd(S)
+        # U, _, Vh = torch.linalg.svd(S)
+        # W = Vh.transpose(-2, -1)  # Convert Vh back to W
         R = torch.bmm(W, U.permute(0, 2, 1))
         if return_quaternion:
             q = matrix_to_quaternion(R)

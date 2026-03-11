@@ -448,11 +448,11 @@ class GaussianRenderer(Renderer):
     def concat_gaussian(self, cam, depth, background_color, gaussian):
         cache_dir = Path("tmp_add").absolute().as_posix()
         os.makedirs(cache_dir, exist_ok=True)
-        mv_image_dir = os.path.join(cache_dir, "multiview_pred_images")
-        os.makedirs(mv_image_dir, exist_ok=True)
+        # mv_image_dir = os.path.join(cache_dir, "multiview_pred_images")
+        # os.makedirs(mv_image_dir, exist_ok=True)
         inpaint_path = os.path.join(cache_dir, "inpainted.png")
         removed_bg_path = os.path.join(cache_dir, "removed_bg.png")
-        gs_path = os.path.join(cache_dir, "inpaint_gs.obj")
+        gs_path = os.path.join(cache_dir, "inpaint_gs.ply")
 
         removed_bg = Image.open(removed_bg_path)
         inpainted_image = to_tensor(Image.open(inpaint_path))[:3,...].to("cuda")
@@ -525,9 +525,9 @@ class GaussianRenderer(Renderer):
 
         new_object_gaussian = GaussianModel(sh_degree=gaussian.max_sh_degree, disable_xyz_log_activation=True)
         new_object_gaussian.load_ply(gs_path)
-        new_object_gaussian._opacity.data = (
-            torch.ones_like(new_object_gaussian._opacity.data) * 99.99
-        )
+        # new_object_gaussian._opacity.data = (
+        #     torch.ones_like(new_object_gaussian._opacity.data) * 99.99
+        # )
 
         new_object_gaussian._xyz.data -= new_object_gaussian._xyz.data.mean(
             dim=0, keepdim=True
