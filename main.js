@@ -244,8 +244,6 @@ function renderAbstract(abstractEl, abstractText) {
 
 const isMobile = () => window.matchMedia("(max-width: 900px)").matches;
 
-const getSystemTheme = () => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-
 function applyTheme(theme) {
   const nextTheme = theme === "light" ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", nextTheme);
@@ -270,7 +268,7 @@ function initThemeToggle() {
   } catch (error) {
     console.warn("Cannot read saved theme preference", error);
   }
-  applyTheme(savedTheme || getSystemTheme());
+  applyTheme(savedTheme || "light");
 
   toggleButton.addEventListener("click", () => {
     const currentTheme = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
