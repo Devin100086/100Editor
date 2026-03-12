@@ -11,7 +11,9 @@
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
   --radius: 18px;
   --radius-sm: 12px;
-  --container: min(1120px, calc(100% - 3rem));
+  --container-max: 1120px;
+  --gutter: clamp(0.8rem, 3.5vw, 2.4rem);
+  --container: min(var(--container-max), calc(100% - (var(--gutter) * 2)));
   --bg-glow-a: rgba(0, 229, 255, 0.12);
   --bg-glow-b: rgba(108, 255, 184, 0.08);
   --nav-surface: linear-gradient(180deg, rgba(3, 8, 17, 0.72), rgba(3, 8, 17, 0.12));
@@ -202,7 +204,7 @@ a {
 .top-nav {
   width: 100%;
   margin: 0;
-  padding: 1.2rem clamp(0.8rem, 3.5vw, 2.4rem);
+  padding: 1.2rem var(--gutter);
   position: fixed;
   left: 0;
   top: 0;
@@ -232,7 +234,7 @@ a {
 .brand-logo {
   display: block;
   width: auto;
-  height: clamp(3rem, 3vw, 2rem);
+  height: clamp(2rem, 3vw, 3rem);
 }
 
 .top-nav nav {
@@ -325,7 +327,7 @@ section {
 }
 
 .hero-content {
-  width: min(1520px, calc(100% - 2rem));
+  width: var(--container);
   position: relative;
   z-index: 2;
   text-align: center;
@@ -342,8 +344,8 @@ section {
 }
 
 .eyebrow-logo {
-  width: clamp(12rem, 8.5vw, 7.2rem);
-  height: clamp(12rem, 8.5vw, 7.2rem);
+  width: clamp(7.2rem, 8.5vw, 12rem);
+  height: clamp(7.2rem, 8.5vw, 12rem);
   object-fit: contain;
   flex: 0 0 auto;
 }
@@ -569,7 +571,7 @@ section {
 
 .quantitative-subtitle {
   margin: 0 auto 1rem;
-  width: min(1100px, 100%);
+  width: 100%;
   max-width: none;
   text-align: justify;
   text-justify: inter-word;
@@ -580,7 +582,7 @@ section {
 
 .quantitative-root {
   margin: 0 auto;
-  width: min(1100px, 100%);
+  width: 100%;
 }
 
 .quant-card {
@@ -762,7 +764,7 @@ section {
 
 .ablation-root {
   margin: 0 auto;
-  width: min(1100px, 100%);
+  width: 100%;
 }
 
 .ablation-card {
@@ -862,7 +864,7 @@ section {
 
 .software-display {
   margin: 1rem auto 0;
-  width: min(1100px, 100%);
+  width: 100%;
   border-radius: 14px;
   overflow: hidden;
   border: 1px solid var(--panel-border);
@@ -881,7 +883,7 @@ section {
 
 .software-note {
   margin: 0.2rem auto 1rem;
-  width: min(1100px, 100%);
+  width: 100%;
   text-align: center;
   color: var(--muted);
   font-size: 1.14rem;
@@ -1116,7 +1118,7 @@ section {
 
 .method-display {
   margin: 1rem auto 0;
-  width: min(1100px, 100%);
+  width: 100%;
   border-radius: 14px;
   overflow: hidden;
   border: 1px solid var(--panel-border);
@@ -1411,7 +1413,7 @@ section {
 
 .results-panel {
   margin: 1rem auto 0;
-  width: min(1100px, 100%);
+  width: 100%;
 }
 
 .result-card {
@@ -1674,7 +1676,7 @@ html[data-theme="light"] .hero-video {
 
 @media (max-width: 960px) {
   :root {
-    --container: min(1120px, calc(100% - 1.6rem));
+    --gutter: 0.8rem;
   }
 
   .top-nav nav {
@@ -1683,6 +1685,10 @@ html[data-theme="light"] .hero-video {
 
   .nav-tools {
     gap: 0.65rem;
+  }
+
+  .top-nav nav a {
+    font-size: 1rem;
   }
 
   .demo-panels,
