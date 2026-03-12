@@ -390,7 +390,7 @@ section {
   position: relative;
   z-index: 2;
   text-align: center;
-  padding: clamp(5.5rem, 10vw, 7.4rem) 0 clamp(1.8rem, 4.4vw, 3.4rem);
+  padding: clamp(5.5rem, 10vw, 7.4rem) 0 clamp(3rem, 5.4vw, 4.8rem);
 }
 
 .eyebrow-row {
@@ -428,7 +428,7 @@ section {
 .hero-title {
   margin: 0;
   font-family: "Space Grotesk", sans-serif;
-  font-size: clamp(2.1rem, 7vw, 5.2rem);
+  font-size: clamp(1.9rem, 5.8vw, 4.6rem);
   line-height: 1.06;
   letter-spacing: -0.02em;
   max-width: min(22ch, 100%);
@@ -612,7 +612,7 @@ section {
 
 .scroll-hint {
   position: absolute;
-  bottom: 2rem;
+  bottom: max(0.8rem, env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
   font-family: "JetBrains Mono", monospace;
