@@ -209,7 +209,7 @@ a {
 .top-nav {
   width: 100%;
   margin: 0;
-  padding: 0.72rem var(--gutter);
+  padding: 0.5rem var(--gutter);
   position: fixed;
   left: 0;
   top: 0;
@@ -217,7 +217,7 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.7rem;
   border-bottom: 1px solid var(--panel-border);
   backdrop-filter: blur(7px);
 }
@@ -240,7 +240,7 @@ a {
 .brand-logo {
   display: block;
   width: auto;
-  height: clamp(1.5rem, 2vw, 2.1rem);
+  height: clamp(1.2rem, 1.7vw, 1.7rem);
 }
 
 .primary-nav {
@@ -252,14 +252,14 @@ a {
 .nav-tools {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.7rem;
   position: relative;
 }
 
 .nav-toggle {
   display: none;
-  width: 2.1rem;
-  height: 2.1rem;
+  width: 1.9rem;
+  height: 1.9rem;
   border-radius: 999px;
   border: 1px solid var(--panel-border);
   background: var(--ghost-bg);
@@ -303,8 +303,8 @@ body.nav-open .nav-toggle-bar:nth-child(3) {
 }
 
 .theme-toggle {
-  width: 2.1rem;
-  height: 2.1rem;
+  width: 1.9rem;
+  height: 1.9rem;
   display: grid;
   place-items: center;
   border-radius: 999px;
@@ -327,7 +327,7 @@ body.nav-open .nav-toggle-bar:nth-child(3) {
 
 .primary-nav a {
   color: var(--muted);
-  font-size: clamp(0.95rem, 0.92vw, 1.08rem);
+  font-size: clamp(0.88rem, 0.84vw, 1rem);
   white-space: nowrap;
   transition: color 0.2s ease;
 }
@@ -1755,7 +1755,7 @@ html[data-theme="light"] .hero-video {
   }
 
   .top-nav {
-    padding: 0.62rem var(--gutter);
+    padding: 0.5rem var(--gutter);
   }
 
   body.nav-open::before {
