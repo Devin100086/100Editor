@@ -428,13 +428,19 @@ section {
 .hero-title {
   margin: 0;
   font-family: "Space Grotesk", sans-serif;
-  font-size: clamp(1.9rem, 5.8vw, 4.6rem);
+  font-size: clamp(1.9rem, 4.2vw, 3rem);
   line-height: 1.06;
   letter-spacing: -0.02em;
-  max-width: min(22ch, 100%);
+  max-width: 100%;
+  width: max-content;
   margin-inline: auto;
   text-wrap: balance;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+}
+
+.hero-title-line {
+  display: block;
+  white-space: nowrap;
 }
 
 .hero-authors {
@@ -1821,7 +1827,7 @@ html[data-theme="light"] .hero-video {
   }
 
   .hero-title {
-    max-width: min(20ch, 100%);
+    max-width: 100%;
   }
 }
 
@@ -1889,7 +1895,12 @@ html[data-theme="light"] .hero-video {
 
   .hero-title {
     font-size: clamp(1.74rem, 10vw, 2.45rem);
-    max-width: min(19ch, 100%);
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .hero-title-line {
+    white-space: normal;
   }
 
   .abstract-text {

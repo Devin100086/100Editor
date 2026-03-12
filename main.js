@@ -28,7 +28,7 @@ const svgPlaceholder = (title, subtitle, start = "#0b2039", end = "#0d2f52") => 
 
 const CONTENT = {
   project: {
-    title: "100Editor: 100+ Views per Batch and Minute-Scale View-Consistent 3D Editing",
+    title: "100Editor: 100+ Views per Batch and\nMinute-Scale View-Consistent 3D Editing",
     subtitle: "CVPR 2026(findings)",
     abstract:
       "Editing 3D scenes with diffusion models and 3DGS remains slow: most pipelines update one view at a time and are constrained by VRAM-limited batch sizes. We introduce 100Editor, a training-free framework that scales multi-view 3D editing to the hundred-view regime while preserving cross-view consistency. The system combines four complementary components: (1) a batch-consistent multi-view editing module that aligns overlapping content across views at the token level with chunked execution; (2) an efficiency suite that integrates a lightweight 3DGS renderer, a sparse optimizer, a CLIP-guided Patience Stopping (CPS) rule, and parallelized diffusion inference to reduce editing latency; (3) an interactive 3D segmentation module with point prompts and 3D back-projection for accurate, object-level local editing; and (4) a practical 3D editing software that unifies these capabilities for semantic, additive, subtractive, and non-rigid editing. Together, these designs enable large-batch and efficient 3D editing without modifying the image-editing model's weights. On a single 24 GB GPU, 100Editor edits 100+ views per batch (up to 120) and achieves minute-scale 3D scene editing latency (59.60~s). Experiments across diverse scenes and edit types show improved multi-view consistency and high perceptual quality compared to single-view and small-batch baselines, while supporting precise, interactive 3D edits. ",
@@ -559,13 +559,26 @@ function initHeroMedia() {
 function animateHeroTitle() {
   const titleEl = byId("hero-title");
   const text = titleEl.textContent;
+  const lines = text.split("\n");
+
   titleEl.innerHTML = "";
-  [...text].forEach((char, index) => {
-    const span = document.createElement("span");
-    span.className = "char";
-    span.style.setProperty("--char-index", String(index));
-    span.textContent = char === " " ? "\u00a0" : char;
-    titleEl.appendChild(span);
+  titleEl.setAttribute("aria-label", lines.join(" ").trim());
+
+  let charIndex = 0;
+  lines.forEach((line) => {
+    const lineEl = document.createElement("span");
+    lineEl.className = "hero-title-line";
+
+    [...line].forEach((char) => {
+      const span = document.createElement("span");
+      span.className = "char";
+      span.style.setProperty("--char-index", String(charIndex));
+      span.textContent = char === " " ? "\u00a0" : char;
+      lineEl.appendChild(span);
+      charIndex += 1;
+    });
+
+    titleEl.appendChild(lineEl);
   });
 }
 
