@@ -243,6 +243,7 @@ function renderAbstract(abstractEl, abstractText) {
 }
 
 const isMobile = () => window.matchMedia("(max-width: 900px)").matches;
+const NAV_COLLAPSE_QUERY = "(max-width: 1200px)";
 
 function applyTheme(theme) {
   const nextTheme = theme === "light" ? "light" : "dark";
@@ -280,6 +281,62 @@ function initThemeToggle() {
       console.warn("Cannot save theme preference", error);
     }
   });
+}
+
+function initResponsiveNav() {
+  const navToggle = byId("nav-toggle");
+  const nav = byId("primary-nav");
+  if (!navToggle || !nav) return;
+
+  const mq = window.matchMedia(NAV_COLLAPSE_QUERY);
+  const isCollapsedViewport = () => mq.matches;
+
+  const setMenuState = (expanded) => {
+    const isOpen = isCollapsedViewport() ? expanded : false;
+    document.body.classList.toggle("nav-open", isOpen);
+    navToggle.setAttribute("aria-expanded", String(isOpen));
+    navToggle.setAttribute("aria-label", isOpen ? "Close navigation menu" : "Open navigation menu");
+    navToggle.setAttribute("title", isOpen ? "Close navigation menu" : "Open navigation menu");
+    nav.setAttribute("aria-hidden", String(isCollapsedViewport() ? !isOpen : false));
+  };
+
+  const closeMenu = () => setMenuState(false);
+
+  navToggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (!isCollapsedViewport()) return;
+    const expanded = navToggle.getAttribute("aria-expanded") === "true";
+    setMenuState(!expanded);
+  });
+
+  nav.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (!target.closest("a[href]")) return;
+    closeMenu();
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!isCollapsedViewport()) return;
+    if (navToggle.getAttribute("aria-expanded") !== "true") return;
+    const target = event.target;
+    if (nav.contains(target) || navToggle.contains(target)) return;
+    closeMenu();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    closeMenu();
+  });
+
+  const syncViewportState = () => closeMenu();
+  if (typeof mq.addEventListener === "function") {
+    mq.addEventListener("change", syncViewportState);
+  } else {
+    mq.addListener(syncViewportState);
+  }
+
+  closeMenu();
 }
 
 function initProjectContent() {
@@ -1285,6 +1342,7 @@ function initEvents() {
 
 function bootstrap() {
   initThemeToggle();
+  initResponsiveNav();
   configurePerformanceMode();
   initProjectContent();
   initHeroMedia();

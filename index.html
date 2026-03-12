@@ -32,7 +32,20 @@
         <img src="assets/mvp.png" alt="MVP Lab" class="brand-logo" />
       </a>
       <div class="nav-tools">
-        <nav aria-label="Main navigation">
+        <button
+          id="nav-toggle"
+          class="nav-toggle"
+          type="button"
+          aria-label="Open navigation menu"
+          aria-controls="primary-nav"
+          aria-expanded="false"
+          title="Open navigation menu"
+        >
+          <span class="nav-toggle-bar" aria-hidden="true"></span>
+          <span class="nav-toggle-bar" aria-hidden="true"></span>
+          <span class="nav-toggle-bar" aria-hidden="true"></span>
+        </button>
+        <nav id="primary-nav" class="primary-nav" aria-label="Main navigation">
           <a href="#impact">Abstract</a>
           <a href="#method">Method</a>
           <a href="#software">Software</a>
