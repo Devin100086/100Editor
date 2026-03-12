@@ -1,0 +1,45 @@
+<script type="module">
+  import * as GaussianSplats3D from "https://esm.sh/@mkkellogg/gaussian-splats-3d@0.4.7";
+
+  document.documentElement.style.width = "100%";
+  document.documentElement.style.height = "100%";
+  document.body.style.margin = "0";
+  document.body.style.width = "100%";
+  document.body.style.height = "100%";
+  document.body.style.overflow = "hidden";
+  document.body.style.background = "#000";
+
+  const root = document.createElement("div");
+  root.style.position = "fixed";
+  root.style.inset = "0";
+  document.body.appendChild(root);
+
+  const useSharedMemory = self.crossOriginIsolated === true;
+
+  const viewer = new GaussianSplats3D.Viewer({
+    cameraUp: [0, -1, -0.6],
+    initialCameraPosition: [-1, -4, 6],
+    initialCameraLookAt: [-1.2, 4, 0],
+    rootElement: root,
+    sharedMemoryForWorkers: useSharedMemory,
+    gpuAcceleratedSort: useSharedMemory,
+  });
+
+  async function init() {
+    try {
+      await viewer.addSplatScene("../assets/model/plant.ply", {
+        splatAlphaRemovalThreshold: 5,
+        showLoadingUI: true,
+        position: [0, 1, 0],
+        rotation: [0, 0, 0, 1],
+        scale: [1.5, 1.5, 1.5],
+      });
+
+      viewer.start();
+    } catch (error) {
+      console.error("Viewer init failed:", error);
+    }
+  }
+
+  init();
+</script>
