@@ -48,7 +48,7 @@ const CONTENT = {
   },
   hero: {
     video: "assets/teaser_merged_loop.mp4",
-    poster: svgPlaceholder("PhotonWeaver", "Replace hero with your project video", "#05101f", "#113c5f"),
+    poster: svgPlaceholder("", "", "#d9edf8", "#c3ebe3"),
   },
   metrics: [
     { label: "PSNR Gain vs Baselines", value: 4.8, suffix: " dB" },
@@ -115,22 +115,107 @@ const CONTENT = {
   results: {
     semantic: {
       title: "Semantic Editing",
-      kind: "video-pair",
-      prompt: "put makeup on her",
-      sourceVideo: "./assets/results/girl.mp4",
-      editedVideo: "./assets/results/make_up.mp4",
+      kind: "video-pair-grid",
+      cards: [
+        {
+          prompt: "put makeup on her",
+          sourceVideo: "./assets/results/girl.mp4",
+          editedVideo: "./assets/results/make_up.mp4",
+        },
+        {
+          prompt: "Turn it into a tiger",
+          sourceVideo: "./assets/results/kanagroo.mp4",
+          editedVideo: "./assets/results/tiger.mp4",
+        },
+        {
+          prompt: "Turn his face into a Harry Potter",
+          sourceVideo: "./assets/results/face.mp4",
+          editedVideo: "./assets/results/Harry_Potter.mp4",
+        },
+        {
+          prompt: "Turn him into a Dead Pool",
+          sourceVideo: "./assets/results/yuseung.mp4",
+          editedVideo: "./assets/results/Dead_pool.mp4",
+        },
+        {
+          prompt: "Make it winter",
+          sourceVideo: "./assets/results/garden.mp4",
+          editedVideo: "./assets/results/winter.mp4",
+        },
+        {
+          prompt: "Turn the bear into a corgi",
+          sourceVideo: "./assets/results/bear.mp4",
+          editedVideo: "./assets/results/corgi.mp4",
+        },
+        {
+          prompt: "Turn the orange into a red apple",
+          sourceVideo: "./assets/results/orange.mp4",
+          editedVideo: "./assets/results/apple.mp4",
+        },
+        {
+          prompt: "Turn the truck into red",
+          sourceVideo: "./assets/results/truck.mp4",
+          editedVideo: "./assets/results/red_truck.mp4",
+        },
+        {
+          prompt: "Make it fire",
+          sourceVideo: "./assets/results/stump.mp4",
+          editedVideo: "./assets/results/fire.mp4",
+        },
+      ],
     },
     additive: {
       title: "Additive Editing",
-      kind: "coming-soon",
+      kind: "video-pair-grid",
+      cards: [
+        {
+          prompt: "A man wears a black mask",
+          sourceVideo: "./assets/results/add_face.mp4",
+          editedVideo: "./assets/results/black_mask.mp4",
+        },
+        {
+          prompt: "Make it wear Dr. Martens boots, wings, and metal ears.",
+          sourceVideo: "./assets/results/add_kangroo.mp4",
+          editedVideo: "./assets/results/kangroo_wind.mp4",
+        },
+        {
+          prompt: "A toy wears a Santas hat",
+          sourceVideo: "./assets/results/dtu_scan.mp4",
+          editedVideo: "./assets/results/santas.mp4",
+        },
+      ]
     },
     subtractive: {
       title: "Subtractive Editing",
-      kind: "coming-soon",
+      kind: "video-pair-grid",
+      cards: [
+        {
+          prompt: "delete the mouse",
+          sourceVideo: "./assets/results/mouse.mp4",
+          editedVideo: "./assets/results/delete_mouse.mp4",
+        },
+        {
+          prompt: "delete the plant",
+          sourceVideo: "./assets/results/counter.mp4",
+          editedVideo: "./assets/results/delete_counter.mp4",
+        },
+        {
+          prompt: "delete the case",
+          sourceVideo: "./assets/results/garden_delete.mp4",
+          editedVideo: "./assets/results/delete_garden.mp4",
+        },
+      ]
     },
     nonrigid: {
       title: "Non-rigid Editing",
-      kind: "coming-soon",
+      kind: "video-pair-grid",
+      cards: [
+        {
+          prompt: "Raise your arms",
+          sourceVideo: "./assets/results/person.mp4",
+          editedVideo: "./assets/results/person_put_his_hands.mp4",
+        },
+      ]
     },
   },
   quantitative: {
@@ -167,6 +252,7 @@ let reducedParallax = false;
 const THEME_STORAGE_KEY = "mvp-theme";
 const ABSTRACT_HIGHLIGHT_SENTENCE =
   "On a single 24 GB GPU, 100Editor edits 100+ views per batch (up to 120) and achieves minute-scale 3D scene editing latency (59.60~s).";
+const RESULTS_CARDS_PER_PAGE = 9;
 
 const byId = (id) => document.getElementById(id);
 
@@ -837,45 +923,104 @@ function renderResultsMode(modeId) {
     return;
   }
 
-  if (mode.kind === "video-pair") {
-    panel.innerHTML = `
+  if (mode.kind === "video-pair-grid") {
+    const cards = Array.isArray(mode.cards) ? mode.cards : [];
+    const totalPages = Math.max(1, Math.ceil(cards.length / RESULTS_CARDS_PER_PAGE));
+    const savedPage = Number(panel.dataset.page || "1");
+    const currentPage = Math.min(Math.max(savedPage, 1), totalPages);
+    const start = (currentPage - 1) * RESULTS_CARDS_PER_PAGE;
+    const visibleCards = cards.slice(start, start + RESULTS_CARDS_PER_PAGE);
+
+    const cardsHtml = visibleCards
+      .map(
+        (card, index) => `
       <article class="result-card">
-        <p class="result-prompt">${mode.prompt}</p>
+        <p class="result-prompt">
+          <img
+            class="result-prompt-icon"
+            src="assets/wand.png"
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            decoding="async"
+          />
+          <span class="result-prompt-text">${card.prompt || ""}</span>
+        </p>
         <div class="result-video-pair">
           <div class="result-video-block">
             <video
-              src="${mode.sourceVideo}"
+              src="${card.sourceVideo || ""}"
               autoplay
               muted
               loop
               playsinline
               controls
               preload="metadata"
-              aria-label="${mode.title} original video"
+              aria-label="${mode.title} card ${start + index + 1} original video"
             ></video>
           </div>
           <div class="result-video-divider" aria-hidden="true"></div>
           <div class="result-video-block">
             <video
-              src="${mode.editedVideo}"
+              src="${card.editedVideo || ""}"
               autoplay
               muted
               loop
               playsinline
               controls
               preload="metadata"
-              aria-label="${mode.title} edited video"
+              aria-label="${mode.title} card ${start + index + 1} edited video"
             ></video>
           </div>
         </div>
       </article>
-    `;
+    `
+      )
+      .join("");
+
+    const paginationHtml =
+      totalPages > 1
+        ? `
+      <nav class="results-pagination" aria-label="Results pages">
+        ${Array.from({ length: totalPages }, (_, i) => {
+          const page = i + 1;
+          const activeClass = page === currentPage ? "is-active" : "";
+          const ariaCurrent = page === currentPage ? 'aria-current="page"' : "";
+          return `<button type="button" class="results-page-btn ${activeClass}" data-results-page="${page}" ${ariaCurrent}>${page}</button>`;
+        }).join("")}
+      </nav>
+    `
+        : "";
+
+    panel.dataset.page = String(currentPage);
+    panel.innerHTML = `<div class="results-page-grid">${cardsHtml}</div>${paginationHtml}`;
+
+    if (totalPages > 1) {
+      panel.querySelectorAll(".results-page-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+          const nextPage = Number(button.dataset.resultsPage || "1");
+          if (!Number.isFinite(nextPage) || nextPage === currentPage) return;
+          panel.dataset.page = String(nextPage);
+          renderResultsMode(modeId);
+        });
+      });
+    }
     return;
   }
 
   panel.innerHTML = `
     <article class="result-card result-card-placeholder">
-      <p class="result-prompt">${mode.title}</p>
+      <p class="result-prompt">
+        <img
+          class="result-prompt-icon"
+          src="assets/wand.png"
+          alt=""
+          aria-hidden="true"
+          loading="lazy"
+          decoding="async"
+        />
+        <span class="result-prompt-text">${mode.title}</span>
+      </p>
       <p class="result-placeholder-text">Results for this mode will be added soon.</p>
     </article>
   `;
@@ -892,6 +1037,11 @@ function initResultsGallery() {
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-pressed", String(isActive));
     });
+    const previousMode = panel.dataset.mode || "";
+    if (previousMode !== modeId) {
+      panel.dataset.page = "1";
+    }
+    panel.dataset.mode = modeId;
     renderResultsMode(modeId);
   };
 
