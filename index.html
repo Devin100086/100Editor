@@ -1,316 +1,290 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>100Editor</title>
-    <link rel="icon" type="image/png" href="assets/logo.png" />
-    <meta
-      name="description"
-      content="A striking research project demo site featuring interactive before-after cases, metrics, and publication links."
-    />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=JetBrains+Mono:wght@500;700&family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="./styles.css" />
-    <link rel="stylesheet"
-        href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
-    <script defer src="./js/fontawesome.all.min.js"></script>
-    <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
-  </head>
-  <body>
-    <canvas id="particle-canvas" aria-hidden="true"></canvas>
-    <div class="noise-overlay" aria-hidden="true"></div>
-    <div class="orb orb-a" aria-hidden="true"></div>
-    <div class="orb orb-b" aria-hidden="true"></div>
 
-    <header class="top-nav">
-      <a href="http://nuaamvp.cn/" class="brand">
-        <img src="assets/mvp.png" alt="MVP Lab" class="brand-logo" />
-      </a>
-      <div class="nav-tools">
-        <button
-          id="nav-toggle"
-          class="nav-toggle"
-          type="button"
-          aria-label="Open navigation menu"
-          aria-controls="primary-nav"
-          aria-expanded="false"
-          title="Open navigation menu"
-        >
-          <span class="nav-toggle-bar" aria-hidden="true"></span>
-          <span class="nav-toggle-bar" aria-hidden="true"></span>
-          <span class="nav-toggle-bar" aria-hidden="true"></span>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>100Editor</title>
+  <link rel="icon" type="image/png" href="assets/logo.png" />
+  <meta name="description"
+    content="A striking research project demo site featuring interactive before-after cases, metrics, and publication links." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=JetBrains+Mono:wght@500;700&family=Manrope:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <script defer src="./js/fontawesome.all.min.js"></script>
+  <script src="https://code.iconify.design/iconify-icon/3.0.0/iconify-icon.min.js"></script>
+</head>
+
+<body>
+  <canvas id="particle-canvas" aria-hidden="true"></canvas>
+  <div class="noise-overlay" aria-hidden="true"></div>
+  <div class="orb orb-a" aria-hidden="true"></div>
+  <div class="orb orb-b" aria-hidden="true"></div>
+
+  <header class="top-nav">
+    <a href="http://nuaamvp.cn/" class="brand">
+      <img src="assets/mvp.png" alt="MVP Lab" class="brand-logo" />
+    </a>
+    <div class="nav-tools">
+      <button id="nav-toggle" class="nav-toggle" type="button" aria-label="Open navigation menu"
+        aria-controls="primary-nav" aria-expanded="false" title="Open navigation menu">
+        <span class="nav-toggle-bar" aria-hidden="true"></span>
+        <span class="nav-toggle-bar" aria-hidden="true"></span>
+        <span class="nav-toggle-bar" aria-hidden="true"></span>
+      </button>
+      <nav id="primary-nav" class="primary-nav" aria-label="Main navigation">
+        <a href="#impact">Abstract</a>
+        <a href="#method">Method</a>
+        <a href="#software">Software</a>
+        <a href="#demo">Interactive Demo</a>
+        <a href="#results">Results Gallery</a>
+        <a href="#quantitative">Quantitative Analysis</a>
+        <a href="#ablation">Ablation Studies</a>
+        <a href="#cta">Reference</a>
+      </nav>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light mode"
+        title="Switch to light mode">
+        🌙
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section id="hero" class="hero">
+      <video id="hero-video" class="hero-video" autoplay muted loop playsinline preload="auto"></video>
+      <div class="hero-overlay"></div>
+      <div class="hero-content">
+        <p class="feature-slogan-text hero-floating-slogan">Batch Bigger Edit Faster!</p>
+        <div class="eyebrow-row">
+          <img src="assets/logo.png" alt="100Editor logo" class="eyebrow-logo" />
+          <p id="project-subtitle" class="eyebrow">CVPR 2026(findings)</p>
+        </div>
+        <h1 id="hero-title" class="hero-title"></h1>
+        <div id="project-authors" class="hero-authors"></div>
+        <p id="project-tagline" class="hero-tagline"></p>
+        <div class="hero-actions">
+          <a id="hero-paper-link" class="btn hero-link-btn" target="_blank" rel="noreferrer noopener">
+            <span class="icon">
+              <i class="fas fa-file-pdf"></i>
+            </span>
+            <span>Paper</span>
+          </a>
+          <a id="hero-arxiv-link" class="btn hero-link-btn" target="_blank" rel="noreferrer noopener">
+            <span class="icon">
+              <i class="ai ai-arxiv"></i>
+            </span>
+            <span>arXiv</span>
+          </a>
+          <a id="hero-code-link" class="btn hero-link-btn" target="_blank" rel="noreferrer noopener">
+            <span class="icon">
+              <i class="fab fa-github"></i>
+            </span>
+            <span>Code</span>
+          </a>
+          <a id="hero-bilibili-link" class="btn hero-link-btn" target="_blank" rel="noreferrer noopener">
+            <span class="icon">
+              <img src="assets/bilibili.svg" alt="Bilibili" class="btn-icon" />
+            </span>
+            <span>bilibili</span>
+          </a>
+          <a id="hero-software-link" class="btn hero-link-btn" target="_blank" rel="noreferrer noopener">
+            <span class="icon">
+              <i class="fa fa-book"></i>
+            </span>
+            <span>software</span>
+          </a>
+          <a id="hero-viewer-link" class="btn hero-link-btn" target="_blank" rel="noreferrer noopener">
+            <span class="icon">
+              <i class="fa fa-cubes"></i>
+            </span>
+            <span>Viewer</span>
+          </a>
+        </div>
+      </div>
+      <a href="#impact" class="scroll-hint" aria-label="Scroll to impact">Scroll</a>
+    </section>
+
+    <section id="impact" class="impact reveal">
+      <h2 class="section-title">Abstract</h2>
+      <p id="project-abstract" class="abstract-text"></p>
+      <figure class="abstract-teaser">
+        <img src="assets/teaser(video).png" alt="100Editor teaser" loading="lazy" decoding="async" />
+      </figure>
+    </section>
+
+    <section id="method" class="method reveal">
+      <h2 class="section-title">Method</h2>
+      <div id="method-switch" class="method-switch" role="tablist" aria-label="Method views">
+        <button type="button" class="method-tab is-active" data-method-view="pipeline" aria-selected="true">
+          100Editor Pipeline
         </button>
-        <nav id="primary-nav" class="primary-nav" aria-label="Main navigation">
-          <a href="#impact">Abstract</a>
-          <a href="#method">Method</a>
-          <a href="#software">Software</a>
-          <a href="#demo">Interactive Demo</a>
-          <a href="#results">Results Gallery</a>
-          <a href="#quantitative">Quantitative Analysis</a>
-          <a href="#ablation">Ablation Studies</a>
-          <a href="#cta">Reference</a>
-        </nav>
-        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light mode" title="Switch to light mode">
-          🌙
+        <button type="button" class="method-tab" data-method-view="parallel" aria-selected="false">
+          Encoder-Cached Parallel Decoding
         </button>
       </div>
-    </header>
+      <p id="method-caption" class="method-caption">Overview of 100Editor.</p>
+      <figure class="method-display">
+        <img id="method-image" src="assets/overall.png" alt="100Editor Pipeline" loading="lazy" decoding="async" />
+      </figure>
+    </section>
 
-    <main>
-      <section id="hero" class="hero">
-        <video id="hero-video" class="hero-video" autoplay muted loop playsinline preload="auto"></video>
-        <div class="hero-overlay"></div>
-        <div class="hero-content">
-          <p class="feature-slogan-text hero-floating-slogan">Batch Bigger Edit Faster!</p>
-          <div class="eyebrow-row">
-            <img src="assets/logo.png" alt="100Editor logo" class="eyebrow-logo" />
-            <p id="project-subtitle" class="eyebrow">CVPR 2026(findings)</p>
-          </div>
-          <h1 id="hero-title" class="hero-title"></h1>
-          <div id="project-authors" class="hero-authors"></div>
-          <p id="project-tagline" class="hero-tagline"></p>
-          <div class="hero-actions">
-            <a id="hero-paper-link" class="btn hero-link-btn" target="_blank" rel="noreferrer noopener">
-              <span class="icon">
-                <i class="fas fa-file-pdf"></i>
-              </span>
-              <span>Paper</span>
-            </a>
-            <a id="hero-arxiv-link" class="btn hero-link-btn" target="_blank" rel="noreferrer noopener">
-              <span class="icon">
-                <i class="ai ai-arxiv"></i>
-              </span>
-              <span>arXiv</span>
-            </a>
-            <a id="hero-code-link" class="btn hero-link-btn" target="_blank" rel="noreferrer noopener">
-              <span class="icon">
-                <i class="fab fa-github"></i>
-              </span>
-              <span>Code</span>
-            </a>
-            <a id="hero-bilibili-link" class="btn hero-link-btn" target="_blank" rel="noreferrer noopener">
-              <span class="icon">
-                <iconify-icon icon="simple-icons:bilibili"></iconify-icon>
-              </span>
-              <span>bilibili</span>
-            </a>
-            <a id="hero-software-link" class="btn hero-link-btn" target="_blank" rel="noreferrer noopener">
-              <span class="icon">
-                <i class="fa fa-book"></i>
-              </span>
-              <span>software</span>
-            </a>
-            <a id="hero-viewer-link" class="btn hero-link-btn" target="_blank" rel="noreferrer noopener">
-              <span class="icon">
-                <i class="fa fa-cubes"></i>
-              </span>
-              <span>Viewer</span>
-            </a>
-          </div>
-        </div>
-        <a href="#impact" class="scroll-hint" aria-label="Scroll to impact">Scroll</a>
-      </section>
-
-      <section id="impact" class="impact reveal">
-        <h2 class="section-title">Abstract</h2>
-        <p id="project-abstract" class="abstract-text"></p>
-        <figure class="abstract-teaser">
-          <img src="assets/teaser(video).png" alt="100Editor teaser" loading="lazy" decoding="async" />
-        </figure>
-      </section>
-
-      <section id="method" class="method reveal">
-        <h2 class="section-title">Method</h2>
-        <div id="method-switch" class="method-switch" role="tablist" aria-label="Method views">
-          <button type="button" class="method-tab is-active" data-method-view="pipeline" aria-selected="true">
-            100Editor Pipeline
-          </button>
-          <button type="button" class="method-tab" data-method-view="parallel" aria-selected="false">
-            Encoder-Cached Parallel Decoding
-          </button>
-        </div>
-        <p id="method-caption" class="method-caption">Overview of 100Editor.</p>
-        <figure class="method-display">
-          <img
-            id="method-image"
-            src="assets/overall.png"
-            alt="100Editor Pipeline"
-            loading="lazy"
-            decoding="async"
-          />
-        </figure>
-      </section>
-
-      <section id="software" class="Software reveal">
-        <h2 class="section-title">Software</h2>
-        <p class="software-note">
-          For more software features, please see the
-          <a href="https://github.com/Devin100086/100Editor" target="_blank" rel="noreferrer noopener">documentation</a>.
-        </p>
-        <div class="software-actions" role="group" aria-label="Software editing modes">
-          <button class="btn hero-link-btn software-pill software-pill-semantic is-active" type="button" aria-pressed="true" data-software-video="./assets/semantic_editing.mp4?v=20260312">Semantic Editing</button>
-          <button class="btn hero-link-btn software-pill software-pill-additive" type="button" aria-pressed="false" data-software-video="./assets/additive_editing.mp4?v=20260312">Additive Editing</button>
-          <button class="btn hero-link-btn software-pill software-pill-golden" type="button" aria-pressed="false" data-software-video="./assets/substractive_editing.mp4?v=20260312">Subtractive Editing</button>
-          <button class="btn hero-link-btn software-pill software-pill-emerald" type="button" aria-pressed="false" data-software-video="./assets/drag_editing.mp4?v=20260312">Non-rigid Editing</button>
-        </div>
-        <figure class="software-display">
-          <video
-            id="software-video"
-            class="software-video"
-            src="./assets/semantic_editing.mp4?v=20260312"
-            autoplay
-            muted
-            loop
-            playsinline
-            preload="metadata"
-            aria-label="Software editing showcase video"
-          ></video>
-        </figure>
-      </section>
-
-      <section id="demo" class="interactive-demo reveal">
-        <div class="section-head">
-          <h2 class="section-title">Interactive Demo</h2>
-          <p id="demo-note" class="section-note"></p>
-        </div>
-        <div class="demo-panels">
-          <article id="scene-panel" class="media-panel scene-panel">
-            <div class="scene-switch-row">
-              <span id="scene-source-label" class="scene-switch-label is-active">Source Scene</span>
-              <label class="scene-switch" for="scene-toggle">
-                <input
-                  id="scene-toggle"
-                  type="checkbox"
-                  role="switch"
-                  aria-label="Toggle between source scene and edited scene"
-                />
-                <span class="scene-switch-ui" aria-hidden="true"></span>
-              </label>
-              <span id="scene-edited-label" class="scene-switch-label">Edited Scene</span>
-            </div>
-            <figure class="media-frame">
-              <div id="demo-viewer-shell" class="demo-viewer-shell hidden">
-                <iframe
-                  id="demo-viewer-frame"
-                  class="demo-viewer-frame"
-                  title="Interactive 3D scene viewer"
-                  loading="lazy"
-                  referrerpolicy="no-referrer"
-                ></iframe>
-              </div>
-              <img
-                id="demo-media"
-                src=""
-                alt="Source scene example"
-                loading="eager"
-                decoding="async"
-                fetchpriority="high"
-              />
-            </figure>
-          </article>
-        </div>
-        <div id="case-tabs" class="case-tabs" role="tablist" aria-label="Demo cases"></div>
-      </section>
-
-      <section id="results" class="results reveal">
-        <h2 class="section-title">Results Gallery</h2>
-        <div class="software-actions results-actions" role="group" aria-label="Results editing modes">
-          <button class="btn hero-link-btn software-pill software-pill-semantic result-mode-btn is-active" type="button" aria-pressed="true" data-result-mode="semantic">Semantic Editing</button>
-          <button class="btn hero-link-btn software-pill software-pill-additive result-mode-btn" type="button" aria-pressed="false" data-result-mode="additive">Additive Editing</button>
-          <button class="btn hero-link-btn software-pill software-pill-golden result-mode-btn" type="button" aria-pressed="false" data-result-mode="subtractive">Subtractive Editing</button>
-          <button class="btn hero-link-btn software-pill software-pill-emerald result-mode-btn" type="button" aria-pressed="false" data-result-mode="nonrigid">Non-rigid Editing</button>
-        </div>
-        <div id="results-panel" class="results-panel"></div>
-      </section>
-      <section id="quantitative" class="quantitative reveal">
-        <h2 class="section-title">Quantitative Analysis</h2>
-        <p class="quantitative-subtitle">Compared to other methods, 100Editor achieves superior editing quality while attaining the shortest editing time.</p>
-        <div id="quantitative-root" class="quantitative-root"></div>
-      </section>
-      <section id="ablation" class="quantitative reveal">
-        <h2 class="section-title">Ablation Studies</h2>
-        <p class="quantitative-subtitle">We report ablations over batch editing, lightweight renderer, parallel decoding, and the CLIP-guided patience stopping (CPS) strategy. Each component contributes to reducing the overall editing time, and their combination yields the fastest configuration.</p>
-        <div id="ablation-root" class="quantitative-root ablation-root">
-          <div class="ablation-card">
-            <div class="ablation-table-wrap">
-              <table class="ablation-table" aria-label="Ablation timing comparison">
-                <thead>
-                  <tr>
-                    <th class="ablation-group" colspan="4">Modules enabled</th>
-                    <th rowspan="2">Time [s]</th>
-                    <th rowspan="2">&#916; [s]</th>
-                  </tr>
-                  <tr>
-                    <th>Batch Editing</th>
-                    <th>Lightweight Renderer</th>
-                    <th>Parallel Decoding</th>
-                    <th>CPS</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td class="ablation-baseline" colspan="4">&empty; (baseline)</td>
-                    <td>184.29</td>
-                    <td>-</td>
-                  </tr>
-                  <tr>
-                    <td class="ablation-check">&#10003;</td>
-                    <td></td>
-                    <td></td>
-                    <td></td>
-                    <td>116.24</td>
-                    <td class="ablation-delta-strong">🏆68.05</td>
-                  </tr>
-                  <tr>
-                    <td class="ablation-check">&#10003;</td>
-                    <td class="ablation-check">&#10003;</td>
-                    <td></td>
-                    <td></td>
-                    <td>95.24</td>
-                    <td>21.00</td>
-                  </tr>
-                  <tr>
-                    <td class="ablation-check">&#10003;</td>
-                    <td class="ablation-check">&#10003;</td>
-                    <td class="ablation-check">&#10003;</td>
-                    <td></td>
-                    <td>86.83</td>
-                    <td>8.41</td>
-                  </tr>
-                  <tr class="is-ours">
-                    <td class="ablation-check">&#10003;</td>
-                    <td class="ablation-check">&#10003;</td>
-                    <td class="ablation-check">&#10003;</td>
-                    <td class="ablation-check">&#10003;</td>
-                    <td class="ablation-best">🏆59.60</td>
-                    <td>27.23</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <footer id="cta" class="cta reveal">
-      <h2 class="section-title">Reference</h2>
-      <div id="link-buttons" class="link-buttons"></div>
-      <div class="citation-card">
-        <div class="citation-head">
-          <h3>BibTeX</h3>
-          <button id="copy-bibtex" class="btn btn-small" type="button">Copy</button>
-        </div>
-        <pre id="bibtex-block" class="bibtex"></pre>
+    <section id="software" class="Software reveal">
+      <h2 class="section-title">Software</h2>
+      <p class="software-note">
+        For more software features, please see the
+        <a href="https://github.com/Devin100086/100Editor" target="_blank" rel="noreferrer noopener">documentation</a>.
+      </p>
+      <div class="software-actions" role="group" aria-label="Software editing modes">
+        <button class="btn hero-link-btn software-pill software-pill-semantic is-active" type="button"
+          aria-pressed="true" data-software-video="./assets/semantic_editing.mp4?v=20260312">Semantic Editing</button>
+        <button class="btn hero-link-btn software-pill software-pill-additive" type="button" aria-pressed="false"
+          data-software-video="./assets/additive_editing.mp4?v=20260312">Additive Editing</button>
+        <button class="btn hero-link-btn software-pill software-pill-golden" type="button" aria-pressed="false"
+          data-software-video="./assets/substractive_editing.mp4?v=20260312">Subtractive Editing</button>
+        <button class="btn hero-link-btn software-pill software-pill-emerald" type="button" aria-pressed="false"
+          data-software-video="./assets/drag_editing.mp4?v=20260312">Non-rigid Editing</button>
       </div>
-    </footer>
+      <figure class="software-display">
+        <video id="software-video" class="software-video" src="./assets/semantic_editing.mp4?v=20260312" autoplay muted
+          loop playsinline preload="metadata" aria-label="Software editing showcase video"></video>
+      </figure>
+    </section>
 
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script src="./main.js" defer></script>
-  </body>
+    <section id="demo" class="interactive-demo reveal">
+      <div class="section-head">
+        <h2 class="section-title">Interactive Demo</h2>
+        <p id="demo-note" class="section-note"></p>
+      </div>
+      <div class="demo-panels">
+        <article id="scene-panel" class="media-panel scene-panel">
+          <div class="scene-switch-row">
+            <span id="scene-source-label" class="scene-switch-label is-active">Source Scene</span>
+            <label class="scene-switch" for="scene-toggle">
+              <input id="scene-toggle" type="checkbox" role="switch"
+                aria-label="Toggle between source scene and edited scene" />
+              <span class="scene-switch-ui" aria-hidden="true"></span>
+            </label>
+            <span id="scene-edited-label" class="scene-switch-label">Edited Scene</span>
+          </div>
+          <figure class="media-frame">
+            <div id="demo-viewer-shell" class="demo-viewer-shell hidden">
+              <iframe id="demo-viewer-frame" class="demo-viewer-frame" title="Interactive 3D scene viewer"
+                loading="lazy" referrerpolicy="no-referrer"></iframe>
+            </div>
+            <img id="demo-media" src="" alt="Source scene example" loading="eager" decoding="async"
+              fetchpriority="high" />
+          </figure>
+        </article>
+      </div>
+      <div id="case-tabs" class="case-tabs" role="tablist" aria-label="Demo cases"></div>
+    </section>
+
+    <section id="results" class="results reveal">
+      <h2 class="section-title">Results Gallery</h2>
+      <div class="software-actions results-actions" role="group" aria-label="Results editing modes">
+        <button class="btn hero-link-btn software-pill software-pill-semantic result-mode-btn is-active" type="button"
+          aria-pressed="true" data-result-mode="semantic">Semantic Editing</button>
+        <button class="btn hero-link-btn software-pill software-pill-additive result-mode-btn" type="button"
+          aria-pressed="false" data-result-mode="additive">Additive Editing</button>
+        <button class="btn hero-link-btn software-pill software-pill-golden result-mode-btn" type="button"
+          aria-pressed="false" data-result-mode="subtractive">Subtractive Editing</button>
+        <button class="btn hero-link-btn software-pill software-pill-emerald result-mode-btn" type="button"
+          aria-pressed="false" data-result-mode="nonrigid">Non-rigid Editing</button>
+      </div>
+      <div id="results-panel" class="results-panel"></div>
+    </section>
+    <section id="quantitative" class="quantitative reveal">
+      <h2 class="section-title">Quantitative Analysis</h2>
+      <p class="quantitative-subtitle">Compared to other methods, 100Editor achieves superior editing quality while
+        attaining the shortest editing time.</p>
+      <div id="quantitative-root" class="quantitative-root"></div>
+    </section>
+    <section id="ablation" class="quantitative reveal">
+      <h2 class="section-title">Ablation Studies</h2>
+      <p class="quantitative-subtitle">We report ablations over batch editing, lightweight renderer, parallel decoding,
+        and the CLIP-guided patience stopping (CPS) strategy. Each component contributes to reducing the overall editing
+        time, and their combination yields the fastest configuration.</p>
+      <div id="ablation-root" class="quantitative-root ablation-root">
+        <div class="ablation-card">
+          <div class="ablation-table-wrap">
+            <table class="ablation-table" aria-label="Ablation timing comparison">
+              <thead>
+                <tr>
+                  <th class="ablation-group" colspan="4">Modules enabled</th>
+                  <th rowspan="2">Time [s]</th>
+                  <th rowspan="2">&#916; [s]</th>
+                </tr>
+                <tr>
+                  <th>Batch Editing</th>
+                  <th>Lightweight Renderer</th>
+                  <th>Parallel Decoding</th>
+                  <th>CPS</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="ablation-baseline" colspan="4">&empty; (baseline)</td>
+                  <td>184.29</td>
+                  <td>-</td>
+                </tr>
+                <tr>
+                  <td class="ablation-check">&#10003;</td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                  <td>116.24</td>
+                  <td class="ablation-delta-strong">🏆68.05</td>
+                </tr>
+                <tr>
+                  <td class="ablation-check">&#10003;</td>
+                  <td class="ablation-check">&#10003;</td>
+                  <td></td>
+                  <td></td>
+                  <td>95.24</td>
+                  <td>21.00</td>
+                </tr>
+                <tr>
+                  <td class="ablation-check">&#10003;</td>
+                  <td class="ablation-check">&#10003;</td>
+                  <td class="ablation-check">&#10003;</td>
+                  <td></td>
+                  <td>86.83</td>
+                  <td>8.41</td>
+                </tr>
+                <tr class="is-ours">
+                  <td class="ablation-check">&#10003;</td>
+                  <td class="ablation-check">&#10003;</td>
+                  <td class="ablation-check">&#10003;</td>
+                  <td class="ablation-check">&#10003;</td>
+                  <td class="ablation-best">🏆59.60</td>
+                  <td>27.23</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer id="cta" class="cta reveal">
+    <h2 class="section-title">Reference</h2>
+    <div id="link-buttons" class="link-buttons"></div>
+    <div class="citation-card">
+      <div class="citation-head">
+        <h3>BibTeX</h3>
+        <button id="copy-bibtex" class="btn btn-small" type="button">Copy</button>
+      </div>
+      <pre id="bibtex-block" class="bibtex"></pre>
+    </div>
+  </footer>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="./main.js" defer></script>
+</body>
+
 </html>

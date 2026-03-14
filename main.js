@@ -174,7 +174,7 @@ const CONTENT = {
           editedVideo: "./assets/results/black_mask.mp4",
         },
         {
-          prompt: "Make it wear Dr. Martens boots, wings, and metal ears.",
+          prompt: "It wears Martens boots, wings, and metal ears.",
           sourceVideo: "./assets/results/add_kangroo.mp4",
           editedVideo: "./assets/results/kangroo_wind.mp4",
         },
@@ -233,7 +233,7 @@ const CONTENT = {
     code: "https://github.com/Devin100086/100Editor",
     bilibili: "https://www.bilibili.com",
     software: "https://github.com/Devin100086/100Editor",
-    viewer: "https://github.com/Devin100086/Nebula",  
+    viewer: "https://github.com/Devin100086/Nebula",
   },
 };
 
@@ -537,80 +537,80 @@ function initHeroMedia() {
       });
       heroVideo.addEventListener("error", () => heroSection.classList.add("is-fallback"), { once: true });
     } else {
-    const setVideoSource = (videoEl, source) => {
-      if (videoEl.dataset.source === source) return;
-      videoEl.dataset.source = source;
-      videoEl.src = encodeURI(source);
-      videoEl.load();
-    };
-
-    const playSilently = (videoEl) => {
-      videoEl.play().catch(() => {
-        // Autoplay may be blocked on some browsers; keep muted/inline config as fallback.
-      });
-    };
-
-    // Keep two players: one visible and one preloaded for the next segment.
-    const bufferedVideo = heroVideo.cloneNode(false);
-    bufferedVideo.id = "hero-video-buffer";
-    bufferedVideo.removeAttribute("loop");
-    bufferedVideo.style.opacity = "0";
-    bufferedVideo.style.transition = "opacity 180ms linear";
-    heroVideo.style.transition = "opacity 180ms linear";
-    heroSection.insertBefore(bufferedVideo, heroVideo.nextSibling);
-
-    const players = [heroVideo, bufferedVideo];
-    let activePlayerIndex = 0;
-    let activePlaylistIndex = 0;
-
-    players.forEach((player, idx) => {
-      player.loop = false;
-      player.muted = true;
-      player.playsInline = true;
-      player.preload = "auto";
-      player.style.opacity = idx === 0 ? "0.62" : "0";
-      player.addEventListener("error", () => heroSection.classList.add("is-fallback"), { once: true });
-    });
-
-    setVideoSource(players[0], playlist[0]);
-    if (playlist.length > 1) {
-      setVideoSource(players[1], playlist[1]);
-    }
-    playSilently(players[0]);
-
-    const handleEnded = (endedPlayerIndex) => {
-      if (endedPlayerIndex !== activePlayerIndex) return;
-
-      const incomingPlayerIndex = 1 - activePlayerIndex;
-      const outgoingPlayer = players[activePlayerIndex];
-      const incomingPlayer = players[incomingPlayerIndex];
-
-      activePlaylistIndex = (activePlaylistIndex + 1) % playlist.length;
-
-      const revealIncoming = () => {
-        incomingPlayer.removeEventListener("loadeddata", revealIncoming);
-        incomingPlayer.currentTime = 0;
-        playSilently(incomingPlayer);
-        incomingPlayer.style.opacity = "0.62";
-        outgoingPlayer.style.opacity = "0";
-        outgoingPlayer.pause();
+      const setVideoSource = (videoEl, source) => {
+        if (videoEl.dataset.source === source) return;
+        videoEl.dataset.source = source;
+        videoEl.src = encodeURI(source);
+        videoEl.load();
       };
 
-      if (incomingPlayer.readyState >= 2) {
-        revealIncoming();
-      } else {
-        incomingPlayer.addEventListener("loadeddata", revealIncoming, { once: true });
+      const playSilently = (videoEl) => {
+        videoEl.play().catch(() => {
+          // Autoplay may be blocked on some browsers; keep muted/inline config as fallback.
+        });
+      };
+
+      // Keep two players: one visible and one preloaded for the next segment.
+      const bufferedVideo = heroVideo.cloneNode(false);
+      bufferedVideo.id = "hero-video-buffer";
+      bufferedVideo.removeAttribute("loop");
+      bufferedVideo.style.opacity = "0";
+      bufferedVideo.style.transition = "opacity 180ms linear";
+      heroVideo.style.transition = "opacity 180ms linear";
+      heroSection.insertBefore(bufferedVideo, heroVideo.nextSibling);
+
+      const players = [heroVideo, bufferedVideo];
+      let activePlayerIndex = 0;
+      let activePlaylistIndex = 0;
+
+      players.forEach((player, idx) => {
+        player.loop = false;
+        player.muted = true;
+        player.playsInline = true;
+        player.preload = "auto";
+        player.style.opacity = idx === 0 ? "0.62" : "0";
+        player.addEventListener("error", () => heroSection.classList.add("is-fallback"), { once: true });
+      });
+
+      setVideoSource(players[0], playlist[0]);
+      if (playlist.length > 1) {
+        setVideoSource(players[1], playlist[1]);
       }
+      playSilently(players[0]);
 
-      activePlayerIndex = incomingPlayerIndex;
+      const handleEnded = (endedPlayerIndex) => {
+        if (endedPlayerIndex !== activePlayerIndex) return;
 
-      const nextPlaylistIndex = (activePlaylistIndex + 1) % playlist.length;
-      setVideoSource(outgoingPlayer, playlist[nextPlaylistIndex]);
-      outgoingPlayer.currentTime = 0;
-    };
+        const incomingPlayerIndex = 1 - activePlayerIndex;
+        const outgoingPlayer = players[activePlayerIndex];
+        const incomingPlayer = players[incomingPlayerIndex];
 
-    players[0].addEventListener("ended", () => handleEnded(0));
-    players[1].addEventListener("ended", () => handleEnded(1));
+        activePlaylistIndex = (activePlaylistIndex + 1) % playlist.length;
+
+        const revealIncoming = () => {
+          incomingPlayer.removeEventListener("loadeddata", revealIncoming);
+          incomingPlayer.currentTime = 0;
+          playSilently(incomingPlayer);
+          incomingPlayer.style.opacity = "0.62";
+          outgoingPlayer.style.opacity = "0";
+          outgoingPlayer.pause();
+        };
+
+        if (incomingPlayer.readyState >= 2) {
+          revealIncoming();
+        } else {
+          incomingPlayer.addEventListener("loadeddata", revealIncoming, { once: true });
+        }
+
+        activePlayerIndex = incomingPlayerIndex;
+
+        const nextPlaylistIndex = (activePlaylistIndex + 1) % playlist.length;
+        setVideoSource(outgoingPlayer, playlist[nextPlaylistIndex]);
+        outgoingPlayer.currentTime = 0;
+      };
+
+      players[0].addEventListener("ended", () => handleEnded(0));
+      players[1].addEventListener("ended", () => handleEnded(1));
     }
   } else {
     heroSection.classList.add("is-fallback");
