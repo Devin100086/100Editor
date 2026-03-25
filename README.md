@@ -22,9 +22,10 @@
 
 <div align="center">
 
-<a href='https://arxiv.org/abs/2311.14521'><img src='https://img.shields.io/badge/arXiv-2311.14521-b31b1b.svg'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
- <a href='https://devin100086.github.io/100Editor/'><img src='https://img.shields.io/badge/Project-Page-Green'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
- <a href='https://www.youtube.com/watch?v=TdZIICSFqsU&ab_channel=YiwenChen'><img src='https://img.shields.io/badge/Bilibili-00A1D6?logo=bilibili&logoColor=white'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+ <a href='https://arxiv.org/abs/2311.14521'><img src='https://img.shields.io/badge/arXiv-2311.14521-b31b1b.svg?style=for-the-badge'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+ <a href='https://devin100086.github.io/100Editor/'><img src='https://img.shields.io/badge/Project-Page-Green?style=for-the-badge'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+ <a href='https://www.youtube.com/watch?v=TdZIICSFqsU&ab_channel=YiwenChen'><img src='https://img.shields.io/badge/Bilibili-00A1D6?logo=bilibili&logoColor=white&style=for-the-badge'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+ <a href='你的链接'><img src='https://img.shields.io/badge/Software-Document-8A2BE2.svg?style=for-the-badge'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 
 </div>
 
@@ -88,6 +89,7 @@ We sincerely appreciate these excellent open-source projects.
 <div align="center">
 <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/refs/heads/master/Emojis/Smilies/Beaming%20Face%20with%20Smiling%20Eyes.png" alt="Thanks" width="50" height="50" />
 
-> **We hope that 100Editor provides you with a distinctive editing experience！**
-If you find this repository helpful, please give it a star ⭐
+**We hope that 100Editor provides you with a distinctive editing experience！**
+
+**If you find this repository helpful, please give it a star ⭐**
 </div>
