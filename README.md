@@ -31,6 +31,7 @@
 ## :loudspeaker:News
 
  **[2026-04]** :fire: We release the code of 100Editor and the 3D editing software of 100Editor！
+ 
  **[2026-02]** :tada: 100Editor has been accepted to CVPR 2026(Findings)! Code coming soon!
  
 ## :wrench: Installation
