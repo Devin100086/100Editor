@@ -8,3 +8,6 @@ python trainer/origin/train.py -s "/home/wucunqi/Desktop/results/three_people_st
 python trainer/origin/train.py -s "/home/wucunqi/Desktop/results/plant" --checkpoint_iterations 7000 --eval -m "output/plant"
 
 python trainer/origin/train.py -s "/media/wucunqi/data/results/dinosaur" -r "1" --checkpoint_iterations 7000 -m "output/dinosaur"
+
+
+python trainer/origin/train.py -s "/media/wucunqi/data/3D_Datasets/20260310_cunqi" -r "2" --checkpoint_iterations 7000 -m "output/cunqi"

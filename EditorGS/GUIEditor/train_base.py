@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torchvision.transforms.functional import to_pil_image, to_tensor
 import sys
 import gc
+import shutil
 
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"gaussiansplatting"))
 from threestudio.utils.sam import LangSAMTextSegmentor
@@ -123,6 +124,12 @@ class BaseTrainer:
         self.inpaint_again = True
         self.scale_depth = True
         self.clip_metrics = ClipSimilarity().to(self.gaussian.get_xyz.device)
+
+    def _clear_cuda_memory(self):
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
 
     @torch.no_grad()
     def render_cameras_list(self, edit_cameras, separate_sh=False):
@@ -240,38 +247,37 @@ class BaseTrainer:
                 )
     
     def update_mask(self, edit_cameras, text_prompt = "hat", type = "default") -> None:
-
         from threestudio.utils.sam import LangSAMTextSegmentor
         lang_sam = LangSAMTextSegmentor().to(get_device())
 
         masks = []
         weights = torch.zeros_like(self.gaussian._opacity)
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
-        kernel =  np.ones((5,5),np.uint8)
 
-        for cam in tqdm(edit_cameras):
-            cur_cam = cam
-            if type == "default":
-                this_frame = render(
-                    cur_cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam
-                )["render"]
-            else:
-                this_frame = render(
-                    cur_cam, self.gaussian2, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam
-                )["render"]
-            
-            mask = lang_sam(this_frame.unsqueeze(0).permute(0,2,3,1), text_prompt)[
-                    0
-                ].to(get_device())
+        with torch.inference_mode():
+            for cam in tqdm(edit_cameras):
+                cur_cam = cam
+                if type == "default":
+                    this_frame = render(
+                        cur_cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam
+                    )["render"]
+                else:
+                    this_frame = render(
+                        cur_cam, self.gaussian2, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam
+                    )["render"]
 
-            masks.append(mask.cpu().numpy().astype(np.uint8) * 255)
-            self.gaussian.apply_weights(cur_cam, weights, weights_cnt, mask)
+                mask = lang_sam(this_frame.unsqueeze(0).permute(0, 2, 3, 1), text_prompt)[0].to(get_device())
+                masks.append((mask.detach().to("cpu").numpy().astype(np.uint8) * 255))
+                self.gaussian.apply_weights(cur_cam, weights, weights_cnt, mask.to(torch.float32))
+                del this_frame, mask
 
         weights /= weights_cnt + 1e-7
         selected_mask = weights > self.mask_thres
         selected_mask = selected_mask[:, 0]
         self.gaussian.set_mask(selected_mask)
         self.gaussian.apply_grad_mask(selected_mask)
+        del lang_sam
+        self._clear_cuda_memory()
 
         return masks, selected_mask
     
@@ -290,43 +296,46 @@ class BaseTrainer:
         masks = []
         weights = torch.zeros_like(self.gaussian._opacity)
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
-        for cam in tqdm(edit_cameras):
-            cur_cam = cam
-            assert len(positive_points3d) > 0
-            positive_points2ds = project_3d_to_2d(positive_points3d, cur_cam) if len(positive_points3d) > 0 else np.empty((0,2))
-            negative_points2ds = project_3d_to_2d(negative_points3d, cur_cam) if len(negative_points3d) > 0 else np.empty((0,2))
-            if type == "default":
-                img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)[
-                    "render"
-                ]
-            else:
-                img = render(cur_cam, self.gaussian2, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)[
-                    "render"
-                ]
-            sam2_predictor.set_image(
-                np.asarray(to_pil_image(img.cpu())),
-            )
+        with torch.inference_mode():
+            for cam in tqdm(edit_cameras):
+                cur_cam = cam
+                assert len(positive_points3d) > 0
+                positive_points2ds = project_3d_to_2d(positive_points3d, cur_cam) if len(positive_points3d) > 0 else np.empty((0,2))
+                negative_points2ds = project_3d_to_2d(negative_points3d, cur_cam) if len(negative_points3d) > 0 else np.empty((0,2))
+                if type == "default":
+                    img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)[
+                        "render"
+                    ]
+                else:
+                    img = render(cur_cam, self.gaussian2, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)[
+                        "render"
+                    ]
+                sam2_predictor.set_image(
+                    np.asarray(to_pil_image(img.detach().to("cpu"))),
+                )
 
-            positive_points2ds = np.empty((0,2)) if positive_points2ds.shape[0] == 0 else positive_points2ds
-            negative_points2ds = np.empty((0,2)) if negative_points2ds.shape[0] == 0 else negative_points2ds
-            positive_label = np.empty((0), dtype=np.int64) if positive_points2ds.shape[0] == 0 else np.array([1] * positive_points2ds.shape[0], dtype=np.int64) 
-            negative_label = np.empty((0), dtype=np.int64) if negative_points2ds.shape[0] == 0 else np.array([0] * negative_points2ds.shape[0], dtype=np.int64)
-            
-            point_coords = np.concatenate((positive_points2ds, negative_points2ds), axis=0)
-            point_labels = np.concatenate((positive_label, negative_label), axis=0) 
-            
-            mask, _, _ = sam2_predictor.predict(
-                point_coords= point_coords,
-                point_labels=point_labels,
-                box=None,
-                multimask_output=False,
-            )
-            mask = torch.from_numpy(mask).to(get_device())
-            torchvision.utils.save_image(mask.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cam.image_name}" + ".png")
-            self.gaussian.apply_weights(
-                cur_cam, weights, weights_cnt, mask.to(torch.float32)
-            )
-            masks.append(mask)
+                positive_points2ds = np.empty((0,2)) if positive_points2ds.shape[0] == 0 else positive_points2ds
+                negative_points2ds = np.empty((0,2)) if negative_points2ds.shape[0] == 0 else negative_points2ds
+                positive_label = np.empty((0), dtype=np.int64) if positive_points2ds.shape[0] == 0 else np.array([1] * positive_points2ds.shape[0], dtype=np.int64)
+                negative_label = np.empty((0), dtype=np.int64) if negative_points2ds.shape[0] == 0 else np.array([0] * negative_points2ds.shape[0], dtype=np.int64)
+
+                point_coords = np.concatenate((positive_points2ds, negative_points2ds), axis=0)
+                point_labels = np.concatenate((positive_label, negative_label), axis=0)
+
+                mask, _, _ = sam2_predictor.predict(
+                    point_coords=point_coords,
+                    point_labels=point_labels,
+                    box=None,
+                    multimask_output=False,
+                )
+                mask = torch.from_numpy(mask).to(get_device())
+                mask_float = mask.to(torch.float32)
+                torchvision.utils.save_image(mask_float.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cam.image_name}" + ".png")
+                self.gaussian.apply_weights(
+                    cur_cam, weights, weights_cnt, mask_float
+                )
+                masks.append((mask.detach().to("cpu").numpy().astype(np.uint8) * 255))
+                del img, mask, mask_float
 
         weights /= weights_cnt + 1e-7
         selected_mask = weights > self.mask_thres
@@ -334,8 +343,7 @@ class BaseTrainer:
         self.gaussian.set_mask(selected_mask)
         self.gaussian.apply_grad_mask(selected_mask)
         del sam2_predictor
-        gc.collect()    
-        torch.cuda.empty_cache()
+        self._clear_cuda_memory()
 
         return masks, selected_mask
     
@@ -347,20 +355,22 @@ class BaseTrainer:
         from sam2.sam2_video_predictor import SAM2VideoPredictor
         sam2_predictor = SAM2VideoPredictor.from_pretrained("facebook/sam2-hiera-large")
         render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
-        for i, cam in tqdm(enumerate(edit_cameras)):
-            cur_cam = cam
-            if type == "default":
-                img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
+        os.makedirs(render_folder, exist_ok=True)
+        for name in os.listdir(render_folder):
+            file_path = os.path.join(render_folder, name)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
             else:
-                img = render(cur_cam, self.gaussian2, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
-            save_image(img[None], f"{render_folder}/{i+1:05d}" + ".jpg")
-
-        frame_names = [
-            p for p in os.listdir(render_folder)
-            if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG"]
-        ]
-
-        frame_names.sort(key=lambda p: int(os.path.splitext(p)[0]))
+                shutil.rmtree(file_path)
+        with torch.inference_mode():
+            for i, cam in tqdm(enumerate(edit_cameras)):
+                cur_cam = cam
+                if type == "default":
+                    img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
+                else:
+                    img = render(cur_cam, self.gaussian2, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
+                save_image(img[None], f"{render_folder}/{i+1:05d}" + ".jpg")
+                del img
 
         state = sam2_predictor.init_state(video_path=render_folder)
         sam2_predictor.reset_state(state)
@@ -388,16 +398,19 @@ class BaseTrainer:
         weights = torch.zeros_like(self.gaussian._opacity)
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
 
-        for out_frame_idx, _, out_mask_logits in sam2_predictor.propagate_in_video(state):
-            if out_frame_idx == 0:
-                continue
-            mask = out_mask_logits[0] > 0.0
-            cur_cam = edit_cameras[out_frame_idx-1]
-            save_image(mask.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cur_cam.image_name}" + ".png")
-            self.gaussian.apply_weights(
-                cur_cam, weights, weights_cnt, mask.to(torch.float32)
-            )
-            masks.append(mask.to(torch.float16))
+        with torch.inference_mode():
+            for out_frame_idx, _, out_mask_logits in sam2_predictor.propagate_in_video(state):
+                if out_frame_idx == 0:
+                    continue
+                mask = out_mask_logits[0] > 0.0
+                mask_float = mask.to(torch.float32)
+                cur_cam = edit_cameras[out_frame_idx - 1]
+                save_image(mask_float.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cur_cam.image_name}" + ".png")
+                self.gaussian.apply_weights(
+                    cur_cam, weights, weights_cnt, mask_float
+                )
+                masks.append((mask.detach().to("cpu").numpy().astype(np.uint8) * 255))
+                del out_mask_logits, mask, mask_float
 
         weights /= weights_cnt + 1e-7
         selected_mask = weights > self.mask_thres
@@ -405,8 +418,7 @@ class BaseTrainer:
         self.gaussian.set_mask(selected_mask)
         self.gaussian.apply_grad_mask(selected_mask)
         del sam2_predictor,state
-        gc.collect()    
-        torch.cuda.empty_cache()
+        self._clear_cuda_memory()
 
         return masks, selected_mask
 

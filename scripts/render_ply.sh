@@ -1,8 +1,8 @@
 #!/bin/bash
 
-GS_SOURCE="outputs/Turn_it_into_basketball@2026_01_30_09_51/result.ply"
-COLMAP_DIR="/home/wucunqi/Desktop/orange"
-SAVE_DIR="outputs/Turn_it_into_basketball@2026_01_30_09_51"
+GS_SOURCE="/home/wucunqi/Desktop/Deblur/outputs/edit-n2n/remove_degradation@20260323-111827/save/last.ply"
+COLMAP_DIR="/media/wucunqi/data/3D_Datasets/20260303_cunqi"
+SAVE_DIR="/home/wucunqi/Desktop/Deblur/outputs/edit-n2n/remove_degradation@20260323-111827"
 # SAVE_DIR="save/render_edited"
 USE_ORIGIN=1
 

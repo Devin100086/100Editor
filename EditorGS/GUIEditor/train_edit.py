@@ -132,10 +132,7 @@ class EditTrainer(BaseTrainer):
         if sam_option == 0:
             pass
         elif sam_option == 1:
-            self.lang_sam = LangSAMTextSegmentor().to(get_device())
             self.masks, _ = self.update_mask(self.train_cameras, text_prompt=seg_prompt)
-            
-            del self.lang_sam
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 
@@ -143,51 +140,51 @@ class EditTrainer(BaseTrainer):
 
             positive_points3d = []
             negative_points3d = []
+            with torch.inference_mode():
+                depth = render(self.cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)[
+                    "depth_3dgs"
+                ]
+                depth_np = (1 / depth).detach().cpu().numpy()
+
             # positive
-            for i, sam_point in enumerate(self.positive_sam_points):
-                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)[
-                    "depth_3dgs"
-                ]
-                # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
-                depth = (1/depth).detach().cpu().numpy()
+            for sam_point in self.positive_sam_points:
                 sam_point = sam_point * np.array([self.cam.image_width, self.cam.image_height])
-                unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
-                # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
+                unprojected_points3d = pixel_to_3d(
+                    sam_point,
+                    self.cam,
+                    depth_np[0][int(sam_point[1]), int(sam_point[0])],
+                )
                 positive_points3d.append(unprojected_points3d)
-            
+
             # negative
-            for i, sam_point in enumerate(self.negative_sam_points):
-                depth = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)[
-                    "depth_3dgs"
-                ]
-                # depth = render_simple(self.cam[i], gaussian_copy, self.background_tensor)["depth"]
-                depth = (1/depth).detach().cpu().numpy()
+            for sam_point in self.negative_sam_points:
                 sam_point = sam_point * np.array([self.cam.image_width, self.cam.image_height])
-                unprojected_points3d = pixel_to_3d(sam_point, self.cam, depth[0][int(sam_point[1]), int(sam_point[0])])
-                # point2d = project_3d_to_2d(unprojected_points3d, self.cam[i])
+                unprojected_points3d = pixel_to_3d(
+                    sam_point,
+                    self.cam,
+                    depth_np[0][int(sam_point[1]), int(sam_point[0])],
+                )
                 negative_points3d.append(unprojected_points3d)
             
             positive_points3d = np.array(positive_points3d)
             negative_points3d = np.array(negative_points3d)
             self.masks, _ = self.update_sam_mask_with_point_prompt(self.train_cameras, positive_points3d, negative_points3d)
 
-            del depth, positive_points3d, negative_points3d, unprojected_points3d
+            del depth, depth_np, positive_points3d, negative_points3d
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            self._clear_cuda_memory()
 
         elif sam_option == 3:
 
-            self.positive_sam_points = np.empty((0,2)) if self.positive_sam_points.shape[0] == 0 else self.positive_sam_points * np.array([self.cam.image_width, self.cam.image_height])
-            self.negative_sam_points = np.empty((0,2)) if self.negative_sam_points.shape[0] == 0 else self.negative_sam_points * np.array([self.cam.image_width, self.cam.image_height])
-            render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
-            init_render = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
-            save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
+            positive_sam_points = np.empty((0,2)) if self.positive_sam_points.shape[0] == 0 else self.positive_sam_points * np.array([self.cam.image_width, self.cam.image_height])
+            negative_sam_points = np.empty((0,2)) if self.negative_sam_points.shape[0] == 0 else self.negative_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             self.masks, _ = self.update_sam2_mask_with_point_prompt(self.train_cameras, 
-                                                                    self.positive_sam_points ,
-                                                                   self.negative_sam_points)
-            del init_render
+                                                                    positive_sam_points ,
+                                                                   negative_sam_points)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
+            self._clear_cuda_memory()
         
         self.guidance = EditGuidance(
             guidance=cur_2D_guidance,
@@ -216,7 +213,7 @@ class EditTrainer(BaseTrainer):
         best_metric = float('-inf')
         max_delta = 0.006
         patience_counter = 0
-        patience = 5
+        patience = 4
         Batch_flag = False
         Batch_count = 0
 
@@ -236,8 +233,8 @@ class EditTrainer(BaseTrainer):
             torch.cuda.reset_peak_memory_stats()
         
         # 创建保存相机45渲染结果的目录
-        camera_45_dir = os.path.join(self.output_dir, "camera_45_renders")
-        os.makedirs(camera_45_dir, exist_ok=True)
+        # camera_45_dir = os.path.join(self.output_dir, "camera_45_renders")
+        # os.makedirs(camera_45_dir, exist_ok=True)
         
         for step in tqdm(range(self.edit_train_steps)):
             network.render(self.pipe,self.gaussian,ema_loss_for_log, render,self.background_tensor,step,self.opt, self.use_sparse_adam)
@@ -281,7 +278,7 @@ class EditTrainer(BaseTrainer):
                         Batch_flag = True
                         continue
                 if ((step == 0 or Batch_flag == True) and video):
-                    if Batch_count >= 1:
+                    if Batch_count >= 3:
                         print(f"Finish all batches at step {step}.")
                         break
                     self.edit_all_view(sam_option, update_camera= step >= self.cameara_update_step, global_step=step)
@@ -398,10 +395,16 @@ class EditTrainer(BaseTrainer):
                 images.append(out)
                 if sam_option != 0:
                     if isinstance(self.masks[id], np.ndarray):
-                        mask = torch.from_numpy(self.masks[id]/255).unsqueeze(0)
-                        mask = mask.to(torch.float32).to(get_device())
+                        mask = torch.from_numpy(self.masks[id] / 255.0)
                     else:
-                        mask = self.masks[id].unsqueeze(0)
+                        mask = self.masks[id].to(torch.float32)
+                        if torch.max(mask) > 1:
+                            mask = mask / 255.0
+                    if mask.ndim == 2:
+                        mask = mask.unsqueeze(0).unsqueeze(0)
+                    elif mask.ndim == 3:
+                        mask = mask.unsqueeze(0)
+                    mask = mask.to(torch.float32).to(get_device())
                     mask_blur = self.gaussian_blur(mask)
                     masks.append(mask_blur)
                     if self.guidance_type == "BrushNet":
