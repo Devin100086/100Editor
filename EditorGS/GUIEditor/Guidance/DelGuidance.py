@@ -9,7 +9,14 @@ from torch.nn import functional as F
 from threestudio.models.prompt_processors.stable_diffusion_prompt_processor import StableDiffusionPromptProcessor
 from transformers import pipeline
 from PIL import Image
-from LeftRefill.run import predict
+
+try:
+    from leftrefill import predict
+except ModuleNotFoundError:
+    try:
+        from extern.LeftRefill.run import predict
+    except ModuleNotFoundError:
+        from LeftRefill.run import predict
 # Diffusion model (cached) + prompts + edited_frames + training config
 
 class DelGuidance:

@@ -3,10 +3,10 @@ from imgui_bundle import imgui
 import torch
 import numpy as np
 
-from lumina3D_utils.gui_utils.easy_imgui import label, slider, checkbox
-from lumina3D_utils.gui_utils import imgui_utils
-from lumina3D_utils.dict_utils import EasyDict
-from lumina3D_utils.cam_utils import (
+from HundredEditor_utils.gui_utils.easy_imgui import label, slider, checkbox
+from HundredEditor_utils.gui_utils import imgui_utils
+from HundredEditor_utils.dict_utils import EasyDict
+from HundredEditor_utils.cam_utils import (
     get_forward_vector,
     create_cam2world_matrix,
     get_origin,

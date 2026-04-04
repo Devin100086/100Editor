@@ -1,4 +1,4 @@
-from lumina3D  import Lumina3D
+from HundredEditor  import HundredEditor
 import argparse 
 
 def main():
@@ -10,10 +10,10 @@ def main():
     parser.add_argument("--port", help="port", default=6009)
 
     args = parser.parse_args()      
-    lumina3D = Lumina3D(args)
-    while not lumina3D.should_close():
-        lumina3D.draw_frame()
-    lumina3D.close()
+    hundred_editor = HundredEditor(args)
+    while not hundred_editor.should_close():
+        hundred_editor.draw_frame()
+    hundred_editor.close()
 
 
 if __name__ == "__main__":

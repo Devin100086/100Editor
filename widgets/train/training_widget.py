@@ -9,14 +9,14 @@ import multiprocessing
 
 # from arguments import ModelParams, OptimizationParams, PipelineParams
 # from gaussian_renderer import network_gui
-from lumina3D_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils import imgui_utils
 import tkinter as tk
 import torch
 from gaussiansplatting.utils.general_utils import safe_state
-from lumina3D_utils.gui_utils.easy_imgui import label
-from lumina3D_utils.command_utils import *
+from HundredEditor_utils.gui_utils.easy_imgui import label
+from HundredEditor_utils.command_utils import *
 import subprocess
-from lumina3D_utils.dict_utils import EasyDict
+from HundredEditor_utils.dict_utils import EasyDict
 from widgets.widget import Widget
 from tkinter import filedialog
 import datetime

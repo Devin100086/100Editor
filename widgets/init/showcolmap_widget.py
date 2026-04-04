@@ -1,10 +1,10 @@
 from widgets.widget import Widget
 from imgui_bundle import imgui,ImVec2
-from lumina3D_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils import imgui_utils
 import tkinter as tk
-from lumina3D_utils.gui_utils.easy_imgui import label
+from HundredEditor_utils.gui_utils.easy_imgui import label
 import os
-from lumina3D_utils.command_utils import *
+from HundredEditor_utils.command_utils import *
 from tkinter import filedialog
 
 class ShowColmapWidget(Widget):

@@ -1,6 +1,6 @@
 from widgets.widget import Widget
 from imgui_bundle import imgui
-from lumina3D_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils import imgui_utils
 
 
 class StyleWidget(Widget):

@@ -15,7 +15,7 @@ import contextlib
 import numpy as np
 import OpenGL.GL as gl
 import OpenGL.GL.ARB.texture_float
-from lumina3D_utils.dict_utils import EasyDict
+from ..dict_utils import EasyDict
 
 
 _texture_formats = {

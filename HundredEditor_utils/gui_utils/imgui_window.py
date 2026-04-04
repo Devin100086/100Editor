@@ -14,7 +14,7 @@ from imgui_bundle.python_backends.glfw_backend import GlfwRenderer
 
 from . import glfw_window
 from . import text_utils
-from lumina3D_utils.gui_utils import style
+from . import style
 
 
 # ----------------------------------------------------------------------------

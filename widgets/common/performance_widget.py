@@ -6,8 +6,8 @@ import GPUtil
 import time
 from imgui_bundle import implot
 
-from lumina3D_utils.gui_utils import imgui_utils
-from lumina3D_utils.gui_utils.easy_imgui import label
+from HundredEditor_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils.easy_imgui import label
 from widgets.widget import Widget
 
 

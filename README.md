@@ -47,7 +47,8 @@ conda create -n 100Editor python=3.11
 # CUDA version 12.4
 pip install torch==2.4.1+cu124 torchvision==0.19.1+cu124 torchaudio==2.4.1+cu124 --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
-pip install 
+pip install -e extern/BrushNet
+pip install -e extern/LeftRefill
 ```
 ## :pray: Acknowledgments
 We sincerely appreciate these excellent open-source projects.

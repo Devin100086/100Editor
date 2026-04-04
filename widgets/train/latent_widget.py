@@ -1,8 +1,8 @@
 from imgui_bundle import imgui
 
-from lumina3D_utils.gui_utils import imgui_utils
-from lumina3D_utils.gui_utils.easy_imgui import label
-from lumina3D_utils.dict_utils import EasyDict
+from HundredEditor_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils.easy_imgui import label
+from HundredEditor_utils.dict_utils import EasyDict
 from widgets.widget import Widget
 
 

@@ -1,14 +1,14 @@
 from pathlib import Path
 import subprocess
 from imgui_bundle import imgui, ImVec2
-from lumina3D_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils import imgui_utils
 from imgui_bundle import implot
-from lumina3D_utils.gui_utils.easy_imgui import label
+from HundredEditor_utils.gui_utils.easy_imgui import label
 from widgets.widget import Widget
 from PIL import Image
 import tkinter as tk
 from tkinter import filedialog
-from lumina3D_utils.dict_utils import EasyDict
+from HundredEditor_utils.dict_utils import EasyDict
 import numpy as np
 
 

@@ -5,8 +5,8 @@ import PIL
 from imgui_bundle import imgui
 import numpy as np
 
-from lumina3D_utils.gui_utils.easy_imgui import label
-from lumina3D_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils.easy_imgui import label
+from HundredEditor_utils.gui_utils import imgui_utils
 from widgets.widget import Widget
 
 

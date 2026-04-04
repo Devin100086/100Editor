@@ -1,6 +1,6 @@
 import contextlib
 from imgui_bundle import imgui
-from lumina3D_utils.gui_utils.constants import *
+from .constants import *
 
 
 def set_default_style(color_scheme="dark", spacing=5, indent=20, scrollbar=10):

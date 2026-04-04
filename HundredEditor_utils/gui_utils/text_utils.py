@@ -16,7 +16,7 @@ import PIL.Image
 import PIL.ImageFont
 import scipy.ndimage
 
-from lumina3D_utils.gui_utils.url import open_url
+from .url import open_url
 from . import gl_utils
 
 

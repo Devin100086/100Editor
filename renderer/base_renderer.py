@@ -3,7 +3,7 @@ import traceback
 import torch
 import torch.nn
 
-from lumina3D_utils.dict_utils import EasyDict
+from HundredEditor_utils.dict_utils import EasyDict
 
 
 class Renderer:

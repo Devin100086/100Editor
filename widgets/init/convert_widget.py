@@ -5,15 +5,15 @@ import shutil
 import time
 from widgets.widget import Widget
 from imgui_bundle import imgui,ImVec2
-from lumina3D_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils import imgui_utils
 import tkinter as tk
-from lumina3D_utils.gui_utils.easy_imgui import label
+from HundredEditor_utils.gui_utils.easy_imgui import label
 import os
 import GPUtil
 import torch
 import cv2
 from tkinter import filedialog
-from lumina3D_utils.command_utils import sfm_reconstruction,vggt_reconstruction
+from HundredEditor_utils.command_utils import sfm_reconstruction,vggt_reconstruction
 
 class Monitor(Thread):
     def __init__(self, delay):

@@ -2,8 +2,8 @@ import os
 from imgui_bundle import imgui
 import tkinter as tk
 from tkinter import filedialog
-from lumina3D_utils.gui_utils import imgui_utils
-from lumina3D_utils.gui_utils.easy_imgui import label
+from HundredEditor_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils.easy_imgui import label
 from widgets.widget import Widget
 
  

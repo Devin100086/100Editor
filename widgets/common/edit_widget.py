@@ -4,10 +4,10 @@ import uuid
 from imgui_bundle import imgui, imgui_color_text_edit as edit
 import inspect
 
-from lumina3D_utils.gui_utils import imgui_utils
-from lumina3D_utils.gui_utils.easy_imgui import label
-from lumina3D_utils.gui_utils.easy_json import load_json, save_json
-from lumina3D_utils.dict_utils import EasyDict
+from HundredEditor_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils.easy_imgui import label
+from HundredEditor_utils.gui_utils.easy_json import load_json, save_json
+from HundredEditor_utils.dict_utils import EasyDict
 from scene.cameras import CustomCam
 from renderer.gaussian_renderer import GaussianRenderer
 from scene.gaussian_model import GaussianModel

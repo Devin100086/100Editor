@@ -13,12 +13,12 @@ from renderer.gaussian_renderer import GaussianRenderer
 from renderer.editing_renderer import EditingRenderer
 from renderer.fitting_renderer import FittingRenderer
 from renderer.attach_renderer import AttachRenderer
-from lumina3D_utils.gui_utils import imgui_window
-from lumina3D_utils.gui_utils import imgui_utils
-from lumina3D_utils.gui_utils import gl_utils
-from lumina3D_utils.gui_utils import text_utils
-from lumina3D_utils.gui_utils.constants import *
-from lumina3D_utils.dict_utils import EasyDict
+from HundredEditor_utils.gui_utils import imgui_window
+from HundredEditor_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils import gl_utils
+from HundredEditor_utils.gui_utils import text_utils
+from HundredEditor_utils.gui_utils.constants import *
+from HundredEditor_utils.dict_utils import EasyDict
 from widgets.common import (
     cam_widget,
     edit_widget,
@@ -52,14 +52,14 @@ from widgets.other import (
     fitting_widget
 )
 
-class Lumina3D(imgui_window.ImguiWindow):
+class HundredEditor(imgui_window.ImguiWindow):
     def __init__(self, args):
         data_path, mode, host, port = args.data_path, args.mode, args.host, args.port
         self.code_font_path = "resources/fonts/jetbrainsmono/JetBrainsMono-Regular.ttf"
         self.regular_font_path = "resources/fonts/source_sans_pro/SourceSansPro-Regular.otf"
 
         super().__init__(
-            title="lumina3D",
+            title="100Editor",
             window_width=1920,
             window_height=1080,
             font=self.regular_font_path,

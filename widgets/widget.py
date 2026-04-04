@@ -1,4 +1,4 @@
-from lumina3D_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils import imgui_utils
 
 
 class Widget:

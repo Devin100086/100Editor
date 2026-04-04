@@ -19,7 +19,7 @@ from gaussiansplatting.utils.graphics_utils import fov2focal
 from gaussiansplatting.scene import GaussianModel
 from gaussiansplatting.scene.cameras import CustomCam
 from renderer.base_renderer import Renderer
-from lumina3D_utils.dict_utils import EasyDict
+from HundredEditor_utils.dict_utils import EasyDict
 from torchvision.transforms.functional import to_pil_image
 import torch.nn.functional as F
 from threestudio.utils.dpt import DPT

@@ -10,7 +10,7 @@
 
 import contextlib
 from imgui_bundle import imgui
-from lumina3D_utils.gui_utils.constants import *
+from .constants import *
 
 
 @contextlib.contextmanager

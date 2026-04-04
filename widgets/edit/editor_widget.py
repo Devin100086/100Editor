@@ -5,10 +5,10 @@ from imgui_bundle import imgui
 from omegaconf import OmegaConf
 from EditorGS.gaussiansplatting.scene.cameras import CustomCam             
 from EditorGS.GUIEditor.train_add import add_sketch                   
-from lumina3D_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils import imgui_utils
 from imgui_bundle import implot
-from lumina3D_utils.command_utils import *
-from lumina3D_utils.gui_utils.easy_imgui import label
+from HundredEditor_utils.command_utils import *
+from HundredEditor_utils.gui_utils.easy_imgui import label
 from google import genai
 from google.genai import types
 from PIL import Image
@@ -17,7 +17,7 @@ from io import BytesIO
 
 from torchvision.transforms.functional import to_tensor
 import torch
-from lumina3D_utils.dict_utils import EasyDict
+from HundredEditor_utils.dict_utils import EasyDict
 import sys
 
 import tkinter as tk

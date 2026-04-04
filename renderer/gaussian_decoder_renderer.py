@@ -10,8 +10,8 @@ from gaussiansplatting.gaussian_renderer import render_simple
 from gaussiansplatting.scene import GaussianModel
 from gaussiansplatting.scene.cameras import CustomCam
 from renderer.base_renderer import Renderer
-from lumina3D_utils.cam_utils import fov_to_intrinsics
-from lumina3D_utils.dict_utils import EasyDict
+from HundredEditor_utils.cam_utils import fov_to_intrinsics
+from HundredEditor_utils.dict_utils import EasyDict
 
 
 class GaussianDecoderRenderer(Renderer):

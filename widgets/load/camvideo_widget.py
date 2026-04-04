@@ -4,11 +4,11 @@ import tkinter as tk
 import torch
 from tkinter import filedialog
 from gaussiansplatting.scene.cameras import CustomCam
-from lumina3D_utils.gui_utils import imgui_utils
-from lumina3D_utils.gui_utils.easy_imgui import label
+from HundredEditor_utils.gui_utils import imgui_utils
+from HundredEditor_utils.gui_utils.easy_imgui import label
 from widgets.widget import Widget
 from scipy.spatial.transform import Rotation as R
-from lumina3D_utils.gui_utils.constants import *
+from HundredEditor_utils.gui_utils.constants import *
 import numpy as np
 import copy
 
