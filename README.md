@@ -1,18 +1,17 @@
 <p align="center">
-  <img src="assets/logo.png" alt="100Editor Logo" width="100"/>
+  <img src="resources/assets/logo.png" alt="100Editor Logo" width="100"/>
   <br>
 </p>
   
-<h3 align="center"><strong>[CVPR 2026(findings)] 100Editor: 100+ Views per Batch and Minute-Scale View-Consistent 3D Editing</strong></h3>
+<h3 align="center"><strong>[CVPR 2026(Findings)] 100Editor: 100+ Views per Batch and Minute-Scale View-Consistent 3D Editing</strong></h3>
 
 <p align="center">
-    <a href="https://github.com/Devin100086">Cunqi Wu</a><sup>*1</sup>,</span>
-    <a href="https://scholar.google.com/citations?hl=zh-CN&user=Hv0M87UAAAAJ">Peng Zhou</a><sup>**1</sup>,</span>
+    <a href="https://github.com/Devin100086">Cunqi Wu</a><sup>1</sup>,</span>
+    <a href="https://scholar.google.com/citations?hl=zh-CN&user=Hv0M87UAAAAJ">Peng Zhou</a><sup>†,1</sup>,</span>
     <a href="https://scholar.google.com/citations?user=mhPGcuwAAAAJ&hl=zh-CN">Jie Qin</a><sup>1</sup>,
     <a href="https://scholar.google.com/citations?hl=zh-CN&user=61b6eYkAAAAJ">Qi Tian</a><sup>2</sup>,
     <br>
-    <sup>*</sup>Equal contribution.
-    <sup>**</sup>Corresponding author.
+    <sup>†</sup>Corresponding author.
     <br>
     <sup>1</sup>Nanjing University of Aeronautics and Astronautics,
     <br>
@@ -47,8 +46,18 @@ conda create -n 100Editor python=3.11
 # CUDA version 12.4
 pip install torch==2.4.1+cu124 torchvision==0.19.1+cu124 torchaudio==2.4.1+cu124 --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
-pip install -e extern/BrushNet
-pip install -e extern/LeftRefill
+pip install -e third_party/BrushNet
+pip install -e third_party/LeftRefill
+pip install -e third_party/sam2
+
+pip install -e src/trainer/origin/submodules/diff-gaussian-rasterization
+pip install -e src/editor/gaussiansplatting/submodules/acc-diff-gaussian-rasterization-editor
+pip install -e third_party/gaussiansplatting/submodules/diff-gaussian-rasterization
+
+ 
+pip install -e src/trainer/origin/submodules/fused-ssim
+pip install -e src/trainer/origin/submodules/simple-knn
+
 ```
 ## :pray: Acknowledgments
 We sincerely appreciate these excellent open-source projects.

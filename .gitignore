@@ -1,27 +1,82 @@
+# -----------------------------
+# OS / IDE
+# -----------------------------
+.DS_Store
+.vscode/
+.idea/
+.codex
+
+# -----------------------------
+# Python cache / build artifacts
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# -----------------------------
+# Runtime cache / outputs
+# -----------------------------
 .cache/
-datasets/
-*.jpg
-submodules
-__pycache__
-extern/
+.threestudio_cache/
 output/
-results/
-.vscode
-*.mp4
-*.png
-demo.*
-save/
 outputs/
-.threestudio_cache
-wonder3D/ckpts
-threestudio/utils/wonder3D/instant-nsr-pl/exp
+results/
+save/
+tmp_*/
+widgets/_render/
+widgets/_screenshots/
+demo.*
 edit_cache/
 fine_add_cache/
-*.pth
-tmp_*/
 shap_e_model_cache/
-LeftRefill/pretrained_models/
+
+# -----------------------------
+# Local datasets / weights (not for git)
+# -----------------------------
+/datasets/
 *.pt
+*.pth
+wonder3D/ckpts/
+threestudio/utils/wonder3D/instant-nsr-pl/exp/
+
+# -----------------------------
+# Third-party local deps
+# -----------------------------
+/extern/
+/submodules/
+**/submodules/
+extern/LeftRefill/pretrained_models/
+EditorGS/dreamgaussian/
+threestudio/utils/wonder3D/instant-nsr-pl/datasets/
+third_party/dreamgaussian/add_diff-gaussian-rasterization
+
+# -----------------------------
+# Optional experiment folders
+# -----------------------------
 others/
 exp1/
 ablation/
+third_party/extern
+
+# -----------------------------
+# Generated media (not source assets)
+# -----------------------------
+*.mp4
+load/lego_bulldozer.jpg
+
+# -----------------------------
+# runtime outputs (not source assets)
+# -----------------------------
+runtime/exports/*
+runtime/renders/*
+runtime/videos/*
+runtime/tmp/*
+runtime/cache/*
+runtime/experiments/*
+
+

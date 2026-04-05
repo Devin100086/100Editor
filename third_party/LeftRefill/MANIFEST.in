@@ -1,0 +1,2 @@
+recursive-include check_points *.yaml *.ckpt
+recursive-include pretrained_models *.ckpt
