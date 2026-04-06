@@ -156,9 +156,6 @@ class EditorWidget(Widget):
         self.runtime_edit_experiments_dir = resolve_runtime_subdir(
             __file__, "experiments", "edit", create=True
         )
-        self.runtime_exports_dir = resolve_runtime_subdir(
-            __file__, "experiments", "edit", "drag", create=True
-        )
         self.edit_output_dir = resolve_runtime_subdir(
             __file__, "experiments", "edit", "semantic", create=True
         ).as_posix()
@@ -797,7 +794,7 @@ class EditorWidget(Widget):
                     imgui.text("2.Pressing 'q' together with the left mouse button allows you to select and drag the corresponding point.")
                     imgui.text("3.Pressing 'e' together with the left mouse button enables you to extend the corresponding point.")
                     imgui.text("4.Pressing 'z' together with the left mouse button allows you to rotate the corresponding point.")
-                    imgui.text("5.Pressing 'c' together with the left mouse button allows you to translation (moving) of the point.")
+                    imgui.text("5.Pressing 'x' together with the left mouse button allows you to translation (moving) of the point.")
                     imgui.separator_text("SAM Option")
                     label("Sam Type", viz.label_w)
                     _, self.drag_sam_option = imgui.combo(
@@ -831,7 +828,8 @@ class EditorWidget(Widget):
                             self.drag_sam_positive_points = []
                             self.drag_sam_negative_points = []
 
-                    if imgui_utils.button("Seg 3DGS", width=viz.button_w * 1.2):
+                    drag_mask_path = self.runtime_drag_dir / "mask.pt"
+                    if imgui_utils.button("seg", width=viz.button_w * 1.2):
                         drag_cache_dir = self.runtime_drag_dir
                         os.makedirs(drag_cache_dir, exist_ok=True)
                         np.save(
@@ -859,6 +857,20 @@ class EditorWidget(Widget):
                             negative_sam_points=(drag_cache_dir / "sam2_negative_points.npy").as_posix(),
                         )
                         mask_trainer.wait()
+                    imgui.same_line()
+                    if imgui_utils.button("cancel", width=viz.button_w * 1.2):
+                        if drag_mask_path.is_file():
+                            try:
+                                drag_mask_path.unlink()
+                            except OSError as exc:
+                                print(f"[EditorWidget] Failed to remove drag mask: {exc}")
+                    current_mask_path = (
+                        drag_mask_path.as_posix()
+                        if drag_mask_path.is_file() and os.access(drag_mask_path.as_posix(), os.R_OK)
+                        else ""
+                    )
+                    imgui.same_line()
+                    imgui.text(f"Path: {current_mask_path}")
 
                     imgui.separator_text("Drag Option")
                     self.keypoint_add()
@@ -883,9 +895,6 @@ class EditorWidget(Widget):
                     imgui.same_line()
                     if imgui_utils.button("Open Overlay", width=viz.button_w*1.2):
                         self.showing_overlay = True
-
-                    label("Save PLY Path", viz.label_w)
-                    imgui.text(self.runtime_exports_dir.as_posix())
 
                     imgui.end_tab_item()
 
@@ -913,7 +922,6 @@ class EditorWidget(Widget):
         viz.args.stop_at_value = self.edit_train_steps - 1 if self.edit3D else -1
         viz.args.single_training_step = single_training_step
         viz.args.save_concat_ply_path = None
-        viz.args.save_ply_path = None
         if self.text_sam_positive_points != [] or self.text_sam_negative_points != []:
             viz.args.sam_positive_points = self.text_sam_positive_points
             viz.args.sam_negative_points = self.text_sam_negative_points
@@ -1131,9 +1139,6 @@ class EditorWidget(Widget):
             self.edit_trainer.terminate()
             self.edit_trainer.wait()
         super().close()
-
-
-
 
 
 
