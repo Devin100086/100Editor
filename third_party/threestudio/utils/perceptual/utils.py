@@ -36,7 +36,7 @@ def _default_lpips_root() -> str:
     if override:
         return override
     repo_root = Path(__file__).resolve().parents[4]
-    return (repo_root / "runtime" / "cache" / "models" / "lpips").as_posix()
+    return (repo_root / "runtime" / ".cache" / "lpips").as_posix()
 
 
 def get_ckpt_path(name, root=None, check=False):

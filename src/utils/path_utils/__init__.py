@@ -91,12 +91,10 @@ def resolve_sam2_paths(start: Union[str, Path]) -> Tuple[str, str]:
     if checkpoint_env:
         checkpoint_candidates.append(Path(checkpoint_env))
     checkpoint_candidates += [
-        runtime_root / ".cache" / "models" / "sam2" / "sam2.1_hiera_large.pt",
-        runtime_root / "cache" / "models" / "sam2" / "sam2.1_hiera_large.pt",
-        repo_root / "runtime" / "models" / "sam2" / "sam2.1_hiera_large.pt",
-        repo_root / ".cache" / "models" / "sam2" / "sam2.1_hiera_large.pt",
-        repo_root / "third_party" / "sam2" / "checkpoints" / "sam2.1_hiera_large.pt",
-        repo_root / "third_party" / "extern" / "sam2" / "checkpoints" / "sam2.1_hiera_large.pt",
+        runtime_root / ".cache" / "sam2" / "sam2.1_hiera_large.pt",
+        runtime_root / "cache" / "sam2" / "sam2.1_hiera_large.pt",
+        repo_root / "runtime" / "sam2" / "sam2.1_hiera_large.pt",
+        repo_root / ".cache" / "sam2" / "sam2.1_hiera_large.pt",
     ]
     checkpoint_candidates += sorted(runtime_root.glob("**/sam2.1_hiera_large.pt"))
 

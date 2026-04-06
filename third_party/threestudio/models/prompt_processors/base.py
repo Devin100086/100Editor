@@ -24,6 +24,14 @@ def hash_prompt(model: str, prompt: str) -> str:
     return hashlib.md5(identifier.encode()).hexdigest()
 
 
+def get_threestudio_cache_root() -> Path:
+    cache_root_env = os.getenv("THREESTUDIO_CACHE_DIR")
+    if cache_root_env:
+        return Path(cache_root_env).expanduser().resolve()
+    repo_root = Path(__file__).resolve().parents[4]
+    return (repo_root / "runtime" / ".threestudio_cache").resolve()
+
+
 @dataclass
 class DirectionConfig:
     name: str
@@ -222,7 +230,7 @@ class PromptProcessor(BaseObject):
         raise NotImplementedError
 
     def configure(self) -> None:
-        self._cache_dir = ".threestudio_cache/text_embeddings"  # FIXME: hard-coded path
+        self._cache_dir = (get_threestudio_cache_root() / "text_embeddings").as_posix()
 
         # view-dependent text embeddings
         self.directions: List[DirectionConfig]

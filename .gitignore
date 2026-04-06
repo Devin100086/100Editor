@@ -78,5 +78,6 @@ runtime/videos/*
 runtime/tmp/*
 runtime/cache/*
 runtime/experiments/*
+runtime/eval/*
 
 

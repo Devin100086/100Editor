@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -16,6 +17,14 @@ from threestudio.utils.base import BaseObject
 from threestudio.utils.misc import C, parse_version
 from threestudio.utils.typing import *
 import threestudio.utils.vidtome as vidtome
+
+
+def get_threestudio_cache_root() -> str:
+    cache_root_env = os.getenv("THREESTUDIO_CACHE_DIR")
+    if cache_root_env:
+        return Path(cache_root_env).expanduser().resolve().as_posix()
+    repo_root = Path(__file__).resolve().parents[4]
+    return (repo_root / "runtime" / ".threestudio_cache").as_posix()
 
 
 @threestudio.register("stable-diffusion-controlnet-guidance")
@@ -666,5 +675,6 @@ if __name__ == "__main__":
         .astype(np.uint8)[:, :, ::-1]
         .copy()
     )
-    os.makedirs(".threestudio_cache", exist_ok=True)
-    cv2.imwrite(".threestudio_cache/edit_image.jpg", edit_image)
+    cache_root = get_threestudio_cache_root()
+    os.makedirs(cache_root, exist_ok=True)
+    cv2.imwrite(os.path.join(cache_root, "edit_image.jpg"), edit_image)

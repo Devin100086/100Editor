@@ -1,7 +1,6 @@
 from . import (
-    # HundredEditorAdd,
-    HundredEditorDel,
-    HundredEditorEdit,
-    HundredEditorFineAdd,
-    HundredEditor,
+    hundrededitor,
+    hundrededitor_add,
+    hundrededitor_del,
+    hundrededitor_edit,
 )

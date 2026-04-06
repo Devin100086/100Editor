@@ -42,9 +42,9 @@ def _resolve_model_root() -> Path:
         candidates.append(Path(env_model_path).expanduser())
     candidates.extend(
         [
-            repo_root / ".cache" / "models" / "LeftRefill" / "check_points" / "ref_guided_inpainting",
-            Path.cwd() / ".cache" / "models" / "LeftRefill" / "check_points" / "ref_guided_inpainting",
-            Path.home() / ".cache" / "models" / "LeftRefill" / "check_points" / "ref_guided_inpainting",
+            repo_root / ".cache" / "LeftRefill" / "check_points" / "ref_guided_inpainting",
+            Path.cwd() / ".cache" / "LeftRefill" / "check_points" / "ref_guided_inpainting",
+            Path.home() / ".cache" / "LeftRefill" / "check_points" / "ref_guided_inpainting",
             PACKAGE_DIR / "check_points" / "ref_guided_inpainting",
         ]
     )
@@ -68,9 +68,9 @@ def _resolve_pretrained_model_path(model_root: Path) -> Path:
     candidates.extend(
         [
             model_root.parent.parent / "pretrained_models" / "512-inpainting-ema.ckpt",
-            PACKAGE_DIR.parent.parent / ".cache" / "models" / "LeftRefill" / "pretrained_models" / "512-inpainting-ema.ckpt",
-            Path.cwd() / ".cache" / "models" / "LeftRefill" / "pretrained_models" / "512-inpainting-ema.ckpt",
-            Path.home() / ".cache" / "models" / "LeftRefill" / "pretrained_models" / "512-inpainting-ema.ckpt",
+            PACKAGE_DIR.parent.parent / ".cache" / "LeftRefill" / "pretrained_models" / "512-inpainting-ema.ckpt",
+            Path.cwd() / ".cache" / "LeftRefill" / "pretrained_models" / "512-inpainting-ema.ckpt",
+            Path.home() / ".cache" / "LeftRefill" / "pretrained_models" / "512-inpainting-ema.ckpt",
             PACKAGE_DIR / "pretrained_models" / "512-inpainting-ema.ckpt",
         ]
     )

@@ -36,7 +36,7 @@ def training_text_editing_command(
     output_dir, hard_segmentation, mask_thres, earlystop, clip_origin_prompt, clip_target_prompt
 ):
     process = _run_python(
-        _script_path("src", "editor", "hundrededitorgui", "edit.py"),
+        _script_path("src", "editor", "hundrededitor_gui", "edit.py"),
         "--gs_source", str(gs_source),
         "--colmap_dir", str(colmap_dir),
         "--edit_cam_num", str(edit_cam_num),
@@ -83,7 +83,7 @@ def training_fine_adding_command(
     camera
 ):
     process = _run_python(
-        _script_path("src", "editor", "hundrededitorgui", "add.py"),
+        _script_path("src", "editor", "hundrededitor_gui", "add.py"),
         "--gs_source", str(gs_source),
         "--colmap_dir", str(colmap_dir),
         "--text_prompt", str(text_prompt),
@@ -116,7 +116,7 @@ def training_delete_command(gs_source, colmap_dir, inpaint_scale, mask_dilate, e
     opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler,  positive_sam_points, negative_sam_points, output_dir
 ):
     process = _run_python(
-        _script_path("src", "editor", "hundrededitorgui", "delete.py"),
+        _script_path("src", "editor", "hundrededitor_gui", "delete.py"),
         "--gs_source", str(gs_source),
         "--colmap_dir", str(colmap_dir),
         "--inpaint_scale", str(inpaint_scale),
@@ -154,7 +154,7 @@ def get_3DGS_mask_command(
     camera, positive_sam_points, negative_sam_points
 ):
     process = _run_python(
-        _script_path("src", "editor", "hundrededitorgui", "generate_gs_mask.py"),
+        _script_path("src", "editor", "hundrededitor_gui", "generate_gs_mask.py"),
         "--gs_source", str(gs_source),
         "--colmap_dir", str(colmap_dir),
         "--sam_option",str(sam_option),
@@ -167,7 +167,7 @@ def get_3DGS_mask_command(
 
 def showing_colmap_command(data_path):
     process = _run_python(
-        _script_path("src", "editor", "hundrededitorgui", "show_colmap.py"),
+        _script_path("src", "editor", "hundrededitor_gui", "show_colmap.py"),
         "--data", str(data_path)
     )
     return process

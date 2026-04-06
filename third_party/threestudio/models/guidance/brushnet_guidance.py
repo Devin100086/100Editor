@@ -24,7 +24,7 @@ class BrushNetGuidance(BaseObject):
     class Config(BaseObject.Config):
         cache_dir: Optional[str] = None
         ddim_scheduler_name_or_path: str = "runwayml/stable-diffusion-v1-5"
-        pretrained_model_name_or_path: str = ".cache/models/base_model/realisticVisionV60B1_v51VAE"
+        pretrained_model_name_or_path: str = ".cache/brushnetX/base_model/realisticVisionV60B1_v51VAE"
 
         enable_memory_efficient_attention: bool = False
         enable_sequential_cpu_offload: bool = False
@@ -65,7 +65,7 @@ class BrushNetGuidance(BaseObject):
     def configure(self) -> None:
         threestudio.info(f"Loading BrushNetX ...")
 
-        brushnet_name_or_path: str = ".cache/models/brushnetX"
+        brushnet_name_or_path: str = ".cache/brushnetX"
 
         self.weights_dtype = (
             torch.float16 if self.cfg.half_precision_weights else torch.float32

@@ -6,7 +6,7 @@ from pathlib import Path
 from imgui_bundle import imgui
 from omegaconf import OmegaConf
 from editor.gaussiansplatting.scene.cameras import CustomCam             
-from editor.hundrededitorgui.add import add_sketch                   
+from editor.hundrededitor_gui.add import add_sketch                   
 from utils.gui_utils import imgui_utils
 from imgui_bundle import implot
 from utils.command_utils import *
@@ -27,7 +27,7 @@ import glfw
 from PIL import Image
 import numpy as np
 from OpenGL.GL import *
-from editor.hundrededitorgui.drag import animation_initialize, animation_reset
+from editor.hundrededitor_gui.drag import animation_initialize, animation_reset
 from utils.path_utils import resolve_runtime_subdir
 
 class Config:
@@ -345,12 +345,12 @@ class EditorWidget(Widget):
                    
                     imgui.end_tab_item()
 
-                if imgui.begin_tab_item("Semantic")[0]:
+                if imgui.begin_tab_item("semantic")[0]:
                     if self.delete_sam_positive_points != [] or self.delete_sam_negative_points != []:
                         self.delete_sam_positive_points = []
                         self.delete_sam_negative_points = []
                         
-                    imgui.separator_text("Parameters")
+                    imgui.separator_text("parameters")
                     label("guidance type", viz.label_w)
                     _, self.guidance_item = imgui.combo(
                         "##guidance type",                
@@ -387,7 +387,7 @@ class EditorWidget(Widget):
                     )
 
                     if self.text_sam_option == 1:
-                        label("Seg prompt", viz.label_w)
+                        label("seg prompt", viz.label_w)
                         _, self.text_seg_prompt = imgui.input_text("##seg prompt", self.text_seg_prompt, 256)
                         self.text_change = True if imgui.is_item_active() else False
 
@@ -791,7 +791,7 @@ class EditorWidget(Widget):
 
                     imgui.end_tab_item()
 
-                if imgui.begin_tab_item("Drag")[0]:
+                if imgui.begin_tab_item("drag")[0]:
                     imgui.text("Instruction:")
                     imgui.text("1.You should first select the area to be dragged. After that, you can turn off the mask display.")
                     imgui.text("2.Pressing 'q' together with the left mouse button allows you to select and drag the corresponding point.")
