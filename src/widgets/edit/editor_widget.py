@@ -3,9 +3,15 @@ import subprocess
 import pickle
 import shutil
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import io
+import base64
+import json
+from dashscope import MultiModalConversation
 from imgui_bundle import imgui
 from omegaconf import OmegaConf
+import requests
 from editor.gaussiansplatting.scene.cameras import CustomCam             
 from editor.hundrededitor_gui.add import add_sketch                   
 from utils.gui_utils import imgui_utils
@@ -29,7 +35,7 @@ from PIL import Image
 import numpy as np
 from OpenGL.GL import *
 from editor.hundrededitor_gui.drag import animation_initialize, animation_reset
-from utils.path_utils import resolve_runtime_subdir
+from utils.path_utils import find_repo_root, resolve_runtime_subdir
 
 class Config:
     def __init__(self, ply_file_path, data_source, mask_prompt, edit_train_steps, left_up, right_down, zoom):
@@ -113,6 +119,7 @@ class EditorWidget(Widget):
 
         # deleting
         self.delete_prompt = "remove the vase"
+        self.seg_delete_prompt = "vase"
         self.inpaint_scale = 1.0
         self.mask_dilate = 15
         self.video_inpainting = False
@@ -164,6 +171,9 @@ class EditorWidget(Widget):
             __file__, "experiments", "edit", "delete", create=True
         ).as_posix()
         self._open_option_sections_once = True
+        self._remove_executor = ThreadPoolExecutor(max_workers=1)
+        self._remove_future = None
+        self.remove_pending = False
         self._apply_option_preset(self.select_option)
 
     def _apply_option_preset(self, option: int):
@@ -269,6 +279,29 @@ class EditorWidget(Widget):
         failed = self._ansi("[Single Image Edit] Failed", "1;31")
         print(f"{failed}  {self._ansi(f'Elapsed: {elapsed_sec:.2f}s', '31')}")
         print(self._ansi("  Error     :", "31"), str(error))
+
+    def _print_remove_start(self, prompt: str, image_size: tuple[int, int], model: str, size: str):
+        title = self._ansi("[Single Image Remove] Start", "1;36")
+        print(f"\n{title}")
+        print(self._ansi("  Prompt    :", "36"), prompt)
+        print(self._ansi("  InputSize :", "36"), f"{image_size[0]}x{image_size[1]}")
+        print(self._ansi("  Model     :", "36"), model)
+        print(self._ansi("  OutputSize:", "36"), size)
+
+    def _print_remove_stage(self, message: str):
+        print(self._ansi(f"[Single Image Remove] {message}", "36"))
+
+    def _print_remove_done(self, elapsed_sec: float, save_path: str):
+        done = self._ansi("[Single Image Remove] Done", "1;32")
+        print(f"{done}  {self._ansi(f'Elapsed: {elapsed_sec:.2f}s', '32')}")
+        print(self._ansi("  Saved To  :", "32"), save_path)
+        print("")
+
+    def _print_remove_fail(self, elapsed_sec: float, error_text: str):
+        failed = self._ansi("[Single Image Remove] Failed", "1;31")
+        print(f"{failed}  {self._ansi(f'Elapsed: {elapsed_sec:.2f}s', '31')}")
+        print(self._ansi("  Reason    :", "31"), error_text)
+        print("")
 
     def _consume_training_stats(self, viz):
         if "training_stats" not in viz.result.keys():
@@ -640,22 +673,48 @@ class EditorWidget(Widget):
                     imgui.end_tab_item()
 
                 if imgui.begin_tab_item("delete")[0]:
+                    if self.remove_pending and self._remove_future is not None and self._remove_future.done():
+                        try:
+                            remove_result = self._remove_future.result()
+                            if remove_result is not None:
+                                self.single_image = remove_result
+                                self.edit_single = True
+                        except Exception as exc:
+                            print(f"[Remove] Failed: {exc}")
+                        finally:
+                            self.remove_pending = False
+                            self._remove_future = None
+
                     if self.text_sam_positive_points != [] or self.text_sam_negative_points != []:
                         self.text_sam_positive_points = []
                         self.text_sam_negative_points = []
 
-                    imgui.separator_text("Remove in the single image")
+                    imgui.separator_text("remove")
                     label("prompt", viz.label_w)
                     _, self.delete_prompt = imgui.input_text("##Remove Prompt", self.delete_prompt, 256)
                     self.text_change = True if imgui.is_item_active() else False
-                    if imgui_utils.button("remove", width=viz.button_w):
+                    if self.remove_pending:
+                        imgui.begin_disabled()
+                        if imgui_utils.button("remove", width=viz.button_w):
+                            pass
+                        imgui.end_disabled()
+                    elif imgui_utils.button("remove", width=viz.button_w):
                         self.edit_single = True
-                        self.single_image = self.remove_single_image(image=viz.result.image, prompts=self.delete_prompt)
+                        image_for_remove = np.array(viz.result.image, copy=True)
+                        self.remove_pending = True
+                        self._remove_future = self._remove_executor.submit(
+                            self.remove_single_image,
+                            prompts=self.delete_prompt,
+                            image=image_for_remove,
+                        )
                     imgui.same_line()
                     if imgui_utils.button("stop", width=viz.button_w):
                         self.edit_single = False
+                    if self.remove_pending:
+                        imgui.same_line()
+                        imgui.text("Please wait approximately 40-50 seconds...")
 
-                    imgui.separator_text("Parameters")
+                    imgui.separator_text("parameters")
                     label("Original Resolution", viz.label_w)
                     _, self.delete_use_original_resolution = imgui.checkbox("##Use Original Resolution", self.delete_use_original_resolution)
                     label("mask dilate", viz.label_w)
@@ -666,13 +725,13 @@ class EditorWidget(Widget):
                     _, self.delete_sam_option = imgui.combo(
                         "##SAM Type", 
                         self.delete_sam_option, 
-                        ["No Sam", "Lang-sam", "SAM2(image)","SAM2(video)"] 
+                        ["Lang-sam", "SAM2(image)","SAM2(video)"] 
                     )
 
-                    if self.delete_sam_option == 1:
-                        label("Seg Prompt", viz.label_w)
-                        _, self.delete_prompt = imgui.input_text("##Seg Prompt", self.delete_prompt, 256)
-                    elif self.delete_sam_option == 2 or self.delete_sam_option == 3:
+                    if self.delete_sam_option == 0:
+                        label("seg prompt", viz.label_w)
+                        _, self.seg_delete_prompt = imgui.input_text("##seg prompt", self.seg_delete_prompt, 256)
+                    elif self.delete_sam_option == 1 or self.delete_sam_option == 2:
                         if imgui.radio_button("No Points", self.delete_point_option == 0):
                             self.delete_point_option = 0
                         imgui.same_line()
@@ -694,7 +753,6 @@ class EditorWidget(Widget):
                             self.delete_sam_positive_points = []
                             self.delete_sam_negative_points = []
 
-                    imgui.new_line()
                     imgui.text(f"Save Path: {self.delete_output_dir}")
 
                     if not self.edit3D:
@@ -998,26 +1056,84 @@ class EditorWidget(Widget):
             raise
 
     def remove_single_image(self, prompts, image):
-        image = Image.fromarray(image)
-        client = genai.Client(api_key="AIzaSyBPuC6_bg5DP92bkjpF-_4kYMpmqSV8LBg")
-        text_input = (f'{prompts}, After removal, make sure the background of the area is filled consistently with the surrounding area so that the modified image looks authentic and without any abrupt traces.')
-        response = client.models.generate_content(
-            model="gemini-2.5-flash-image",
-            contents=[text_input, image],
-            # config=types.GenerateContentConfig(
-            # response_modalities=['TEXT', 'IMAGE']
-            # )
-        )
-        for part in response.candidates[0].content.parts:
-            if part.text is not None:
-                print(part.text)
-            elif part.inline_data is not None:
-                image = Image.open(BytesIO(part.inline_data.data))
-                image_resized = image.resize((512,512))
-                image_resized.save((self.runtime_delete_dir / "Reference.png").as_posix())
+        start_t = time.perf_counter()
+        model_name = "qwen-image-edit-max"
+        output_size = "1024*1024"
 
-        print("😚Finally Editing!")
-        return np.array(image) 
+        try:
+            if isinstance(image, np.ndarray):
+                if image.dtype != np.uint8:
+                    image = np.clip(image, 0.0, 1.0)
+                    image = (image * 255.0).astype(np.uint8)
+                pil_image = Image.fromarray(image).convert("RGB")
+            else:
+                pil_image = image.convert("RGB")
+
+            self._print_remove_start(
+                prompt=prompts,
+                image_size=pil_image.size,
+                model=model_name,
+                size=output_size,
+            )
+
+            buffer = io.BytesIO()
+            pil_image.save(buffer, format="PNG")
+            image_base64 = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+            api_cfg = find_repo_root(__file__) / "configs" / "api.json"
+            with open(api_cfg, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            api_key = data.get("api_key")
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"image": image_base64},
+                        {"text": f'{prompts}, After removal, make sure the background of the area is filled consistently with the surrounding area so that the modified image looks authentic and without any abrupt traces.'},
+                    ],
+                }
+            ]
+
+            self._print_remove_stage("Submitting request to image-edit model ...")
+            response = MultiModalConversation.call(
+                api_key=api_key,
+                model=model_name,
+                messages=messages,
+                stream=False,
+                n=1,
+                watermark=False,
+                negative_prompt=" ",
+                prompt_extend=False,
+                size=output_size,
+            )
+
+            if response.status_code != 200:
+                error_text = f"{response.code}: {response.message}"
+                self._print_remove_fail(time.perf_counter() - start_t, error_text)
+                return None
+
+            content_list = response.output.choices[0].message.content or []
+            image_urls = [item.get("image") for item in content_list if isinstance(item, dict) and item.get("image")]
+            if not image_urls:
+                self._print_remove_fail(time.perf_counter() - start_t, "No image URL returned by server.")
+                return None
+
+            save_path = (self.runtime_delete_dir / "Reference.png").as_posix()
+            self._print_remove_stage(f"Downloading {len(image_urls)} generated image(s) ...")
+            for idx, image_url in enumerate(image_urls, start=1):
+                self._print_remove_stage(f"  Download {idx}/{len(image_urls)}")
+                r = requests.get(image_url, stream=True, timeout=300)
+                r.raise_for_status()
+                with open(save_path, "wb") as f:
+                    for chunk in r.iter_content(8192):
+                        if chunk:
+                            f.write(chunk)
+
+            self._print_remove_done(time.perf_counter() - start_t, save_path)
+            return np.array(Image.open(save_path).convert("RGB"))
+        except Exception as exc:
+            self._print_remove_fail(time.perf_counter() - start_t, str(exc))
+            return None
 
     def keypoint_add(self):
         if imgui.is_mouse_clicked(0) and ('q' in self.viz.current_pressed_keys or 'e' in self.viz.current_pressed_keys):
@@ -1104,6 +1220,8 @@ class EditorWidget(Widget):
             }
 
     def close(self):
+        if hasattr(self, "_remove_executor") and self._remove_executor is not None:
+            self._remove_executor.shutdown(wait=False, cancel_futures=True)
         if self.edit_trainer != None:
             self.edit_trainer.terminate()
             self.edit_trainer.wait()

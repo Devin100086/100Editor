@@ -42,9 +42,9 @@ def _resolve_model_root() -> Path:
         candidates.append(Path(env_model_path).expanduser())
     candidates.extend(
         [
-            repo_root / ".cache" / "LeftRefill" / "check_points" / "ref_guided_inpainting",
-            Path.cwd() / ".cache" / "LeftRefill" / "check_points" / "ref_guided_inpainting",
-            Path.home() / ".cache" / "LeftRefill" / "check_points" / "ref_guided_inpainting",
+            repo_root / "runtime" / ".cache" / "LeftRefill" / "check_points" / "ref_guided_inpainting",
+            Path.cwd() / "runtime" / ".cache" / "LeftRefill" / "check_points" / "ref_guided_inpainting",
+            Path.home() / "runtime" / ".cache" / "LeftRefill" / "check_points" / "ref_guided_inpainting",
             PACKAGE_DIR / "check_points" / "ref_guided_inpainting",
         ]
     )

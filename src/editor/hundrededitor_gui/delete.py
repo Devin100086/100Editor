@@ -4,12 +4,14 @@ from tqdm import tqdm
 import torch
 import sys
 import os
+import time
+from contextlib import redirect_stderr, redirect_stdout
 # from third_party.gaussiansplatting.gaussian_renderer import render_simple
 from editor.hundrededitor_gui.base import BaseTrainer
 from editor.hundrededitor_gui.guidance.del_guidance import DelGuidance
 from torchvision.utils import save_image
 from editor.hundrededitor_gui.base import *
-from third_party.gaussiansplatting.gaussian_renderer import render
+from editor.gaussiansplatting.gaussian_renderer import render
 from PIL import Image
 from editor.hundrededitor_gui.utils import *
 from editor.hundrededitor_gui.Network import EditorNetwork
@@ -52,9 +54,69 @@ class DeleteTrainer(BaseTrainer):
         self.negative_sam_points = np.load(cfg.negative_sam_points)
 
         self.save_mask_tmp =  os.path.join(os.path.dirname(cfg.positive_sam_points),"mask")
+        self.verbose_log_path = None
 
         with open(cfg.camera, 'rb') as f:
             self.cam  = pickle.load(f)
+
+    @staticmethod
+    def _supports_ansi() -> bool:
+        return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+
+    @classmethod
+    def _ansi(cls, text: str, code: str) -> str:
+        if not cls._supports_ansi():
+            return text
+        return f"\033[{code}m{text}\033[0m"
+
+    def _log_kv(self, label: str, value: str, color: str = "36") -> None:
+        print(self._ansi(f"  {label:<16}:", color), value)
+
+    def _log_stage(self, message: str, color: str = "1;34") -> None:
+        print(self._ansi(f"[Delete] {message}", color))
+
+    def _log_start_banner(self, video: bool) -> None:
+        sam_map = {
+            0: "Lang-sam (text)",
+            1: "SAM2(image points)",
+            2: "SAM2(video points)",
+        }
+        print("\n" + self._ansi("[Delete] Start", "1;36"))
+        self._log_kv("Prompt", str(self.delete_prompt))
+        self._log_kv("Train Steps", str(self.edit_train_steps))
+        self._log_kv("Batch Mode", str(video))
+        self._log_kv("SAM Mode", sam_map.get(self.sam_type, f"Unknown({self.sam_type})"))
+        self._log_kv("Output Dir", self.output_dir)
+        if self.verbose_log_path:
+            self._log_kv("Verbose Log", self.verbose_log_path)
+
+    def _log_finish_banner(self, wall_time_s: float, result_ply_path: str) -> None:
+        print(self._ansi("[Delete] Done", "1;32"))
+        self._log_kv("Elapsed", f"{wall_time_s:.2f}s", color="32")
+        self._log_kv("Result PLY", result_ply_path, color="32")
+        print("")
+
+    def _call_quiet(self, fn, *args, **kwargs):
+        if not self.verbose_log_path:
+            return fn(*args, **kwargs)
+
+        with open(self.verbose_log_path, "a", encoding="utf-8") as log_fp:
+            with redirect_stdout(log_fp), redirect_stderr(log_fp):
+                return fn(*args, **kwargs)
+
+    def _run_noisy_stage(self, stage_name: str, fn, *args, **kwargs):
+        self._log_stage(f"{stage_name} ...")
+        stage_start = time.perf_counter()
+        try:
+            result = self._call_quiet(fn, *args, **kwargs)
+        except Exception as exc:
+            elapsed = time.perf_counter() - stage_start
+            self._log_stage(f"{stage_name} failed ({elapsed:.2f}s)", color="1;31")
+            self._log_kv("Reason", str(exc), color="31")
+            raise
+        elapsed = time.perf_counter() - stage_start
+        self._log_stage(f"{stage_name} done ({elapsed:.2f}s)", color="1;32")
+        return result
     
     def sample_train_camera(self, colmap_cameras, edit_cam_num):
         total_view_num = len(colmap_cameras)
@@ -68,10 +130,16 @@ class DeleteTrainer(BaseTrainer):
         return edit_cameras
 
     def delete(self,video):
+        wall_start = time.perf_counter()
         now = datetime.datetime.now()
         now = now.strftime("%Y_%m_%d_%H_%M_%S")
         self.output_dir = os.path.join(self.output_dir, now)
         os.makedirs(self.output_dir, exist_ok=True)
+        self.verbose_log_path = os.path.join(self.output_dir, "delete_verbose.log")
+        with open(self.verbose_log_path, "w", encoding="utf-8") as log_fp:
+            log_fp.write("[Delete] Verbose logs\n")
+            log_fp.write(f"Timestamp: {now}\n\n")
+        self._log_start_banner(video=video)
 
         edit_cameras = self.sample_train_camera(self.colmap_cameras,
                                            self.edit_cam_num,
@@ -133,9 +201,15 @@ class DeleteTrainer(BaseTrainer):
             min(len(self.colmap_cameras), self.edit_cam_num),
         )
         self.view_list = self.n2n_view_index
-        if self.sam_type == 1:
-            self.masks, _ = self.update_mask(self.colmap_cameras, text_prompt=self.delete_prompt)
-        elif self.sam_type == 2:
+        self._log_stage("Preparing segmentation masks")
+        if self.sam_type == 0:
+            self.masks, _ = self._run_noisy_stage(
+                "Run Lang-SAM across views",
+                self.update_mask,
+                self.colmap_cameras,
+                text_prompt=self.delete_prompt,
+            )
+        elif self.sam_type == 1:
             # self.cam.FoVx = fov / 360 * 2 * np.pi
 
             positive_points3d = []
@@ -167,18 +241,27 @@ class DeleteTrainer(BaseTrainer):
 
             positive_points3d = np.array(positive_points3d)
             negative_points3d = np.array(negative_points3d)
-            self.update_sam_mask_with_point_prompt(self.colmap_cameras, positive_points3d, negative_points3d)
+            self._run_noisy_stage(
+                "Run SAM2(image) point-propagated masks",
+                self.update_sam_mask_with_point_prompt,
+                self.colmap_cameras,
+                positive_points3d,
+                negative_points3d,
+            )
 
-        elif self.sam_type == 3:
-            
+        elif self.sam_type == 2:
             self.positive_sam_points = np.empty((0,2)) if self.positive_sam_points.shape[0] == 0 else self.positive_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             self.negative_sam_points = np.empty((0,2)) if self.negative_sam_points.shape[0] == 0 else self.negative_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
             init_render = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
             save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
-            self.update_sam2_mask_with_point_prompt(self.colmap_cameras, 
-                                                                    self.positive_sam_points ,
-                                                                    self.negative_sam_points)
+            self._run_noisy_stage(
+                "Run SAM2(video) mask propagation",
+                self.update_sam2_mask_with_point_prompt,
+                self.colmap_cameras,
+                self.positive_sam_points,
+                self.negative_sam_points,
+            )
 
         # origin_frames = self.render_cameras_list(self.colmap_cameras)
         # num_channels_latents = self.ctn_inpaint.vae.config.latent_channels
@@ -200,11 +283,15 @@ class DeleteTrainer(BaseTrainer):
         # Prune and update mask to valid_remaining_idx
         self.gaussian.prune_with_mask(new_mask=valid_remaining_idx)
 
-        self.inpaint_2D_mask, origin_frames = self.render_all_view_with_mask(
-            self.colmap_cameras
+        self.inpaint_2D_mask, origin_frames = self._run_noisy_stage(
+            "Render all views with inpaint masks",
+            self.render_all_view_with_mask,
+            self.colmap_cameras,
         )
 
-        self.guidance = DelGuidance(
+        self.guidance = self._run_noisy_stage(
+            "Initialize delete guidance",
+            DelGuidance,
             guidance=cur_2D_guidance,
             gaussian=self.gaussian,
             per_editing_step=self.per_editing_step,
@@ -221,8 +308,14 @@ class DeleteTrainer(BaseTrainer):
 
         view_index_stack = self.n2n_view_index.copy()
         ema_loss_for_log = 0.0
-        network = EditorNetwork(host="127.0.0.1",port=8084)
-        for step in tqdm(range(self.edit_train_steps)):
+        network = EditorNetwork(host="127.0.0.1",port=8084, verbose=False)
+        self._log_stage("Training loop started")
+        progress_bar = tqdm(
+            range(self.edit_train_steps),
+            desc="Delete Train",
+            dynamic_ncols=True,
+        )
+        for step in progress_bar:
             network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt, self.use_sparse_adam)
             if step % self.cameara_update_step == 0 and video:
                 self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
@@ -234,13 +327,23 @@ class DeleteTrainer(BaseTrainer):
 
             rendering = self.render(self.colmap_cameras[view_index], train=True, separate_sh=self.use_sparse_adam)["comp_rgb"]
             # depth_rendering = render_pkg["depth"]
-            loss = self.guidance(
-                rendering,
-                origin_frames[view_index],
-                self.inpaint_2D_mask[view_index],
-                view_index,
-                step,
-            )
+            if view_index not in self.guidance.edit_frames:
+                loss = self._call_quiet(
+                    self.guidance,
+                    rendering,
+                    origin_frames[view_index],
+                    self.inpaint_2D_mask[view_index],
+                    view_index,
+                    step,
+                )
+            else:
+                loss = self.guidance(
+                    rendering,
+                    origin_frames[view_index],
+                    self.inpaint_2D_mask[view_index],
+                    view_index,
+                    step,
+                )
             loss.backward()
 
             self.densify_and_prune(step)
@@ -255,11 +358,16 @@ class DeleteTrainer(BaseTrainer):
 
             if self.stop_training:
                 self.stop_training = False
+                self._log_stage("Training interrupted by user", color="33")
                 return
             
             ema_loss_for_log = self.alpha * ema_loss_for_log + (1-self.alpha) * loss.item()
+            if step % 10 == 0:
+                progress_bar.set_postfix(loss=f"{ema_loss_for_log:.4f}", refresh=False)
         
-        self.gaussian.save_ply(f"{self.output_dir}/result.ply")
+        result_ply_path = f"{self.output_dir}/result.ply"
+        self.gaussian.save_ply(result_ply_path)
+        self._log_finish_banner(time.perf_counter() - wall_start, result_ply_path)
 
     @torch.no_grad()
     def render_all_view_with_mask(self, edit_cameras):

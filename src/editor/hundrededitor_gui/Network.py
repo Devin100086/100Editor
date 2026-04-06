@@ -7,7 +7,7 @@ import json
 import numpy as np
 
 class EditorNetwork:
-    def __init__(self, host="127.0.0.1", port=8084):
+    def __init__(self, host="127.0.0.1", port=8084, verbose=True):
         self.slider = None
         self.edit_text = None
         self.custom_cam = None
@@ -24,13 +24,16 @@ class EditorNetwork:
         self.listener.settimeout(0)
         self.conn = None
         self.addr = None
-        print(f"Creating 100Editor network connector for host={host} and port={port}")
+        self.verbose = verbose
+        if self.verbose:
+            print(f"Creating 100Editor network connector for host={host} and port={port}")
         self.stop_at_value = -1
 
     def try_connect(self):
         try:
             self.conn, self.addr = self.listener.accept()
-            print(f"\nConnected to 100Editor at {self.addr}")
+            if self.verbose:
+                print(f"\nConnected to 100Editor at {self.addr}")
             self.conn.settimeout(None)
         except Exception as inst:
             pass
@@ -48,7 +51,8 @@ class EditorNetwork:
             current_bytes = len(message)
             counter += 1
             if counter > try_counter:
-                print("Package loss")
+                if self.verbose:
+                    print("Package loss")
                 break
         return json.loads(message.decode("utf-8"))
 

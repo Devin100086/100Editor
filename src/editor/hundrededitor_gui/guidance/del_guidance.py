@@ -11,13 +11,7 @@ from transformers import pipeline
 from PIL import Image
 from src.utils.path_utils import resolve_runtime_subdir
 
-try:
-    from leftrefill import predict
-except ModuleNotFoundError:
-    try:
-        from extern.LeftRefill.run import predict
-    except ModuleNotFoundError:
-        from LeftRefill.run import predict
+from leftrefill import predict
 # Diffusion model (cached) + prompts + edited_frames + training config
 
 class DelGuidance:

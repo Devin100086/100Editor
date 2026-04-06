@@ -105,6 +105,7 @@ class HundredEditor(imgui_window.ImguiWindow):
                 editload_widget.EditLoadWidget(self, data_path),
                 editor_widget.EditorWidget(self),
                 editcam_widget.EditcamWidget(self),
+                performance_widget.PerformanceWidget(self), 
                 render_widget.RenderWidget(self),
                 eval_widget.EvalWidget(self),
         ]
