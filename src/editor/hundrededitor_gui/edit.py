@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 import copy
 import pickle
+import time
 from omegaconf import OmegaConf
 from tqdm import tqdm
 import sys
@@ -54,6 +55,54 @@ class EditTrainer(BaseTrainer):
         with open(cfg.camera, 'rb') as f:
             self.cam  = pickle.load(f)
 
+    @staticmethod
+    def _supports_ansi() -> bool:
+        return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+
+    @classmethod
+    def _ansi(cls, text: str, code: str) -> str:
+        if not cls._supports_ansi():
+            return text
+        return f"\033[{code}m{text}\033[0m"
+
+    def _log_kv(self, label: str, value: str, color: str = "36") -> None:
+        print(self._ansi(f"  {label:<16}:", color), value)
+
+    def _log_stage(self, message: str, color: str = "1;34") -> None:
+        print(self._ansi(f"[Semantic Edit] {message}", color))
+
+    def _log_start_banner(self, sam_option: int, seg_prompt: str, video: bool) -> None:
+        sam_map = {
+            0: "No Sam",
+            1: "Lang-sam",
+            2: "SAM2(image)",
+            3: "SAM2(video)",
+        }
+        print("\n" + self._ansi("[Semantic Edit] Start", "1;36"))
+        self._log_kv("Guidance", str(self.guidance_type))
+        self._log_kv("Prompt", str(self.edit_text))
+        self._log_kv("Train Steps", str(self.edit_train_steps))
+        self._log_kv("Batch Mode", str(video))
+        self._log_kv("SAM Mode", sam_map.get(sam_option, f"Unknown({sam_option})"))
+        if sam_option == 1:
+            self._log_kv("Seg Prompt", seg_prompt)
+        self._log_kv("Output Dir", self.output_dir)
+
+    def _log_finish_banner(self, wall_time_s: float, result_ply_path: str) -> None:
+        print(self._ansi("[Semantic Edit] Done", "1;32"))
+        self._log_kv("Elapsed", f"{wall_time_s:.2f}s", color="32")
+        self._log_kv("Result PLY", result_ply_path, color="32")
+        print("")
+
+    def _log_batch_mode_config(self) -> None:
+        self._log_stage("Batch Mode Enabled", color="1;35")
+        self._log_kv("Camera Update", f"every {self.cameara_update_step} steps", color="35")
+        self._log_kv(
+            "Batch Views",
+            f"{len(self.n2n_view_index)} / {len(self.train_cameras)} train views",
+            color="35",
+        )
+
     def _wait_for_user_finalize(self, network, ema_loss_for_log, step):
         network.render(
             self.pipe,
@@ -68,10 +117,12 @@ class EditTrainer(BaseTrainer):
         )
 
     def edit(self, sam_option, seg_prompt, video):
+        wall_start = time.perf_counter()
         now = datetime.datetime.now()
         now = now.strftime("%Y_%m_%d_%H_%M_%S")
         self.output_dir = os.path.join(self.output_dir, now)
         os.makedirs(self.output_dir, exist_ok=True)
+        self._log_start_banner(sam_option=sam_option, seg_prompt=seg_prompt, video=video)
 
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
@@ -95,7 +146,7 @@ class EditTrainer(BaseTrainer):
             cur_2D_guidance = self.ip2p
             # cur_2D_guidance = self.dreambooth
             self.origin_prompt = None
-            print("using InstructPix2Pix!")
+            self._log_stage("Guidance Loaded: InstructPix2Pix")
         elif self.guidance_type == "ControlNet-Depth":
             if not self.ctn_ip2p:
                 from threestudio.models.guidance.controlnet_guidance import (
@@ -109,7 +160,7 @@ class EditTrainer(BaseTrainer):
                                       "control_type": "depth"})
                 )
             cur_2D_guidance = self.ctn_controlnet
-            print("using ControlNet-Depth!")
+            self._log_stage("Guidance Loaded: ControlNet-Depth")
         elif self.guidance_type == "BrushNet":
             self.brushnet = BrushNetGuidance(
                 OmegaConf.create({"min_step_percent": 0.02,
@@ -118,7 +169,7 @@ class EditTrainer(BaseTrainer):
             )
             self.origin_prompt = None
             cur_2D_guidance = self.brushnet
-            print("using BrushNet!")
+            self._log_stage("Guidance Loaded: BrushNet")
         
         if self.eval:
             self.origin_frames_eval, self.depths_eval = self.render_cameras_list(self.colmap_cameras, separate_sh=self.use_sparse_adam)
@@ -142,15 +193,21 @@ class EditTrainer(BaseTrainer):
         )
 
         self.view_list = self.n2n_view_index
+        if video:
+            self._log_batch_mode_config()
 
         if sam_option == 0:
-            pass
+            self._log_stage("SAM disabled")
         elif sam_option == 1:
+            self._log_stage(f"SAM segmentation with prompt: {seg_prompt}")
             self.masks, _ = self.update_mask(self.train_cameras, text_prompt=seg_prompt)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 
         elif sam_option == 2:
+            self._log_stage(
+                f"SAM2(image) with points: +{len(self.positive_sam_points)} / -{len(self.negative_sam_points)}"
+            )
 
             positive_points3d = []
             negative_points3d = []
@@ -190,6 +247,9 @@ class EditTrainer(BaseTrainer):
             self._clear_cuda_memory()
 
         elif sam_option == 3:
+            self._log_stage(
+                f"SAM2(video) with points: +{len(self.positive_sam_points)} / -{len(self.negative_sam_points)}"
+            )
 
             positive_sam_points = np.empty((0,2)) if self.positive_sam_points.shape[0] == 0 else self.positive_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             negative_sam_points = np.empty((0,2)) if self.negative_sam_points.shape[0] == 0 else self.negative_sam_points * np.array([self.cam.image_width, self.cam.image_height])
@@ -233,6 +293,7 @@ class EditTrainer(BaseTrainer):
 
         network = EditorNetwork(host="127.0.0.1",port=8084)
         start_event.record()
+        self._log_stage("Training loop started")
         
         # 创建时间记录文件
         time_log_path = os.path.join(self.output_dir, "time_log.txt")
@@ -252,7 +313,12 @@ class EditTrainer(BaseTrainer):
         # camera_45_dir = os.path.join(self.output_dir, "camera_45_renders")
         # os.makedirs(camera_45_dir, exist_ok=True)
         
-        for step in tqdm(range(self.edit_train_steps)):
+        progress_bar = tqdm(
+            range(self.edit_train_steps),
+            desc="Semantic Train (Batch)" if video else "Semantic Train",
+            dynamic_ncols=True,
+        )
+        for step in progress_bar:
             network.render(self.pipe,self.gaussian,ema_loss_for_log, render,self.background_tensor,step,self.opt, self.use_sparse_adam)
             
             # 保存相机索引45的渲染结果
@@ -292,24 +358,47 @@ class EditTrainer(BaseTrainer):
                         patience_counter = 0
                         with open(earlystop_log_path, "a") as f:
                             f.write(f"Early stopping at step {step} with best metric {best_metric:.4f}\n")
+                        self._log_stage(
+                            f"Early-stop trigger at step {step} (best metric={best_metric:.4f})",
+                            color="33",
+                        )
                         Batch_flag = True
                         continue
                 if ((step == 0 or Batch_flag == True) and video):
                     if Batch_count >= 3:
                         with open(earlystop_log_path, "a") as f:
                             f.write(f"Finish all batches at step {step}.\n")
+                        self._log_stage("Early-stop batches complete, waiting for user finalize", color="33")
                         self._wait_for_user_finalize(network, ema_loss_for_log, step)
                         break
+                    batch_idx = Batch_count + 1
+                    self._log_stage(
+                        f"Batch {batch_idx}/3 full-view update at step {step}",
+                        color="1;35",
+                    )
                     self.edit_all_view(sam_option, update_camera= step >= self.cameara_update_step, global_step=step)
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                     Batch_flag = False
                     Batch_count += 1
+                    self._log_stage(
+                        f"Batch {batch_idx}/3 update complete",
+                        color="35",
+                    )
             else:
                 if (step % self.cameara_update_step == 0 and video):
+                    batch_round = step // self.cameara_update_step + 1
+                    self._log_stage(
+                        f"Batch refresh #{batch_round} at step {step}",
+                        color="1;35",
+                    )
                     self.edit_all_view(sam_option, update_camera= step >= self.cameara_update_step, global_step=step)
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
+                    self._log_stage(
+                        f"Batch refresh #{batch_round} complete",
+                        color="35",
+                    )
 
             # if (step == 999):
             #     self.edit_all_view(sam_option, update_camera= False, global_step=step)
@@ -349,6 +438,14 @@ class EditTrainer(BaseTrainer):
                 ema_loss_for_log = loss.item()
             else:
                 ema_loss_for_log = self.alpha * ema_loss_for_log + (1-self.alpha) * loss.item()
+            if step % 10 == 0:
+                postfix_data = {
+                    "loss": f"{ema_loss_for_log:.4f}",
+                    "mem_gb": f"{max_memory_allocated:.2f}",
+                }
+                if video and self.earlystop:
+                    postfix_data["batch"] = f"{Batch_count}/3"
+                progress_bar.set_postfix(postfix_data)
         
         # Renderings1 = torch.cat(Renderings1, dim=0)
         # Renderings2 = torch.cat(Renderings2, dim=0)
@@ -375,7 +472,10 @@ class EditTrainer(BaseTrainer):
         if self.eval:
             self.compute_clip(self.edit_train_steps, clip_prompt_origin=self.clip_origin_prompt, clip_prompt_target=self.clip_target_prompt)
 
-        self.gaussian.save_ply(f"{self.output_dir}/result.ply")
+        result_ply_path = f"{self.output_dir}/result.ply"
+        self.gaussian.save_ply(result_ply_path)
+        wall_elapsed = time.perf_counter() - wall_start
+        self._log_finish_banner(wall_time_s=wall_elapsed, result_ply_path=result_ply_path)
     
     def edit_all_view(self, sam_option, update_camera=False, global_step=0):
     

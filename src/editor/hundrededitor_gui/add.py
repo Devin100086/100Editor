@@ -5,6 +5,7 @@ import subprocess
 from tqdm import tqdm
 import sys
 import os
+import time
 from editor.hundrededitor_gui.base import *
 from third_party.gaussiansplatting.gaussian_renderer import render
 from editor.hundrededitor_gui.utils import *
@@ -24,6 +25,93 @@ from threestudio.models.guidance.brushnet_guidance import (
         )
 import cv2
 from src.utils.path_utils import find_repo_root, resolve_runtime_subdir
+
+
+def _supports_ansi() -> bool:
+    return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+
+
+def _ansi(text: str, code: str) -> str:
+    if not _supports_ansi():
+        return text
+    return f"\033[{code}m{text}\033[0m"
+
+
+def _print_kv(label: str, value: str, color: str = "36"):
+    print(_ansi(f"  {label:<12}:", color), value)
+
+
+def _run_external_step(
+    step_name: str,
+    cmd: list[str],
+    *,
+    cwd: str | None = None,
+    log_path: Path | None = None,
+    live_output: bool = False,
+) -> None:
+    print(_ansi(f"[Coarse Adding] {step_name} ...", "1;34"))
+    step_start = time.perf_counter()
+    tail_lines = []
+
+    def _write_header(fp):
+        fp.write(f"\n===== {step_name} =====\n")
+        fp.write("Command:\n")
+        fp.write(" ".join(cmd) + "\n")
+        if cwd is not None:
+            fp.write(f"CWD: {cwd}\n")
+
+    if live_output:
+        if log_path is not None:
+            with open(log_path, "a", encoding="utf-8") as f:
+                _write_header(f)
+                f.write("\n[live output]\n")
+                f.write(
+                    "Output is streamed directly to terminal to preserve tqdm progress bar.\n"
+                )
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+        )
+        return_code = proc.returncode
+        elapsed = time.perf_counter() - step_start
+        tail_lines = []
+    else:
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+        )
+        elapsed = time.perf_counter() - step_start
+        return_code = proc.returncode
+        if log_path is not None:
+            with open(log_path, "a", encoding="utf-8") as f:
+                _write_header(f)
+                if proc.stdout:
+                    f.write("\n[stdout]\n")
+                    f.write(proc.stdout)
+                if proc.stderr:
+                    f.write("\n[stderr]\n")
+                    f.write(proc.stderr)
+        combined = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip().splitlines()
+        tail_lines = combined[-8:] if combined else []
+
+    if return_code != 0:
+        print(
+            _ansi(
+                f"[Coarse Adding] {step_name} failed (exit={return_code}, {elapsed:.2f}s)",
+                "1;31",
+            )
+        )
+        if tail_lines:
+            print(_ansi("  Last logs:", "31"))
+            for line in tail_lines:
+                print(f"    {line}")
+        raise RuntimeError(f"{step_name} failed with exit code {return_code}")
+
+    print(_ansi(f"[Coarse Adding] {step_name} done ({elapsed:.2f}s)", "1;32"))
+
+
 class TrainFineeAdd(BaseTrainer):
     def __init__(self, cfg):
         super().__init__(cfg)
@@ -204,7 +292,10 @@ class TrainFineeAdd(BaseTrainer):
                 self.guidance.edit_frames[view_sorted[view_index_tmp]] = edited_images[view_index_tmp].unsqueeze(0).detach().clone() # 1 H W C
 
 def add_sketch(image_pil, text_prompt, cache_dir=None):
+    total_start = time.perf_counter()
     from lang_sam import LangSAM
+    print(_ansi("\n[Coarse Adding] Start", "1;36"))
+    print(_ansi("[Coarse Adding] Step 1/4: Segment object with LangSAM", "1;34"))
     langsam = LangSAM()
     results = langsam.predict([image_pil], [text_prompt])
     mask = results[0]['masks'].astype(np.uint8) * 255
@@ -220,49 +311,24 @@ def add_sketch(image_pil, text_prompt, cache_dir=None):
         cache_dir = resolve_runtime_subdir(__file__, "cache", "add", create=True).as_posix()
     cache_dir = Path(cache_dir).resolve()
     os.makedirs(cache_dir, exist_ok=True)
+    log_name = f"coarse_add_{datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')}.log"
+    log_path = cache_dir / log_name
     # mv_image_dir = os.path.join(cache_dir, "multiview_pred_images")
     # os.makedirs(mv_image_dir, exist_ok=True)
     inpaint_path = (cache_dir / "inpainted.png").as_posix()
     removed_bg_path = (cache_dir / "removed_bg.png").as_posix()
     mesh_path = (cache_dir / "inpaint_mesh.obj").as_posix()
     gs_path = (cache_dir / "inpaint_gs.ply").as_posix()
+    _print_kv("Prompt", text_prompt)
+    _print_kv("Cache dir", cache_dir.as_posix())
+    _print_kv("Log file", log_path.as_posix())
+    _print_kv("Output mesh", mesh_path)
+    _print_kv("Output ply", gs_path)
+
+    print(_ansi("[Coarse Adding] Step 2/4: Prepare RGBA inputs", "1;34"))
     image_pil.save(inpaint_path)
     removed_bg.save(removed_bg_path)
 
-    # p1 = subprocess.Popen(
-    #     f"{sys.prefix}/bin/accelerate launch --config_file 1gpu.yaml test_mvdiffusion_seq.py "
-    #     f"--save_dir {mv_image_dir} --config configs/mvdiffusion-joint-ortho-6views.yaml"
-    #     f" validation_dataset.root_dir={cache_dir} validation_dataset.filepaths=[removed_bg.png]".split(
-    #         " "
-    #     ),
-    #     cwd="threestudio/utils/wonder3D",
-    # )
-    # p1.wait()
-
-    # print(
-    #     f"{sys.prefix}/bin/python launch.py --config configs/neuralangelo-ortho-wmask.yaml --save_dir {cache_dir} --gpu 0 --train dataset.root_dir={os.path.dirname(mv_image_dir)} dataset.scene={os.path.basename(mv_image_dir)}"
-    # )
-    # cmd = f"{sys.prefix}/bin/python launch.py --config configs/neuralangelo-ortho-wmask.yaml --save_dir {cache_dir} --gpu 0 --train dataset.root_dir={os.path.dirname(mv_image_dir)} dataset.scene={os.path.basename(mv_image_dir)}".split(
-    #     " "
-    # )
-    # p2 = subprocess.Popen(
-    #     cmd,
-    #     cwd="threestudio/utils/wonder3D/instant-nsr-pl",
-    # )
-    # p2.wait()
-    # p3 = subprocess.Popen(
-    #     [
-    #         f"{sys.prefix}/bin/python",
-    #         "train_from_mesh.py",
-    #         "--mesh",
-    #         mesh_path,
-    #         "--save_path",
-    #         gs_path,
-    #         "--prompt",
-    #         "",
-    #     ]
-    # )
-    # p3.wait()
     repo_root = find_repo_root(__file__)
     dreamgaussian_dir = repo_root / "third_party" / "dreamgaussian"
     process_script = dreamgaussian_dir / "process.py"
@@ -274,26 +340,34 @@ def add_sketch(image_pil, text_prompt, cache_dir=None):
             f"Checked: {process_script}, {main_script}, {config_file}"
         )
 
-    p0 = subprocess.Popen(
+    _run_external_step(
+        "Step 3/4: DreamGaussian preprocess",
         [
             f"{sys.prefix}/bin/python",
             process_script.as_posix(),
-            f"{removed_bg_path}"
-        ]
+            f"{removed_bg_path}",
+        ],
+        cwd=dreamgaussian_dir.as_posix(),
+        log_path=log_path,
     )
-    p0.wait()
 
-    p1 = subprocess.Popen(
+    _run_external_step(
+        "Step 4/4: DreamGaussian reconstruction",
         [
             f"{sys.prefix}/bin/python",
             main_script.as_posix(),
             "--config",
             config_file.as_posix(),
             f"input={removed_bg_path.replace('.png', '_rgba.png')}",
-            f"outdir={cache_dir.as_posix()}"
-        ]
+            f"outdir={cache_dir.as_posix()}",
+        ],
+        cwd=dreamgaussian_dir.as_posix(),
+        log_path=log_path,
+        live_output=True,
     )
-    p1.wait()
+
+    total_elapsed = time.perf_counter() - total_start
+    print(_ansi(f"[Coarse Adding] Done ({total_elapsed:.2f}s)\n", "1;32"))
 
 if __name__ == "__main__":
     import time 

@@ -1,35 +1,53 @@
 import torch
 import numpy as np
+import math
 
 
 def equal_dicts(dict1, dict2):
     if dict1 is None or dict2 is None:
         return False
 
+    if set(dict1.keys()) != set(dict2.keys()):
+        return False
+
     for key in dict1.keys():
-        if key not in dict2.keys():
-            return False
-        if isinstance(dict1[key], torch.Tensor):
-            if not torch.equal(dict1[key], dict2[key]):
-                return False
-        elif isinstance(dict1[key], np.ndarray):
-            if not np.array_equal(dict1[key], dict2[key]):
-                return False
-        elif isinstance(dict1[key], list):
-            if np.any(dict1[key] == None) or not np.array_equal(np.array(dict1[key]), np.array(dict2[key])):
-                return False
-        elif isinstance(dict1[key], dict):
-            for sub_key in dict1[key].keys():
-                if sub_key not in dict2[key].keys():
-                    return False
-                elif isinstance(dict1[key][sub_key], torch.Tensor):
-                    if not torch.equal(dict1[key][sub_key], dict2[key][sub_key]):
-                        return False
-                elif dict1[key][sub_key] != dict2[key][sub_key]:
-                    return False
-        elif dict1[key] != dict2[key]:
+        if not _equal_values(dict1[key], dict2[key]):
             return False
     return True
+
+
+def _equal_values(value1, value2):
+    if isinstance(value1, torch.Tensor):
+        return isinstance(value2, torch.Tensor) and torch.equal(value1, value2)
+
+    if isinstance(value1, np.ndarray):
+        return isinstance(value2, np.ndarray) and np.array_equal(value1, value2)
+
+    if isinstance(value1, dict):
+        if not isinstance(value2, dict):
+            return False
+        if set(value1.keys()) != set(value2.keys()):
+            return False
+        for key in value1.keys():
+            if not _equal_values(value1[key], value2[key]):
+                return False
+        return True
+
+    if isinstance(value1, (list, tuple)):
+        if not isinstance(value2, (list, tuple)):
+            return False
+        if len(value1) != len(value2):
+            return False
+        for item1, item2 in zip(value1, value2):
+            if not _equal_values(item1, item2):
+                return False
+        return True
+
+    if isinstance(value1, float) and isinstance(value2, float):
+        if math.isnan(value1) and math.isnan(value2):
+            return True
+
+    return value1 == value2
 
 from typing import Any
 

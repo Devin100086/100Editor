@@ -53,6 +53,7 @@ pip install -e third_party/sam2
 pip install -e src/trainer/origin/submodules/diff-gaussian-rasterization
 pip install -e src/editor/gaussiansplatting/submodules/acc-diff-gaussian-rasterization-editor
 pip install -e third_party/gaussiansplatting/submodules/diff-gaussian-rasterization
+pip install -e third_party/dreamgaussian/add_diff-gaussian-rasterization
 
  
 pip install -e src/trainer/origin/submodules/fused-ssim

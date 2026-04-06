@@ -473,8 +473,13 @@ class GaussianRenderer(Renderer):
     
     @staticmethod
     def save_concat_ply(gaussian, save_ply_path):
+        if gaussian is None:
+            print("No concatenated gaussian is available to save.")
+            return
+        save_path = Path(save_ply_path).resolve()
+        save_path.parent.mkdir(parents=True, exist_ok=True)
         print("Model saved in", save_ply_path)
-        gaussian.save_ply(save_ply_path)
+        gaussian.save_ply(save_path.as_posix())
     
     def concat_gaussian(self, cam, depth, background_color, gaussian):
         cache_dir = self._runtime_add_cache_dir

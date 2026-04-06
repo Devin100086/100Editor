@@ -9,6 +9,7 @@
 # its affiliates is strictly prohibited.
 
 import functools
+import math
 from OpenGL.GL import *
 from PIL import Image
 import contextlib
@@ -204,25 +205,85 @@ def _setup_rect(rx, ry):
     return v.astype("float32")
 
 
+def _draw_filled_circle(cx, cy, radius, segments=24):
+    gl.glBegin(gl.GL_TRIANGLE_FAN)
+    gl.glVertex2f(cx, cy)
+    for i in range(segments + 1):
+        theta = 2.0 * math.pi * i / segments
+        gl.glVertex2f(cx + radius * math.cos(theta), cy + radius * math.sin(theta))
+    gl.glEnd()
+
+
+def _draw_thick_segment(p0, p1, half_width):
+    x0, y0 = p0
+    x1, y1 = p1
+    dx = x1 - x0
+    dy = y1 - y0
+    length = math.hypot(dx, dy)
+    if length < 1e-6:
+        _draw_filled_circle(x0, y0, half_width)
+        return
+
+    nx = -dy / length * half_width
+    ny = dx / length * half_width
+
+    gl.glBegin(gl.GL_TRIANGLE_STRIP)
+    gl.glVertex2f(x0 + nx, y0 + ny)
+    gl.glVertex2f(x0 - nx, y0 - ny)
+    gl.glVertex2f(x1 + nx, y1 + ny)
+    gl.glVertex2f(x1 - nx, y1 - ny)
+    gl.glEnd()
+
+
+def _draw_polyline(points, line_width):
+    if not points:
+        return
+    half_width = max(0.5, float(line_width) / 2.0)
+    _draw_filled_circle(points[0][0], points[0][1], half_width)
+    for idx in range(1, len(points)):
+        _draw_thick_segment(points[idx - 1], points[idx], half_width)
+        _draw_filled_circle(points[idx][0], points[idx][1], half_width)
+
+
 def sketch(max_w, max_h, points, current_color, line_width):
     gl.glMatrixMode(gl.GL_PROJECTION)
     gl.glLoadIdentity()
     gl.glOrtho(0, max_w, max_h, 0, -1, 1)
     gl.glMatrixMode(gl.GL_MODELVIEW)
 
-    gl.glEnable(gl.GL_LINE_SMOOTH)
-    gl.glLineWidth(line_width)
+    line_width = float(max(1.0, line_width))
     gl.glColor4f(*current_color)
-    
-    gl.glBegin(gl.GL_LINE_STRIP)
+
+    # glLineWidth is hardware-limited on many drivers (often <= 10).
+    # Use triangle-based stroke rendering for wider brushes.
+    if line_width <= 10.0:
+        gl.glEnable(gl.GL_LINE_SMOOTH)
+        gl.glLineWidth(line_width)
+        gl.glBegin(gl.GL_LINE_STRIP)
+        for point in points:
+            if point is None:
+                gl.glEnd()
+                gl.glBegin(gl.GL_LINE_STRIP)
+            else:
+                gl.glVertex2f(*point)
+        gl.glEnd()
+        return
+
+    gl.glPushAttrib(gl.GL_ENABLE_BIT | gl.GL_COLOR_BUFFER_BIT)
+    gl.glDisable(gl.GL_TEXTURE_2D)
+    gl.glEnable(gl.GL_BLEND)
+    gl.glBlendFunc(gl.GL_SRC_ALPHA, gl.GL_ONE_MINUS_SRC_ALPHA)
+    gl.glEnable(gl.GL_LINE_SMOOTH)
+
+    segment_points = []
     for point in points:
         if point is None:
-            gl.glEnd()
-            gl.glBegin(gl.GL_LINE_STRIP)
+            _draw_polyline(segment_points, line_width)
+            segment_points = []
         else:
-            
-            gl.glVertex2f(*point)
-    gl.glEnd()
+            segment_points.append((float(point[0]), float(point[1])))
+    _draw_polyline(segment_points, line_width)
+    gl.glPopAttrib()
 
 def get_image(left_x, left_h, width, height):
     glPixelStorei(GL_PACK_ALIGNMENT, 1)
