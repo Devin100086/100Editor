@@ -104,11 +104,14 @@ class DeleteTrainer(BaseTrainer):
             with redirect_stdout(log_fp), redirect_stderr(log_fp):
                 return fn(*args, **kwargs)
 
-    def _run_noisy_stage(self, stage_name: str, fn, *args, **kwargs):
+    def _run_noisy_stage(self, stage_name: str, fn, *args, quiet: bool = True, **kwargs):
         self._log_stage(f"{stage_name} ...")
         stage_start = time.perf_counter()
         try:
-            result = self._call_quiet(fn, *args, **kwargs)
+            if quiet:
+                result = self._call_quiet(fn, *args, **kwargs)
+            else:
+                result = fn(*args, **kwargs)
         except Exception as exc:
             elapsed = time.perf_counter() - stage_start
             self._log_stage(f"{stage_name} failed ({elapsed:.2f}s)", color="1;31")
@@ -207,6 +210,7 @@ class DeleteTrainer(BaseTrainer):
                 "Run Lang-SAM across views",
                 self.update_mask,
                 self.colmap_cameras,
+                quiet=False,
                 text_prompt=self.delete_prompt,
             )
         elif self.sam_type == 1:
@@ -247,6 +251,7 @@ class DeleteTrainer(BaseTrainer):
                 self.colmap_cameras,
                 positive_points3d,
                 negative_points3d,
+                quiet=False,
             )
 
         elif self.sam_type == 2:
@@ -261,6 +266,7 @@ class DeleteTrainer(BaseTrainer):
                 self.colmap_cameras,
                 self.positive_sam_points,
                 self.negative_sam_points,
+                quiet=False,
             )
 
         # origin_frames = self.render_cameras_list(self.colmap_cameras)
@@ -287,6 +293,7 @@ class DeleteTrainer(BaseTrainer):
             "Render all views with inpaint masks",
             self.render_all_view_with_mask,
             self.colmap_cameras,
+            quiet=False,
         )
 
         self.guidance = self._run_noisy_stage(

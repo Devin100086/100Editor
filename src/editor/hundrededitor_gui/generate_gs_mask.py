@@ -51,6 +51,10 @@ class MaskCatcher:
         
         self.use_sparse_adam = cfg.optimizer_type == "sparse_adam" and SPARSE_ADAM_AVAILABLE 
 
+    @staticmethod
+    def _progress_desc(stage: str) -> str:
+        return f"Mask | {stage}"
+
     def get_mask(self, sam_option, seg_prompt):
     
         if sam_option == 0:
@@ -112,7 +116,11 @@ class MaskCatcher:
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
         kernel =  np.ones((5,5),np.uint8)
 
-        for cam in tqdm(edit_cameras):
+        for cam in tqdm(
+            edit_cameras,
+            desc=self._progress_desc("LangSAM"),
+            dynamic_ncols=True,
+        ):
             cur_cam = cam
             if type == "default":
                 this_frame = render(
@@ -158,7 +166,11 @@ class MaskCatcher:
         masks = []
         weights = torch.zeros_like(self.gaussian._opacity)
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
-        for cam in tqdm(edit_cameras):
+        for cam in tqdm(
+            edit_cameras,
+            desc=self._progress_desc("SAM2(image)"),
+            dynamic_ncols=True,
+        ):
             cur_cam = cam
             assert len(positive_points3d) > 0
             positive_points2ds = project_3d_to_2d(positive_points3d, cur_cam) if len(positive_points3d) > 0 else np.empty((0,2))
@@ -211,7 +223,13 @@ class MaskCatcher:
         sam2_predictor = SAM2VideoPredictor.from_pretrained("facebook/sam2-hiera-large")
         render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
         os.makedirs(render_folder, exist_ok=True)
-        for i, cam in tqdm(enumerate(edit_cameras)):
+        for i, cam in enumerate(
+            tqdm(
+                edit_cameras,
+                desc=self._progress_desc("SAM2(video) frame prep"),
+                dynamic_ncols=True,
+            )
+        ):
             cur_cam = cam
             if type == "default":
                 img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor)["render"]
@@ -252,16 +270,22 @@ class MaskCatcher:
         weights = torch.zeros_like(self.gaussian._opacity)
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
 
-        for out_frame_idx, _, out_mask_logits in sam2_predictor.propagate_in_video(state):
-            if out_frame_idx == 0:
-                continue
-            mask = out_mask_logits[0] > 0.0
-            cur_cam = edit_cameras[out_frame_idx-1]
-            save_image(mask.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cur_cam.image_name}" + ".png")
-            self.gaussian.apply_weights(
-                cur_cam, weights, weights_cnt, mask.to(torch.float32)
-            )
-            masks.append(mask.to(torch.float16))
+        with tqdm(
+            total=len(edit_cameras),
+            desc=self._progress_desc("SAM2(video) propagation"),
+            dynamic_ncols=True,
+        ) as propagation_bar:
+            for out_frame_idx, _, out_mask_logits in sam2_predictor.propagate_in_video(state):
+                if out_frame_idx == 0:
+                    continue
+                mask = out_mask_logits[0] > 0.0
+                cur_cam = edit_cameras[out_frame_idx-1]
+                save_image(mask.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cur_cam.image_name}" + ".png")
+                self.gaussian.apply_weights(
+                    cur_cam, weights, weights_cnt, mask.to(torch.float32)
+                )
+                masks.append(mask.to(torch.float16))
+                propagation_bar.update(1)
 
         weights /= weights_cnt + 1e-7
         selected_mask = weights > self.mask_thres

@@ -126,6 +126,10 @@ class BaseTrainer:
         self.scale_depth = True
         self.clip_metrics = ClipSimilarity().to(self.gaussian.get_xyz.device)
 
+    def _progress_desc(self, stage: str) -> str:
+        trainer_name = self.__class__.__name__.replace("Trainer", "")
+        return f"{trainer_name} | {stage}"
+
     def _resolve_output_log_path(self, filename: str) -> str:
         output_dir = getattr(self, "output_dir", None)
         if output_dir:
@@ -285,7 +289,11 @@ class BaseTrainer:
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
 
         with torch.inference_mode():
-            for cam in tqdm(edit_cameras):
+            for cam in tqdm(
+                edit_cameras,
+                desc=self._progress_desc("LangSAM"),
+                dynamic_ncols=True,
+            ):
                 cur_cam = cam
                 if type == "default":
                     this_frame = render(
@@ -337,7 +345,11 @@ class BaseTrainer:
         weights = torch.zeros_like(self.gaussian._opacity)
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
         with torch.inference_mode():
-            for cam in tqdm(edit_cameras):
+            for cam in tqdm(
+                edit_cameras,
+                desc=self._progress_desc("SAM2(image)"),
+                dynamic_ncols=True,
+            ):
                 cur_cam = cam
                 assert len(positive_points3d) > 0
                 positive_points2ds = project_3d_to_2d(positive_points3d, cur_cam) if len(positive_points3d) > 0 else np.empty((0,2))
@@ -403,7 +415,13 @@ class BaseTrainer:
             else:
                 shutil.rmtree(file_path)
         with torch.inference_mode():
-            for i, cam in tqdm(enumerate(edit_cameras)):
+            for i, cam in enumerate(
+                tqdm(
+                    edit_cameras,
+                    desc=self._progress_desc("SAM2(video) frame prep"),
+                    dynamic_ncols=True,
+                )
+            ):
                 cur_cam = cam
                 if type == "default":
                     img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
@@ -439,18 +457,24 @@ class BaseTrainer:
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
 
         with torch.inference_mode():
-            for out_frame_idx, _, out_mask_logits in sam2_predictor.propagate_in_video(state):
-                if out_frame_idx == 0:
-                    continue
-                mask = out_mask_logits[0] > 0.0
-                mask_float = mask.to(torch.float32)
-                cur_cam = edit_cameras[out_frame_idx - 1]
-                save_image(mask_float.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cur_cam.image_name}" + ".png")
-                self.gaussian.apply_weights(
-                    cur_cam, weights, weights_cnt, mask_float
-                )
-                masks.append((mask.detach().to("cpu").numpy().astype(np.uint8) * 255))
-                del out_mask_logits, mask, mask_float
+            with tqdm(
+                total=len(edit_cameras),
+                desc=self._progress_desc("SAM2(video) propagation"),
+                dynamic_ncols=True,
+            ) as propagation_bar:
+                for out_frame_idx, _, out_mask_logits in sam2_predictor.propagate_in_video(state):
+                    if out_frame_idx == 0:
+                        continue
+                    mask = out_mask_logits[0] > 0.0
+                    mask_float = mask.to(torch.float32)
+                    cur_cam = edit_cameras[out_frame_idx - 1]
+                    save_image(mask_float.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cur_cam.image_name}" + ".png")
+                    self.gaussian.apply_weights(
+                        cur_cam, weights, weights_cnt, mask_float
+                    )
+                    masks.append((mask.detach().to("cpu").numpy().astype(np.uint8) * 255))
+                    propagation_bar.update(1)
+                    del out_mask_logits, mask, mask_float
 
         weights /= weights_cnt + 1e-7
         selected_mask = weights > self.mask_thres

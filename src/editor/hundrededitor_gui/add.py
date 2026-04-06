@@ -190,7 +190,9 @@ class TrainFineeAdd(BaseTrainer):
         render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
         init_render = render(self.cam, self.gaussian2, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
         save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
+        print(_ansi("[Fine Add] SAM2(video) mask preparation ...", "1;34"))
         self.masks, _ = self.update_sam2_mask_with_point_prompt(self.colmap_cameras, points2d, np.empty((0,2)), type = "add")
+        print(_ansi("[Fine Add] SAM2(video) mask preparation done", "1;32"))
 
         self.guidance = AddGuidance(
             guidance=cur_2D_guidance,
@@ -212,7 +214,11 @@ class TrainFineeAdd(BaseTrainer):
         ema_loss_for_log = 0.0
         network = EditorNetwork(host="127.0.0.1",port=8084)
         
-        for step in tqdm(range(self.edit_train_steps)):
+        for step in tqdm(
+            range(self.edit_train_steps),
+            desc="Fine Add Train",
+            dynamic_ncols=True,
+        ):
             network.render(self.pipe,self.gaussian,ema_loss_for_log,render,self.background_tensor,step,self.opt, self.use_sparse_adam)
             if step % self.cameara_update_step == 0 and video:
                 self.edit_all_view(update_camera= step >= self.cameara_update_step, global_step=step)
