@@ -1,0 +1,1 @@
+python main.py --config configs/image.yaml input=data/anya_rgba.png save_path=rgba
