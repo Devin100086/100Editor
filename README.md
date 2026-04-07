@@ -65,7 +65,6 @@ pip install -e src/trainer/origin/submodules/simple-knn
 https://help.aliyun.com/zh/model-studio/get-api-key
 https://bailian.console.aliyun.com/cn-beijing?spm=a2c4g.11186623.0.0.60905ec6JuwGKr&tab=api#/api/?type=model&url=2976416
 
-
 ## :pray: Acknowledgments
 We sincerely appreciate these excellent open-source projects.
 
