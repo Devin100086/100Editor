@@ -61,7 +61,7 @@ third_party/dreamgaussian/add_diff-gaussian-rasterization
 others/
 exp1/
 ablation/
-third_party/extern
+third_party/colmap
 
 # -----------------------------
 # Generated media (not source assets)
