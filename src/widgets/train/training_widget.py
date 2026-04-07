@@ -74,7 +74,7 @@ class TrainingWidget(Widget):
 
         if show:
             imgui.text("Choose your model")
-            if imgui.radio_button("Origin", self.selected_option == 0):
+            if imgui.radio_button("origin", self.selected_option == 0):
                 self.selected_option = 0 
             imgui.same_line(viz.label_w)
             if imgui.radio_button("gsplat", self.selected_option == 1):

@@ -3,6 +3,7 @@ from OpenGL.GL import *
 import numpy as np
 import torch
 import sys
+import glfw
 
 torch.set_printoptions(precision=2, sci_mode=False)
 np.set_printoptions(precision=2)
@@ -152,7 +153,7 @@ class HundredEditor(imgui_window.ImguiWindow):
         self._pane_dragging = False
         self._pane_min_open_w = 360
         self._pane_min_render_w = 320
-        self._pane_splitter_hit_w = 10
+        self._pane_splitter_hit_w = 12
         self._pane_toggle_btn_w = 18
         self._pane_toggle_btn_h = 36
         self._last_renderer_type = None
@@ -162,6 +163,11 @@ class HundredEditor(imgui_window.ImguiWindow):
         # Dynamic resolution scaling with viewport to avoid blur when resizing panes.
         self._auto_resolution_with_viewport = True
         self._max_dynamic_resolution = 2048
+        self._cursor_arrow = None
+        self._cursor_resize_ew = None
+        self._cursor_hand = None
+        self._active_system_cursor = None
+        self._init_system_cursors()
 
         self.skip_frame()
 
@@ -174,6 +180,7 @@ class HundredEditor(imgui_window.ImguiWindow):
             widget.close()
         for widget in self.edit_widgets:
             widget.close()
+        self._release_system_cursors()
         self.renderer.close()
         super().close()
 
@@ -188,6 +195,50 @@ class HundredEditor(imgui_window.ImguiWindow):
         self.set_font_size(min(self.content_width / 120, self.content_height / 60))
         if self.font_size != old:
             self.skip_frame()
+
+    def _init_system_cursors(self):
+        try:
+            self._cursor_arrow = glfw.create_standard_cursor(glfw.ARROW_CURSOR)
+            resize_shape = glfw.RESIZE_EW_CURSOR if hasattr(glfw, "RESIZE_EW_CURSOR") else glfw.HRESIZE_CURSOR
+            self._cursor_resize_ew = glfw.create_standard_cursor(resize_shape)
+            self._cursor_hand = glfw.create_standard_cursor(glfw.HAND_CURSOR)
+        except Exception:
+            self._cursor_arrow = None
+            self._cursor_resize_ew = None
+            self._cursor_hand = None
+
+    def _release_system_cursors(self):
+        for cursor in [self._cursor_arrow, self._cursor_resize_ew, self._cursor_hand]:
+            if cursor is None:
+                continue
+            try:
+                glfw.destroy_cursor(cursor)
+            except Exception:
+                pass
+        self._cursor_arrow = None
+        self._cursor_resize_ew = None
+        self._cursor_hand = None
+        self._active_system_cursor = None
+
+    def _set_system_cursor(self, style):
+        if self._active_system_cursor == style:
+            return
+
+        if style == "ew":
+            cursor = self._cursor_resize_ew
+        elif style == "hand":
+            cursor = self._cursor_hand
+        else:
+            cursor = self._cursor_arrow
+            style = "arrow"
+
+        if cursor is None:
+            return
+        try:
+            glfw.set_cursor(self._glfw_window, cursor)
+            self._active_system_cursor = style
+        except Exception:
+            pass
 
     def _default_pane_width(self):
         return max(self.content_width - self.content_height, 500)
@@ -263,8 +314,12 @@ class HundredEditor(imgui_window.ImguiWindow):
 
         if button_hovered:
             imgui.set_mouse_cursor(MOUSE_CURSOR_HAND)
+            self._set_system_cursor("hand")
         elif hovered or self._pane_dragging:
             imgui.set_mouse_cursor(MOUSE_CURSOR_RESIZE_EW)
+            self._set_system_cursor("ew")
+        elif self._active_system_cursor in ("hand", "ew"):
+            self._set_system_cursor("arrow")
 
         if button_hovered and imgui.is_mouse_clicked(0):
             self._toggle_pane_collapsed()
@@ -306,22 +361,40 @@ class HundredEditor(imgui_window.ImguiWindow):
 
     def _draw_pane_splitter(self):
         splitter_x = float(self.pane_w)
-        line_half_w = 1.0
-        x0 = max(0.0, splitter_x - line_half_w)
-        x1 = min(float(self.content_width), splitter_x + line_half_w)
-        if x1 <= x0:
-            return
-
         splitter_half = self._pane_splitter_hit_w * 0.5
         mouse = imgui.get_mouse_pos()
         hovered = (
             max(0.0, splitter_x - splitter_half) <= mouse.x <= min(float(self.content_width), splitter_x + splitter_half)
             and 0.0 <= mouse.y <= float(self.content_height)
         )
+
         if self._pane_dragging:
-            color, alpha = [0.40, 0.44, 0.47], 1.0
+            line_half_w = 2.0
         elif hovered:
-            color, alpha = [0.44, 0.44, 0.44], 0.85
+            line_half_w = 1.8
+        else:
+            line_half_w = 1.0
+        x0 = max(0.0, splitter_x - line_half_w)
+        x1 = min(float(self.content_width), splitter_x + line_half_w)
+        if x1 <= x0:
+            return
+
+        # Soft blue hint on hover/drag to clearly indicate the splitter is interactive.
+        if hovered or self._pane_dragging:
+            hint_x0 = max(0.0, splitter_x - splitter_half)
+            hint_x1 = min(float(self.content_width), splitter_x + splitter_half)
+            gl_utils.draw_rect(
+                pos=(hint_x0, 0),
+                pos2=(hint_x1, self.content_height),
+                color=[0.48, 0.72, 0.98],
+                alpha=0.14,
+                rounding=0,
+            )
+
+        if self._pane_dragging:
+            color, alpha = [0.46, 0.70, 0.98], 0.98
+        elif hovered:
+            color, alpha = [0.56, 0.78, 1.00], 0.96
         else:
             color, alpha = [0.28, 0.28, 0.28], 0.55
         gl_utils.draw_rect(pos=(x0, 0), pos2=(x1, self.content_height), color=color, alpha=alpha, rounding=0)
