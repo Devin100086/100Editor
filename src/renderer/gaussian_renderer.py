@@ -265,6 +265,10 @@ class GaussianRenderer(Renderer):
         **other_args,
     ):
         cam_params = cam_params.to("cuda")
+        resolution_x = int(other_args.get("resolution_x", resolution))
+        resolution_y = int(other_args.get("resolution_y", resolution))
+        resolution_x = max(1, resolution_x)
+        resolution_y = max(1, resolution_y)
         slider = EasyDict(slider)
         if len(ply_file_paths) == 0:
             res.error = "Select a .ply file"
@@ -305,11 +309,13 @@ class GaussianRenderer(Renderer):
 
             # Render current view
             fov_rad = fov / 360 * 2 * np.pi
+            aspect = float(resolution_x) / float(max(resolution_y, 1))
+            fovx_rad = 2.0 * np.arctan(np.tan(fov_rad / 2.0) * aspect)
 
-            fx = (resolution / 2) / np.tan(fov_rad / 2)
-            fy = (resolution / 2) / np.tan(fov_rad / 2)
-            cx = resolution / 2
-            cy = resolution / 2
+            fx = (resolution_x / 2) / np.tan(fovx_rad / 2)
+            fy = (resolution_y / 2) / np.tan(fov_rad / 2)
+            cx = resolution_x / 2
+            cy = resolution_y / 2
 
             intrinsic = np.array([
                 [fx,  0, cx],
@@ -318,19 +324,19 @@ class GaussianRenderer(Renderer):
             ])
 
             if roate_point is not None:
-                render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, extr=cam_params)
+                render_cam = CustomCam(resolution_x, resolution_y, fovy=fov_rad, fovx=fovx_rad, extr=cam_params)
                 render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
                 intersection_point = self.pixel_to_3d(roate_point, intrinsic, cam_params, render["depth"].cpu().numpy()[0][int(roate_point[1]),int(roate_point[0])])
                 self.center = torch.tensor(intersection_point).to(torch.float32)
             if drag_point is not None:
-                render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, extr=cam_params)
+                render_cam = CustomCam(resolution_x, resolution_y, fovy=fov_rad, fovx=fovx_rad, extr=cam_params)
                 render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
                 intersection_point = self.pixel_to_3d(drag_point, intrinsic, cam_params, render["depth"].cpu().numpy()[0][int(drag_point[1]),int(drag_point[0])])
                 self.p3d = torch.tensor(intersection_point).to(torch.float32)
 
             R = cam_params.inverse()[:3, :3].T.cpu().numpy()
             T = cam_params.inverse()[:3, 3].cpu().numpy()
-            render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, R=R, T=T, extr=cam_params)
+            render_cam = CustomCam(resolution_x, resolution_y, fovy=fov_rad, fovx=fovx_rad, R=R, T=T, extr=cam_params)
             if concat:
                 gs_concat = copy.deepcopy(gs)
                 self.concat_gaussian_models[scene_index] = self.concat_gaussian(render_cam, depth, background_color, gs_concat)
@@ -375,7 +381,7 @@ class GaussianRenderer(Renderer):
                     if len(self.positive_point3d) > 0:
                         sam_positive_points[:len(self.positive_point3d)] = self.project_3d_to_2d(self.positive_point3d, intrinsic, cam_params)
                     for i in range(len(self.positive_point3d),len(sam_positive_points)):
-                        sam_positive_points[i] *= np.array([render_cam.image_height, render_cam.image_width])
+                        sam_positive_points[i] *= np.array([render_cam.image_width, render_cam.image_height])
                         self.positive_point3d.append(self.pixel_to_3d(sam_positive_points[i], intrinsic, cam_params,
                                                                       render["depth"].cpu().numpy()[0][int(sam_positive_points[i][1]),int(sam_positive_points[i][0])]))
                     
@@ -383,7 +389,7 @@ class GaussianRenderer(Renderer):
                     if len(self.negative_point3d) > 0:
                         sam_negative_points[:len(self.negative_point3d)] = self.project_3d_to_2d(self.negative_point3d, intrinsic, cam_params)
                     for i in range(len(self.negative_point3d),len(sam_negative_points)):
-                        sam_negative_points[i] *= np.array([render_cam.image_height, render_cam.image_width])
+                        sam_negative_points[i] *= np.array([render_cam.image_width, render_cam.image_height])
                         self.negative_point3d.append(self.pixel_to_3d(sam_negative_points[i], intrinsic, cam_params,
                                                                       render["depth"].cpu().numpy()[0][int(sam_negative_points[i][1]),int(sam_negative_points[i][0])]))
                     sam_positive_points = np.empty((0,2)) if sam_positive_points.shape[0] == 0 else sam_positive_points

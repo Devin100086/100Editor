@@ -65,8 +65,12 @@ class CamWidget(Widget):
         viz = self.viz
         dt = self._tick_delta_time()
         active_region = EasyDict(x=viz.pane_w, y=0, width=viz.content_width - viz.pane_w, height=viz.content_height)
-        self.handle_dragging_in_window(**active_region)
-        self.handle_mouse_wheel()
+        suppress_mouse = bool(getattr(viz, "_suppress_viewport_mouse", False))
+        if not suppress_mouse:
+            self.handle_dragging_in_window(**active_region)
+            self.handle_mouse_wheel()
+        else:
+            self.last_drag_delta = imgui.ImVec2(0, 0)
         if "mean_xyz" in viz.result.keys():
             target = viz.result.mean_xyz.cpu()
             should_recenter = (not self.auto_center_initialized) or (

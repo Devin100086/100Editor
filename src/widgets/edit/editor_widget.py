@@ -255,6 +255,43 @@ class EditorWidget(Widget):
         self.rec_start = None
         self.rec_end = None
 
+    def _get_render_image_rect(self):
+        pane_left = float(self.viz.pane_w)
+        viewport_w = float(max(1, self.viz.content_width - self.viz.pane_w))
+        viewport_h = float(max(1, self.viz.content_height))
+        x0 = pane_left
+        y0 = 0.0
+        x1 = pane_left + viewport_w
+        y1 = viewport_h
+
+        if "image" not in self.viz.result:
+            return x0, y0, x1, y1
+        image = self.viz.result.image
+        if image is None or not hasattr(image, "shape") or len(image.shape) < 2:
+            return x0, y0, x1, y1
+
+        img_h = float(max(1, int(image.shape[0])))
+        img_w = float(max(1, int(image.shape[1])))
+        zoom = min(viewport_w / img_w, viewport_h / img_h)
+        draw_w = img_w * zoom
+        draw_h = img_h * zoom
+        draw_x0 = pane_left + (viewport_w - draw_w) * 0.5
+        draw_y0 = (viewport_h - draw_h) * 0.5
+        return draw_x0, draw_y0, draw_x0 + draw_w, draw_y0 + draw_h
+
+    def _current_mouse_uv_in_render_image(self):
+        if bool(getattr(self.viz, "_suppress_viewport_mouse", False)):
+            return None
+        mouse = imgui.get_mouse_pos()
+        x0, y0, x1, y1 = self._get_render_image_rect()
+        if mouse.x < x0 or mouse.x > x1 or mouse.y < y0 or mouse.y > y1:
+            return None
+        w = max(1e-6, x1 - x0)
+        h = max(1e-6, y1 - y0)
+        u = float(np.clip((mouse.x - x0) / w, 0.0, 1.0))
+        v = float(np.clip((mouse.y - y0) / h, 0.0, 1.0))
+        return [u, v]
+
     @staticmethod
     def _supports_ansi() -> bool:
         return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
@@ -479,11 +516,14 @@ class EditorWidget(Widget):
                             self.text_point_option = 2
                         imgui.same_line()
                         if self.text_point_option == 1 or self.text_point_option == 2:
-                            if imgui.get_mouse_pos().x > self.viz.pane_w and imgui.is_mouse_clicked(0):
-                                if self.text_point_option == 1:
-                                    self.text_sam_positive_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                            if imgui.is_mouse_clicked(0):
+                                uv = self._current_mouse_uv_in_render_image()
+                                if uv is None:
+                                    pass
+                                elif self.text_point_option == 1:
+                                    self.text_sam_positive_points.append(uv)
                                 elif self.text_point_option == 2:
-                                    self.text_sam_negative_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                                    self.text_sam_negative_points.append(uv)
                         if imgui_utils.button("clean SAM", width=viz.button_w):
                             self.text_sam_positive_points = []
                             self.text_sam_negative_points = []
@@ -756,11 +796,14 @@ class EditorWidget(Widget):
                         imgui.same_line()
 
                         if self.delete_point_option == 1 or self.delete_point_option == 2:
-                            if imgui.get_mouse_pos().x > self.viz.pane_w and imgui.is_mouse_clicked(0):
-                                if self.delete_point_option == 1:
-                                    self.delete_sam_positive_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                            if imgui.is_mouse_clicked(0):
+                                uv = self._current_mouse_uv_in_render_image()
+                                if uv is None:
+                                    pass
+                                elif self.delete_point_option == 1:
+                                    self.delete_sam_positive_points.append(uv)
                                 elif self.delete_point_option == 2:
-                                    self.delete_sam_negative_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                                    self.delete_sam_negative_points.append(uv)
 
                         if imgui_utils.button("clean SAM", width=viz.button_w):
                             self.delete_sam_positive_points = []
@@ -853,11 +896,14 @@ class EditorWidget(Widget):
                             self.drag_point_option = 2
                         imgui.same_line()
                         if self.drag_point_option == 1 or self.drag_point_option == 2:
-                            if imgui.get_mouse_pos().x > self.viz.pane_w and imgui.is_mouse_clicked(0):
-                                if self.drag_point_option == 1:
-                                    self.drag_sam_positive_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                            if imgui.is_mouse_clicked(0):
+                                uv = self._current_mouse_uv_in_render_image()
+                                if uv is None:
+                                    pass
+                                elif self.drag_point_option == 1:
+                                    self.drag_sam_positive_points.append(uv)
                                 elif self.drag_point_option == 2:
-                                    self.drag_sam_negative_points.append([(imgui.get_mouse_pos().x - self.viz.pane_w)/(self.viz.content_width - self.viz.pane_w), imgui.get_mouse_pos().y/self.viz.content_height])
+                                    self.drag_sam_negative_points.append(uv)
                         if imgui_utils.button("clean SAM", width=viz.button_w):
                             self.drag_sam_positive_points = []
                             self.drag_sam_negative_points = []

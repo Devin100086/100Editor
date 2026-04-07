@@ -23,10 +23,14 @@ class EditcamWidget(cam_widget.CamWidget):
         viz = self.viz
         dt = self._tick_delta_time()
         active_region = EasyDict(x=viz.pane_w, y=0, width=viz.content_width - viz.pane_w, height=viz.content_height)
+        suppress_mouse = bool(getattr(viz, "_suppress_viewport_mouse", False))
         viz.args.show_image = True
         if not viz.args.painting:
-            self.handle_dragging_in_window(**active_region)
-            self.handle_mouse_wheel()
+            if not suppress_mouse:
+                self.handle_dragging_in_window(**active_region)
+                self.handle_mouse_wheel()
+            else:
+                self.last_drag_delta = imgui.ImVec2(0, 0)
             if "mean_xyz" in viz.result.keys() and not torch.allclose(self.center, viz.result.mean_xyz.cpu()):
                 target = viz.result.mean_xyz.cpu()
                 self._set_lookat_target(target, immediate=True)

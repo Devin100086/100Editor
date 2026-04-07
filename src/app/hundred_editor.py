@@ -144,6 +144,25 @@ class HundredEditor(imgui_window.ImguiWindow):
         # Initialize window.
         self.set_position(0, 0)
         self._adjust_font_size()
+
+        # Splitter / pane layout state.
+        self._pane_width = None
+        self._pane_restore_width = None
+        self._pane_collapsed = False
+        self._pane_dragging = False
+        self._pane_min_open_w = 360
+        self._pane_min_render_w = 320
+        self._pane_splitter_hit_w = 10
+        self._pane_toggle_btn_w = 18
+        self._pane_toggle_btn_h = 36
+        self._last_renderer_type = None
+        self._last_renderer_args = None
+        self._suppress_viewport_mouse = False
+        self._active_tab = "load"
+        # Dynamic resolution scaling with viewport to avoid blur when resizing panes.
+        self._auto_resolution_with_viewport = True
+        self._max_dynamic_resolution = 2048
+
         self.skip_frame()
 
     def close(self):
@@ -170,26 +189,284 @@ class HundredEditor(imgui_window.ImguiWindow):
         if self.font_size != old:
             self.skip_frame()
 
+    def _default_pane_width(self):
+        return max(self.content_width - self.content_height, 500)
+
+    def _pane_constraints(self):
+        max_open_w = max(0, self.content_width - self._pane_min_render_w)
+        min_open_w = min(self._pane_min_open_w, max_open_w)
+        return min_open_w, max_open_w
+
     def _set_sizes(self):
-        self.pane_w = max(self.content_width - self.content_height, 500)
+        min_open_w, max_open_w = self._pane_constraints()
+        if self._pane_width is None:
+            self._pane_width = self._default_pane_width()
+
+        if not self._pane_collapsed:
+            if max_open_w <= 0:
+                self._pane_width = 0
+            else:
+                self._pane_width = float(np.clip(self._pane_width, min_open_w, max_open_w))
+
+        self.pane_w = 0 if self._pane_collapsed else int(round(self._pane_width))
         self.button_w = self.font_size * 5
         self.button_large_w = self.font_size * 10
         self.label_w = round(self.font_size * 5.5) + 100
         self.label_w_large = round(self.font_size * 5.5) + 150
 
+    def _toggle_pane_collapsed(self):
+        if self._pane_collapsed:
+            self._pane_collapsed = False
+            if self._pane_width is None or self._pane_width <= 0:
+                self._pane_width = (
+                    self._pane_restore_width if self._pane_restore_width is not None else self._default_pane_width()
+                )
+        else:
+            if self.pane_w > 0:
+                self._pane_restore_width = float(self.pane_w)
+            self._pane_collapsed = True
+            self._pane_dragging = False
+
+    def _pane_toggle_button_rect(self):
+        center_x = float(self.pane_w + 8)
+        center_y = float(self.content_height) * 0.5
+        half_w = float(self._pane_toggle_btn_w) * 0.5
+        half_h = float(self._pane_toggle_btn_h) * 0.5
+        x0 = max(0.0, center_x - half_w)
+        x1 = min(float(self.content_width), center_x + half_w)
+        y0 = max(0.0, center_y - half_h)
+        y1 = min(float(self.content_height), center_y + half_h)
+        return x0, y0, x1, y1
+
+    @staticmethod
+    def _point_in_rect(x, y, rect):
+        x0, y0, x1, y1 = rect
+        return x0 <= x <= x1 and y0 <= y <= y1
+
+    def _handle_pane_splitter(self):
+        splitter_half = self._pane_splitter_hit_w * 0.5
+        splitter_x = float(self.pane_w)
+        x0 = max(0.0, splitter_x - splitter_half)
+        x1 = min(float(self.content_width), splitter_x + splitter_half)
+        mouse = imgui.get_mouse_pos()
+        hovered = (x0 <= mouse.x <= x1) and (0.0 <= mouse.y <= float(self.content_height))
+        button_rect = self._pane_toggle_button_rect()
+        button_hovered = self._point_in_rect(mouse.x, mouse.y, button_rect)
+
+        # Prevent viewport mouse interactions (e.g., camera drag) while interacting with splitter/button.
+        if self._pane_dragging:
+            self._suppress_viewport_mouse = True
+        if button_hovered and (imgui.is_mouse_clicked(0) or imgui.is_mouse_down(0)):
+            self._suppress_viewport_mouse = True
+        if hovered and (imgui.is_mouse_clicked(0) or imgui.is_mouse_down(0)):
+            self._suppress_viewport_mouse = True
+
+        if button_hovered:
+            imgui.set_mouse_cursor(MOUSE_CURSOR_HAND)
+        elif hovered or self._pane_dragging:
+            imgui.set_mouse_cursor(MOUSE_CURSOR_RESIZE_EW)
+
+        if button_hovered and imgui.is_mouse_clicked(0):
+            self._toggle_pane_collapsed()
+            return
+
+        if hovered and imgui.is_mouse_clicked(0):
+            self._pane_dragging = True
+            if self._pane_collapsed:
+                self._pane_collapsed = False
+                if self._pane_restore_width is not None:
+                    self._pane_width = self._pane_restore_width
+                elif self._pane_width is None:
+                    self._pane_width = self._default_pane_width()
+
+        if not self._pane_dragging:
+            return
+
+        if not imgui.is_mouse_down(0):
+            self._pane_dragging = False
+            return
+
+        min_open_w, max_open_w = self._pane_constraints()
+        target_w = float(mouse.x)
+        collapse_snap_w = max(4.0, self._pane_splitter_hit_w)
+        if target_w <= collapse_snap_w:
+            if self._pane_width and self._pane_width > 0:
+                self._pane_restore_width = self._pane_width
+            self._pane_collapsed = True
+            return
+
+        self._pane_collapsed = False
+        if max_open_w <= 0:
+            self._pane_width = 0
+            return
+
+        clamped_w = float(np.clip(target_w, min_open_w, max_open_w))
+        self._pane_width = clamped_w
+        self._pane_restore_width = clamped_w
+
+    def _draw_pane_splitter(self):
+        splitter_x = float(self.pane_w)
+        line_half_w = 1.0
+        x0 = max(0.0, splitter_x - line_half_w)
+        x1 = min(float(self.content_width), splitter_x + line_half_w)
+        if x1 <= x0:
+            return
+
+        splitter_half = self._pane_splitter_hit_w * 0.5
+        mouse = imgui.get_mouse_pos()
+        hovered = (
+            max(0.0, splitter_x - splitter_half) <= mouse.x <= min(float(self.content_width), splitter_x + splitter_half)
+            and 0.0 <= mouse.y <= float(self.content_height)
+        )
+        if self._pane_dragging:
+            color, alpha = [0.40, 0.44, 0.47], 1.0
+        elif hovered:
+            color, alpha = [0.44, 0.44, 0.44], 0.85
+        else:
+            color, alpha = [0.28, 0.28, 0.28], 0.55
+        gl_utils.draw_rect(pos=(x0, 0), pos2=(x1, self.content_height), color=color, alpha=alpha, rounding=0)
+
+        btn_x0, btn_y0, btn_x1, btn_y1 = self._pane_toggle_button_rect()
+        if btn_x1 <= btn_x0 or btn_y1 <= btn_y0:
+            return
+        mouse = imgui.get_mouse_pos()
+        btn_hovered = self._point_in_rect(mouse.x, mouse.y, (btn_x0, btn_y0, btn_x1, btn_y1))
+        if btn_hovered:
+            btn_color, btn_alpha = [0.25, 0.28, 0.32], 0.95
+        else:
+            btn_color, btn_alpha = [0.20, 0.22, 0.25], 0.88
+        gl_utils.draw_rect(
+            pos=(btn_x0, btn_y0),
+            pos2=(btn_x1, btn_y1),
+            color=btn_color,
+            alpha=btn_alpha,
+            rounding=(6, 6),
+        )
+
+        # Left arrow when open (collapse), right arrow when collapsed (expand).
+        if self._pane_collapsed:
+            arrow = np.array([[0.36, 0.26], [0.36, 0.74], [0.72, 0.50]], dtype="float32")
+        else:
+            arrow = np.array([[0.64, 0.26], [0.64, 0.74], [0.28, 0.50]], dtype="float32")
+        arrow_margin_x = 4.0
+        arrow_margin_y = 8.0
+        arrow_w = max(1.0, (btn_x1 - btn_x0) - 2 * arrow_margin_x)
+        arrow_h = max(1.0, (btn_y1 - btn_y0) - 2 * arrow_margin_y)
+        gl_utils.draw_shape(
+            arrow,
+            mode=GL_TRIANGLE_FAN,
+            pos=(btn_x0 + arrow_margin_x, btn_y0 + arrow_margin_y),
+            size=(arrow_w, arrow_h),
+            color=[0.88, 0.90, 0.94],
+            alpha=0.98,
+        )
+
+    def _apply_viewport_resolution(self, render_args):
+        base_resolution = render_args.get("resolution", None)
+        if base_resolution is None:
+            return render_args
+
+        viewport_w = max(1, int(self.content_width - self.pane_w))
+        viewport_h = max(1, int(self.content_height))
+        try:
+            base_resolution = int(base_resolution)
+        except Exception:
+            base_resolution = max(viewport_w, viewport_h)
+        if base_resolution <= 0:
+            base_resolution = max(viewport_w, viewport_h)
+
+        if self._auto_resolution_with_viewport:
+            target_long = max(base_resolution, max(viewport_w, viewport_h))
+            target_long = min(target_long, int(self._max_dynamic_resolution))
+        else:
+            target_long = base_resolution
+
+        if viewport_w >= viewport_h:
+            resolution_x = target_long
+            resolution_y = max(1, int(round(target_long * viewport_h / max(viewport_w, 1))))
+        else:
+            resolution_y = target_long
+            resolution_x = max(1, int(round(target_long * viewport_w / max(viewport_h, 1))))
+
+        render_args["resolution_x"] = int(resolution_x)
+        render_args["resolution_y"] = int(resolution_y)
+        return render_args
+
+    def _update_renderer(self, render_type):
+        render_args = dict(self.args)
+        render_args = self._apply_viewport_resolution(render_args)
+
+        self.renderer.set_args(type=render_type, **render_args)
+        self._last_renderer_type = render_type
+        self._last_renderer_args = dict(render_args)
+        result = self.renderer.result
+        if result is not None:
+            self.result = result
+
+    def _run_collapsed_camera_input(self):
+        # Keep camera interaction alive when the control pane is collapsed.
+        active = getattr(self, "_active_tab", "load")
+        if active == "edit":
+            self.args.painting = bool(getattr(self.args, "painting", False))
+            for widget in self.edit_widgets:
+                if isinstance(widget, editcam_widget.EditcamWidget):
+                    widget(False)
+                    return
+        elif active == "train":
+            for widget in self.train_widgets:
+                if isinstance(widget, cam_widget.CamWidget):
+                    widget(False)
+                    return
+        elif active == "load":
+            for widget in self.load_widgets:
+                if isinstance(widget, cam_widget.CamWidget):
+                    widget(False)
+                    return
+
+    def _update_renderer_with_cached_args(self):
+        if self._last_renderer_type is None or self._last_renderer_args is None:
+            return
+        render_args = dict(self._last_renderer_args)
+        if len(self.args) > 0:
+            render_args.update(dict(self.args))
+        render_args = self._apply_viewport_resolution(render_args)
+
+        self.renderer.set_args(type=self._last_renderer_type, **render_args)
+        result = self.renderer.result
+        if result is not None:
+            self.result = result
+
     def draw_frame(self):
         self.begin_frame()
         self.args = EasyDict()
+        self._suppress_viewport_mouse = False
+        self._set_sizes()
+        self._handle_pane_splitter()
         self._set_sizes()
 
         # Control pane
-        imgui.set_next_window_pos(imgui.ImVec2(0, 0))
-        imgui.set_next_window_size(imgui.ImVec2(self.pane_w, self.content_height))
+        pane_window_w = self.pane_w
+        pane_window_x = 0
+        if self._pane_collapsed:
+            hidden_w = (
+                self._pane_restore_width
+                if self._pane_restore_width is not None
+                else (self._pane_width if self._pane_width is not None else self._default_pane_width())
+            )
+            pane_window_w = max(1, int(round(hidden_w)))
+            pane_window_x = -pane_window_w
+
+        imgui.set_next_window_pos(imgui.ImVec2(pane_window_x, 0))
+        imgui.set_next_window_size(imgui.ImVec2(max(1, pane_window_w), self.content_height))
         control_pane_flags = WINDOW_NO_TITLE_BAR | WINDOW_NO_RESIZE | WINDOW_NO_MOVE
         imgui.begin("##control_pane", p_open=True, flags=control_pane_flags)
         
-        if imgui.begin_tab_bar("MyTabBar"):
+        if self._pane_collapsed:
+            self._run_collapsed_camera_input()
+            self._update_renderer_with_cached_args()
+        elif imgui.begin_tab_bar("MyTabBar"):
             if imgui.begin_tab_item("init")[0]:
+                self._active_tab = "init"
                 for widget in self.init_widgets:
                     expanded, _visible = imgui_utils.collapsing_header(widget.name, default=False)
                     imgui.indent()
@@ -198,6 +475,7 @@ class HundredEditor(imgui_window.ImguiWindow):
                 imgui.end_tab_item()
             
             if imgui.begin_tab_item("load")[0]:
+                self._active_tab = "load"
                 for widget in self.load_widgets:
                     expanded, _visible = imgui_utils.collapsing_header(widget.name, default=widget.name == "Load")
                     imgui.indent()
@@ -209,12 +487,10 @@ class HundredEditor(imgui_window.ImguiWindow):
                 if self.is_skipping_frames():
                     pass
                 else:
-                    self.renderer.set_args(type="load",**self.args)
-                    result = self.renderer.result
-                    if result is not None:
-                        self.result = result
+                    self._update_renderer("load")
                 
             if imgui.begin_tab_item("train")[0]:
+                self._active_tab = "train"
                 # Widgets
                 for widget in self.train_widgets:
                     expanded, _visible = imgui_utils.collapsing_header(
@@ -230,12 +506,10 @@ class HundredEditor(imgui_window.ImguiWindow):
                 if self.is_skipping_frames():
                     pass
                 else:
-                    self.renderer.set_args(type="train",**self.args)
-                    result = self.renderer.result
-                    if result is not None:
-                        self.result = result
+                    self._update_renderer("train")
 
             if imgui.begin_tab_item("edit")[0]:
+                self._active_tab = "edit"
                 for widget in self.edit_widgets:
                     expanded, _visible = imgui_utils.collapsing_header(widget.name, default=(widget.name == "Load" or widget.name == "Editor"))
                     imgui.indent()
@@ -248,17 +522,15 @@ class HundredEditor(imgui_window.ImguiWindow):
                     pass
                 else:
                     if not self.args.edit3D:
-                        self.renderer.set_args(type="load",**self.args)
+                        self._update_renderer("load")
                     else:
-                        self.renderer.set_args(type="editing",**self.args)
-                    result = self.renderer.result
-                    if result is not None:
-                        self.result = result
+                        self._update_renderer("editing")
 
                     if self.args.edit_single:
                         self.result.image = self.args.single_image
             
             if imgui.begin_tab_item("other")[0]:
+                self._active_tab = "other"
                 for widget in self.other_widgets:
                     expanded, _visible = imgui_utils.collapsing_header(widget.name, default=widget.name == "Fitting")
                     imgui.indent()
@@ -270,10 +542,7 @@ class HundredEditor(imgui_window.ImguiWindow):
                 if self.is_skipping_frames():
                     pass
                 else:
-                    self.renderer.set_args(type="fitting",**self.args)
-                    result = self.renderer.result
-                    if result is not None:
-                        self.result = result
+                    self._update_renderer("fitting")
 
             imgui.end_tab_bar()
 
@@ -281,6 +550,14 @@ class HundredEditor(imgui_window.ImguiWindow):
         max_w = self.content_width - self.pane_w
         max_h = self.content_height
         pos = np.array([self.pane_w + max_w / 2, max_h / 2])
+        # Fill render area with a neutral background so letterboxing is not pure black.
+        gl_utils.draw_rect(
+            pos=(self.pane_w, 0),
+            pos2=(self.content_width, self.content_height),
+            color=[0.14, 0.15, 0.17],
+            alpha=1.0,
+            rounding=0,
+        )
         if "image" in self.result:
             if self._tex_img is not self.result.image:
                 self._tex_img = self.result.image
@@ -320,6 +597,7 @@ class HundredEditor(imgui_window.ImguiWindow):
             self.eval_result = self.result.eval
         else:
             self.eval_result = None
+        self._draw_pane_splitter()
 
         # End frame.
         self._adjust_font_size()

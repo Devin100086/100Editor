@@ -54,10 +54,18 @@ class EditingRenderer(Renderer):
     def restart_connector(self):
         self.connector = AsyncConnector(1, self.host, self.port)
 
-    def read(self, resolution):
+    @staticmethod
+    def _parse_resolution(resolution, resolution_x=None, resolution_y=None):
+        if resolution_x is not None and resolution_y is not None:
+            return int(resolution_x), int(resolution_y)
+        if isinstance(resolution, (tuple, list)) and len(resolution) == 2:
+            return int(resolution[0]), int(resolution[1])
+        return int(resolution), int(resolution)
+
+    def read(self, resolution_x, resolution_y):
         try:
             current_bytes = 0
-            expected_bytes = resolution * resolution * 3
+            expected_bytes = resolution_x * resolution_y * 3
             try_counter = 50
             counter = 0
             message = bytes()
@@ -76,14 +84,14 @@ class EditingRenderer(Renderer):
                 verify_dict = json.loads(verify_data)
             except Exception:
                 verify_dict = {}
-            image = np.frombuffer(message, dtype=np.uint8).reshape(resolution, resolution, 3)
+            image = np.frombuffer(message, dtype=np.uint8).reshape(resolution_y, resolution_x, 3)
             image = torch.from_numpy(np.array(image)) / 255.0
             image = image.permute(2, 0, 1)
             return image, verify_dict
         except Exception as e:
             print("Read Error", e)
             self.restart_connector()
-            return torch.zeros([3, resolution, resolution]), {}
+            return torch.zeros([3, resolution_y, resolution_x]), {}
 
     def send(self, message):
         try:
@@ -118,7 +126,16 @@ class EditingRenderer(Renderer):
 
         # slider = EasyDict(slider)
         fov_rad = fov / 360 * 2 * np.pi
-        render_cam = CustomCam(resolution, resolution, fovy=fov_rad, fovx=fov_rad, extr=cam_params)
+        resolution_x = other_args.get("resolution_x", None)
+        resolution_y = other_args.get("resolution_y", None)
+        resolution_x, resolution_y = self._parse_resolution(
+            resolution, resolution_x=resolution_x, resolution_y=resolution_y
+        )
+        resolution_x = max(1, int(resolution_x))
+        resolution_y = max(1, int(resolution_y))
+        aspect = float(resolution_x) / float(max(resolution_y, 1))
+        fov_x = 2.0 * np.arctan(np.tan(fov_rad / 2.0) * aspect)
+        render_cam = CustomCam(resolution_x, resolution_y, fovy=fov_rad, fovx=fov_x, extr=cam_params)
 
         # Invert all operations from network_gui.py
         world_view_transform = render_cam.world_view_transform
@@ -128,11 +145,11 @@ class EditingRenderer(Renderer):
         full_proj_transform = render_cam.full_proj_transform
         full_proj_transform[:, 1] = -full_proj_transform[:, 1]
         message = {
-            "resolution_x": resolution,
-            "resolution_y": resolution,
+            "resolution_x": resolution_x,
+            "resolution_y": resolution_y,
             "train": edit3D,
             "fov_y": fov_rad,
-            "fov_x": fov_rad,
+            "fov_x": fov_x,
             "z_near": 0.01,
             "z_far": 10.0,
             "shs_python": False,
@@ -146,7 +163,7 @@ class EditingRenderer(Renderer):
             "stop_at_value": stop_at_value, 
         }
         self.send(message)
-        image, stats = self.read(resolution)
+        image, stats = self.read(resolution_x, resolution_y)
         if len(stats.keys()) > 0:
             res.training_stats = stats
             res.error = res.training_stats["error"]
