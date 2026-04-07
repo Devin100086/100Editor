@@ -35,6 +35,9 @@ class EditTrainer(BaseTrainer):
         self.edit_until_step = cfg.edit_until_step
         self.output_dir = cfg.output_dir
         self.earlystop = eval(cfg.earlystop)
+        self.cps_patience_counter = cfg.cps_patience_counter
+        self.cps_patience = cfg.cps_patience
+        self.cps_batch_count = cfg.cps_batch_count
         self.clip_origin_prompt = cfg.clip_origin_prompt
         self.clip_target_prompt = cfg.clip_target_prompt
         self.eval = cfg.eval
@@ -286,8 +289,10 @@ class EditTrainer(BaseTrainer):
         # Renderings2 = []
         best_metric = float('-inf')
         max_delta = 0.006
-        patience_counter = 0
-        patience = 4
+        initial_patience_counter = max(0, int(self.cps_patience_counter))
+        patience_counter = initial_patience_counter
+        patience = max(1, int(self.cps_patience))
+        max_batch_count = max(1, int(self.cps_batch_count))
         Batch_flag = False
         Batch_count = 0
 
@@ -351,11 +356,11 @@ class EditTrainer(BaseTrainer):
                     _, metric = self.compute_metric(clip_prompt_origin=self.clip_origin_prompt, clip_prompt_target=self.clip_target_prompt)
                     if metric > best_metric + max_delta:
                         best_metric = metric
-                        patience_counter = 0
+                        patience_counter = initial_patience_counter
                     else:
                         patience_counter += 1
                     if patience_counter >= patience:
-                        patience_counter = 0
+                        patience_counter = initial_patience_counter
                         with open(earlystop_log_path, "a") as f:
                             f.write(f"Early stopping at step {step} with best metric {best_metric:.4f}\n")
                         self._log_stage(
@@ -365,7 +370,7 @@ class EditTrainer(BaseTrainer):
                         Batch_flag = True
                         continue
                 if ((step == 0 or Batch_flag == True) and video):
-                    if Batch_count >= 3:
+                    if Batch_count >= max_batch_count:
                         with open(earlystop_log_path, "a") as f:
                             f.write(f"Finish all batches at step {step}.\n")
                         self._log_stage("Early-stop batches complete, waiting for user finalize", color="33")
@@ -373,7 +378,7 @@ class EditTrainer(BaseTrainer):
                         break
                     batch_idx = Batch_count + 1
                     self._log_stage(
-                        f"Batch {batch_idx}/3 full-view update at step {step}",
+                        f"Batch {batch_idx}/{max_batch_count} full-view update at step {step}",
                         color="1;35",
                     )
                     self.edit_all_view(sam_option, update_camera= step >= self.cameara_update_step, global_step=step)
@@ -382,7 +387,7 @@ class EditTrainer(BaseTrainer):
                     Batch_flag = False
                     Batch_count += 1
                     self._log_stage(
-                        f"Batch {batch_idx}/3 update complete",
+                        f"Batch {batch_idx}/{max_batch_count} update complete",
                         color="35",
                     )
             else:
@@ -444,7 +449,7 @@ class EditTrainer(BaseTrainer):
                     "mem_gb": f"{max_memory_allocated:.2f}",
                 }
                 if video and self.earlystop:
-                    postfix_data["batch"] = f"{Batch_count}/3"
+                    postfix_data["batch"] = f"{Batch_count}/{max_batch_count}"
                 progress_bar.set_postfix(postfix_data)
         
         # Renderings1 = torch.cat(Renderings1, dim=0)
@@ -608,6 +613,9 @@ if __name__ == "__main__":
     parser.add_argument("--hard_segmentation", type=str, default="True", help="hard segmentation.")
     parser.add_argument("--mask_thres", type=float, default=0.8, help="mask threshold.")
     parser.add_argument("--earlystop", type=str, default="True", help="Early stopping.")
+    parser.add_argument("--cps_patience_counter", type=int, default=0, help="CPS patience counter.")
+    parser.add_argument("--cps_patience", type=int, default=4, help="CPS patience.")
+    parser.add_argument("--cps_batch_count", type=int, default=3, help="CPS batch count.")
     parser.add_argument("--clip_origin_prompt", type=str, default="a photo of a face of a man", help="Clip origin prompt.")
     parser.add_argument("--clip_target_prompt", type=str, default="a photo of a face of a Kevin Durant", help="Clip target prompt.")
     parser.add_argument("--eval", type=bool, default=False, help="Eval or not.")

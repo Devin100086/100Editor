@@ -33,7 +33,8 @@ def training_text_editing_command(
     lambda_anchor_color, lambda_anchor_geo, lambda_anchor_scale, lambda_anchor_opacity,
     sam_option, seg_prompt, text_videoEditing, gs_lr_scaler, gs_lr_end_scaler, color_lr_scaler, 
     opacity_lr_scaler, scaling_lr_scaler, rotation_lr_scaler, camera, positive_sam_points, negative_sam_points, use_original_resolution,
-    output_dir, hard_segmentation, mask_thres, earlystop, clip_origin_prompt, clip_target_prompt
+    output_dir, hard_segmentation, mask_thres, earlystop, cps_patience_counter, cps_patience, cps_batch_count,
+    clip_origin_prompt, clip_target_prompt
 ):
     process = _run_python(
         _script_path("src", "editor", "hundrededitor_gui", "edit.py"),
@@ -70,6 +71,9 @@ def training_text_editing_command(
         "--hard_segmentation", str(hard_segmentation),
         "--mask_thres", str(mask_thres),
         "--earlystop", str(earlystop),
+        "--cps_patience_counter", str(cps_patience_counter),
+        "--cps_patience", str(cps_patience),
+        "--cps_batch_count", str(cps_batch_count),
         "--clip_origin_prompt", str(clip_origin_prompt),
         "--clip_target_prompt", str(clip_target_prompt)
     )

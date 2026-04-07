@@ -90,7 +90,9 @@ class EditorWidget(Widget):
         self.edit_output_dir = ""
         self.hard_segmentation = True
         self.mask_thres = 0.5
-        self.early_stopping = True
+        self.early_stopping = False
+        self.cps_patience = 4
+        self.cps_batch_count = 3
         self.clip_origin_prompt = "a photo of an outdoor garden"
         self.clip_target_prompt = "a photo of an outdoor garden in winter"
 
@@ -436,9 +438,19 @@ class EditorWidget(Widget):
                     _, self.edit_use_original_resolution = imgui.checkbox("##Use Original Resolution", self.edit_use_original_resolution)
                     label("hard segmentation", viz.label_w)
                     _, self.hard_segmentation = imgui.checkbox("##Hard Segmentation", self.hard_segmentation)
-                    label("early stopping", viz.label_w)
-                    _, self.early_stopping = imgui.checkbox("##Early Stopping", self.early_stopping)
+
+                    imgui.separator_text("CPS Option")
+                    label("CPS", viz.label_w)
+                    _, self.early_stopping = imgui.checkbox("##CPS", self.early_stopping)
                     if self.early_stopping:
+                        label("patience", viz.label_w)
+                        _, self.cps_patience = imgui.slider_int(
+                            "##CPS Patience", self.cps_patience, 1, 20, format="%d"
+                        )
+                        label("batch count", viz.label_w)
+                        _, self.cps_batch_count = imgui.slider_int(
+                            "##CPS Batch Count", self.cps_batch_count, 1, 20, format="%d"
+                        )
                         label("clip origin prompt", viz.label_w)
                         _, self.clip_origin_prompt = imgui.input_text("##CLIP Origin Prompt", self.clip_origin_prompt, 256)
                         label("clip target prompt", viz.label_w)
@@ -514,8 +526,9 @@ class EditorWidget(Widget):
                                                                              color_lr_scaler = self.color_lr_scaler,  opacity_lr_scaler = self.opacity_lr_scaler, 
                                                                              scaling_lr_scaler = self.scaling_lr_scaler,  rotation_lr_scaler = self.rotation_lr_scaler, 
                                                                              positive_sam_points = (edit_cache_dir / "sam2_positive_points.npy").as_posix(), negative_sam_points = (edit_cache_dir / "sam2_negative_points.npy").as_posix(),
-                                                                             camera = (edit_cache_dir / "camera.pkl").as_posix(), use_original_resolution = self.edit_use_original_resolution, output_dir = self.edit_output_dir,
+                                                                            camera = (edit_cache_dir / "camera.pkl").as_posix(), use_original_resolution = self.edit_use_original_resolution, output_dir = self.edit_output_dir,
                                                                             hard_segmentation = self.hard_segmentation, mask_thres=self.mask_thres, earlystop=self.early_stopping,
+                                                                             cps_patience_counter=0, cps_patience=self.cps_patience, cps_batch_count=self.cps_batch_count,
                                                                              clip_origin_prompt=self.clip_origin_prompt, clip_target_prompt=self.clip_target_prompt
                                                                             )
                     else:

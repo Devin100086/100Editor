@@ -101,6 +101,11 @@ We sincerely appreciate these excellent open-source projects.
 </table>
 </center>
 
+## :pushpin: Citation
+```bibtex
+11
+``` 
+
 ---
 <div align="center">
 <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/refs/heads/master/Emojis/Smilies/Beaming%20Face%20with%20Smiling%20Eyes.png" alt="Thanks" width="50" height="50" />
