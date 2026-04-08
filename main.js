@@ -29,7 +29,7 @@ const svgPlaceholder = (title, subtitle, start = "#0b2039", end = "#0d2f52") => 
 const CONTENT = {
   project: {
     title: "100Editor: 100+ Views per Batch and\nMinute-Scale View-Consistent 3D Editing",
-    subtitle: "CVPR 2026(findings)",
+    subtitle: "CVPR 2026(Findings)",
     abstract:
       "Editing 3D scenes with diffusion models and 3DGS remains slow: most pipelines update one view at a time and are constrained by VRAM-limited batch sizes. We introduce 100Editor, a training-free framework that scales multi-view 3D editing to the hundred-view regime while preserving cross-view consistency. The system combines four complementary components: (1) a batch-consistent multi-view editing module that aligns overlapping content across views at the token level with chunked execution; (2) an efficiency suite that integrates a lightweight 3DGS renderer, a sparse optimizer, a CLIP-guided Patience Stopping (CPS) rule, and parallelized diffusion inference to reduce editing latency; (3) an interactive 3D segmentation module with point prompts and 3D back-projection for accurate, object-level local editing; and (4) a practical 3D editing software that unifies these capabilities for semantic, additive, subtractive, and non-rigid editing. Together, these designs enable large-batch and efficient 3D editing without modifying the image-editing model's weights. On a single 24 GB GPU, 100Editor edits 100+ views per batch (up to 120) and achieves minute-scale 3D scene editing latency (59.60~s). Experiments across diverse scenes and edit types show improved multi-view consistency and high perceptual quality compared to single-view and small-batch baselines, while supporting precise, interactive 3D edits. ",
     authorInfo: {
@@ -47,7 +47,7 @@ const CONTENT = {
     },
   },
   hero: {
-    video: "assets/teaser_merged_loop.gif",
+    video: "assets/teaser_merged_loop.mp4",
     poster: svgPlaceholder("", "", "#d9edf8", "#c3ebe3"),
   },
   metrics: [

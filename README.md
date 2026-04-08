@@ -1,6 +1,6 @@
 <p align="center">
   
-  <h3 align="center"><strong>[CVPR 2026(findings)] 100Editor: 100+ Views per Batch and Minute-Scale View-Consistent 3D Editing</strong></h3>
+  <h3 align="center"><strong>[CVPR 2026(Findings)] 100Editor: 100+ Views per Batch and Minute-Scale View-Consistent 3D Editing</strong></h3>
 
   <p align="center">
     <a href="https://github.com/Devin100086">Cunqi Wu</a><sup>*1</sup>,</span>
