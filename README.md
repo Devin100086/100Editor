@@ -51,6 +51,7 @@ pip install -r requirements.txt
 pip install -e third_party/BrushNet
 pip install -e third_party/LeftRefill
 pip install -e third_party/sam2
+pip install -e third_party/threestudio
 
 pip install -e src/trainer/origin/submodules/diff-gaussian-rasterization
 pip install -e src/editor/gaussiansplatting/submodules/acc-diff-gaussian-rasterization-editor
