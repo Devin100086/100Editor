@@ -16,7 +16,7 @@ from threestudio.models.prompt_processors.base import PromptProcessorOutput
 from threestudio.utils.base import BaseObject
 from threestudio.utils.misc import C, parse_version
 from threestudio.utils.typing import *
-import threestudio.utils.vidtome as vidtome
+import threestudio.utils.mvtm as mvtm
 
 
 def get_threestudio_cache_root() -> str:
@@ -197,7 +197,7 @@ class ControlNetGuidance(BaseObject):
             self.activate_vidtome()
     
     def activate_vidtome(self):
-        vidtome.apply_patch(self.pipe, self.cfg.local_merge_ratio, self.cfg.merge_global, self.cfg.global_merge_ratio, 
+        mvtm.apply_patch(self.pipe, self.cfg.local_merge_ratio, self.cfg.merge_global, self.cfg.global_merge_ratio, 
             seed = self.cfg.seed, batch_size = self.cfg.batch_size, align_batch = self.cfg.align_batch, global_rand = self.cfg.global_rand) 
 
     @torch.cuda.amp.autocast(enabled=False)

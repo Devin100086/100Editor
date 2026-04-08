@@ -1,3 +1,5 @@
+import contextlib
+import io
 import argparse
 import json
 from pathlib import Path
@@ -12,10 +14,11 @@ from lang_sam import LangSAM
 
 
 class LangSAMTextSegmentor(torch.nn.Module):
-    def __init__(self, sam_type="vit_h"):
+    def __init__(self, sam_type="vit_h", suppress_predict_logs: bool = True):
         super().__init__()
         # self.model = LangSAM(sam_type)
         self.model = LangSAM()
+        self.suppress_predict_logs = suppress_predict_logs
 
         self.to_pil_image = ToPILImage(mode="RGB")
         self.to_tensor = ToTensor()
@@ -26,7 +29,12 @@ class LangSAMTextSegmentor(torch.nn.Module):
         for image in images:
             # breakpoint()
             image = self.to_pil_image(image.clamp(0.0, 1.0))
-            mask = self.model.predict([image], [prompt])[0]['masks']
+            if self.suppress_predict_logs:
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    predict_out = self.model.predict([image], [prompt])
+            else:
+                predict_out = self.model.predict([image], [prompt])
+            mask = predict_out[0]['masks']
             if isinstance(mask, list):
                 mask = torch.zeros_like(images[0, 0:1])
             else:
@@ -35,7 +43,8 @@ class LangSAMTextSegmentor(torch.nn.Module):
             if mask.ndim == 3:
                 masks.append(mask[0:1].to(torch.float32))
             else:
-                print(f"None {prompt} Detected")
+                if not self.suppress_predict_logs:
+                    print(f"None {prompt} Detected")
                 masks.append(torch.zeros_like(images[0, 0:1]))
 
         return torch.stack(masks, dim=0)

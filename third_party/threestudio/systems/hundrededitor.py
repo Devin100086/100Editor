@@ -162,7 +162,7 @@ class HundredEditor(BaseLift3DSystem):
         self.gaussian.localize = local
 
         for id, cam in enumerate(batch["camera"]):
-            render_pkg = render(cam, self.gaussian, self.pipe, renderbackground)
+            render_pkg = render(cam, self.gaussian, self.pipe, renderbackground, separate_sh = True)
             image, viewspace_point_tensor, _, radii = (
                 render_pkg["render"],
                 render_pkg["viewspace_points"],

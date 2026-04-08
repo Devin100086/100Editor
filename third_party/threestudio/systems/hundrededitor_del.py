@@ -11,7 +11,7 @@ from threestudio.utils.misc import dilate_mask, fill_closed_areas
 from .hundrededitor import HundredEditor
 
 
-@threestudio.register("gsedit-system-del")
+@threestudio.register("100editor-system-del")
 class HundredEditorDelete(HundredEditor):
     @dataclass
     class Config(HundredEditor.Config):

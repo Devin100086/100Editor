@@ -1,5 +1,5 @@
 python launch.py \
-    --config configs/edit-n2n.yaml \
+    --config configs/edit_configs/edit-n2n.yaml \
     --train --gpu 0 \
     data.max_view_num=24 \
     system.prompt_processor.prompt="turn the stone bear into a polar bear" \
@@ -24,7 +24,12 @@ python launch.py \
     system.densify_until_iter=200000 \
     system.densification_interval=100 \
     system.camera_update_per_step=500 \
-    system.video=true \
+    system.batch=true \
+    system.enable_cps=true \
+    system.cps_patience=4 \
+    system.cps_batch_count=3 \
+    system.cps_eval_interval=20 \
+    system.cps_min_delta=0.006 \
     trainer.val_check_interval=500 \
     trainer.max_steps=1000 \
     data.source="/home/wucunqi/Desktop/results/bear" \

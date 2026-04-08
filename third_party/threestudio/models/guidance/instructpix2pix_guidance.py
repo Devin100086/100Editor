@@ -14,7 +14,7 @@ from threestudio.utils.base import BaseObject
 from threestudio.utils.misc import C, parse_version
 from threestudio.utils.typing import *
 
-import threestudio.utils.vidtome as vidtome
+import threestudio.utils.mvtm as mvtm
 from threestudio.utils.sparse_util import *
 
 
@@ -134,7 +134,7 @@ class InstructPix2PixGuidance(BaseObject):
             self.activate_vidtome()
 
     def activate_vidtome(self):
-        vidtome.apply_patch(self.pipe, self.cfg.local_merge_ratio, self.cfg.merge_global, self.cfg.global_merge_ratio, 
+        mvtm.apply_patch(self.pipe, self.cfg.local_merge_ratio, self.cfg.merge_global, self.cfg.global_merge_ratio, 
             seed = self.cfg.seed, batch_size = self.cfg.batch_size, align_batch = self.cfg.align_batch, global_rand = self.cfg.global_rand) 
         
     @torch.cuda.amp.autocast(enabled=False)
@@ -400,7 +400,7 @@ class InstructPix2PixGuidance(BaseObject):
 
                 for i, timestep in enumerate(time_ls):
                     latents = self.scheduler.step(noise_preds[i], timestep, latents).prev_sample
-                vidtome.update_patch(self.pipe, global_tokens = None)
+                mvtm.update_patch(self.pipe, global_tokens = None)
         print("Editing finished.")
         return latents
 

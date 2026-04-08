@@ -1,5 +1,5 @@
 python launch.py \
-    --config configs/edit-n2n.yaml \
+    --config configs/edit_configs/edit-n2n.yaml \
     --train --gpu 0 \
     trainer.max_steps=1500 \
     system.prompt_processor.prompt="Make him wear a venetian mask" \
@@ -20,6 +20,7 @@ python launch.py \
     system.loss.lambda_anchor_opacity=0 \
     system.densify_from_iter=100 \
     system.densify_until_iter=1501 \
+    system.batch=false \
     system.densification_interval=100 \
     data.source="/home/wucunqi/Desktop/results/face" \
     system.gs_source="/home/wucunqi/Desktop/results/face/3DGS+depth/point_cloud/iteration_7000/point_cloud.ply"

@@ -38,7 +38,7 @@
 > Our environment has been tested on an NVIDIA RTX 4090 GPU with Ubuntu 22.04 and CUDA 12.4.
 1. Clone our repository
 ```
-git clone https://github.com/Devin100086/100Editor.git
+git clone https://github.com/Devin100086/100Editor.git --recursive
 ```
 2. create environment and install dependencies
 ```
@@ -59,13 +59,14 @@ pip install -e third_party/dreamgaussian/add_diff-gaussian-rasterization
 pip install -e src/trainer/origin/submodules/fused-ssim
 pip install -e src/trainer/origin/submodules/simple-knn
 ```
-3. 下载所需的模型权重
+3. Download the required model checkpoints
 ```
 sh ./scripts/download.sh
 ```
-## :fire:Train 3DGS
-### 脚本训练
-用户可以通过执行以下命令实现对目标3dgs场景的重建
+## :fire: Train 3DGS
+For video-captured scenes, preprocessing is required before 3DGS training, including frame extraction and Structure-from-Motion (SfM). Both steps can be completed within our software. For additional implementation details, you can also refer to the official [Gaussian Splatting](https://github.com/graphdeco-inria/gaussian-splatting) repository.
+### Command-line training
+Use the following command to reconstruct a target 3DGS scene:
 ```bash
 bash scripts/train/train_3dgs.sh \
   [--use-depth-loss] \
@@ -73,28 +74,78 @@ bash scripts/train/train_3dgs.sh \
   <scene_path> \
   <output_dir> \
   <checkpoint_iter>
-  
-Example (默认关闭外观嵌入和 depth loss):
-bash scripts/train/train_3dgs.sh \
-  /path/to/scene \
-  output/scene_name \
-  7000
-
-Example (开启外观嵌入 + depth loss，和 GUI 对齐):
-bash scripts/train/train_3dgs.sh \
-  --use-depth-loss \
-  --use-appearance-embedding \
-  /path/to/scene \
-  output/scene_name \
-  7000
 ```
-### GUI中训练3DGS
-我们的软件同样可以去支持3dgs训练，并且其中可以支持gsplat库进行训练，并且提供多种训练策略选择，更多关于这部分的使用可以见这里。
-## :art: Editing
-[API Guide](https://help.aliyun.com/zh/model-studio/get-api-key),
-[API Platform](https://bailian.console.aliyun.com)
-## :pencil: Evaluation
 
+**Arguments**:
+
+| Argument | Description | Required |
+| --- | --- | --- |
+| `--use-depth-loss` | Enable depth supervision during training. | No |
+| `--use-appearance-embedding` | Enable appearance embedding optimization. | No |
+| `<scene_path>` | Path to the input scene directory. | Yes |
+| `<output_dir>` | Directory for checkpoints, logs, and outputs. | Yes |
+| `<checkpoint_iter>` | Iteration to load as the initialization checkpoint. | Yes |
+### GUI-based 3DGS training
+The application also supports 3DGS training through the GUI. It includes support for training with the `gsplat` library and provides multiple training strategy options. For more details, refer to the GUI training documentation.
+## :art: Editing
+### :zap: Quick Start
+Use the following command to perform semantic editing on a scene:
+```bash
+python launch.py \
+  --config configs/edit_configs/edit-n2n.yaml \
+  --train --gpu 0 \
+  exp_root_dir="runtime/experiments/edit/semantic" \
+  data.source="/path/to/scene" \
+  system.camera_update_per_step=500 \
+  data.max_view_num=20 \
+  system.per_editing_step=100000 \
+  system.prompt_processor.prompt="[your editing instruction]" \
+  system.gs_source="/path/to/point_cloud.ply" \
+  system.batch=true
+```
+
+For local semantic editing, add a segmentation prompt:
+```bash
+python launch.py \
+  --config configs/edit_configs/edit-n2n.yaml \
+  --train --gpu 0 \
+  exp_root_dir="runtime/experiments/edit/semantic" \
+  data.source="/path/to/scene" \
+  data.use_original_resolution=true \
+  system.camera_update_per_step=500 \
+  data.max_view_num=20 \
+  system.per_editing_step=100000 \
+  system.prompt_processor.prompt="[your editing instruction]" \
+  system.seg_prompt="[Objects for local editing]" \
+  system.gs_source="/path/to/point_cloud.ply" \
+  system.batch=true
+```
+**Arguments**:
+
+| Argument | Description | Required |
+| --- | --- | --- |
+| `--config configs/edit_configs/edit-n2n.yaml` | Path to the semantic editing config file. | Yes |
+| `--train` | Run in training mode. | Yes |
+| `--gpu 0` | GPU device index used for training. | Yes |
+| `exp_root_dir="runtime/experiments/edit/semantic"` | Root directory for experiment logs, checkpoints, and exports. | No |
+| `data.source="/path/to/scene"` | Path to the input scene directory. | Yes |
+| `data.use_original_resolution=true` | Use the original image resolution instead of the fixed training resolution. | No |
+| `system.camera_update_per_step=500` | Number of training steps between batch-view refreshes in batch mode. | No |
+| `system.per_editing_step=100000` | Interval for regenerating per-view edited targets during training. Use a large value (or `0`) to reduce frequent updates. | No |
+| `data.max_view_num=20` | Maximum number of training views sampled for semantic editing. | No |
+| `system.prompt_processor.prompt="[your editing instruction]"` | Text instruction for semantic editing. | Yes |
+| `system.seg_prompt="[Objects for local editing]"` | Segmentation prompt describing the local target region. | No (Yes for local editing) |
+| `system.gs_source="/path/to/point_cloud.ply"` | Path to the source 3DGS PLY checkpoint. | Yes |
+| `system.batch=true` | Enable batch-view editing workflow. | Yes |
+
+For advanced parameter tuning, refer to the scripts under `scripts/semantic`, where additional optimization and control options are provided.
+
+In addition to semantic editing, the software supports additive editing, subtractive editing, and non-rigid editing. The GUI also provides interactive segmentation tools for more precise local editing. For detailed usage instructions, refer to the software documentation.
+
+### :exclamation: Notes
+For **subtractive editing**, the original paper used the `gemini-2.0-flash` image editing model. Since this model is no longer officially available, our implementation uses `Qwen-Image-Edit-Max` for single-view object removal. For API setup instructions, see the [API Guide](https://help.aliyun.com/zh/model-studio/get-api-key). The service can be accessed through the [API Platform](https://bailian.console.aliyun.com).
+## :pencil: Rendering & Evaluation
+For evaluation, we report CLIP and MEt3R scores. See the [Evaluation Guide](./docs/evaluation.md) for detailed instructions.
 
 
 ## :pray: Acknowledgments
@@ -146,3 +197,12 @@ We sincerely appreciate these excellent open-source projects.
 
 **If you find this repository helpful, please give it a star ⭐**
 </div>
+
+
+<a href="https://www.star-history.com/?repos=Devin100086%2F100Editor&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Devin100086/100Editor&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Devin100086/100Editor&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Devin100086/100Editor&type=date&legend=top-left" />
+ </picture>
+</a>

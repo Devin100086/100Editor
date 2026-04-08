@@ -10,7 +10,7 @@ from threestudio.utils.clip_metrics import ClipSimilarity
 
 from .hundrededitor import HundredEditor
 
-@threestudio.register("gsedit-system-add")
+@threestudio.register("100editor-system-add")
 class HundredEditorAdd(HundredEditor):
     @dataclass
     class Config(HundredEditor.Config):

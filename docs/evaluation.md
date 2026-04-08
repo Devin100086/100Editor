@@ -1,25 +1,9 @@
-## Evaluation
+## Render & Evaluation
 All runnable scripts under `scripts/train`, `scripts/eval`, and `scripts/render` are listed below.
 
 You can append `--dry-run` to any script to preview the resolved command without actually executing it.
 
-### scripts/train
-Train 3DGS:
-```bash
-bash scripts/train/train_3dgs.sh \
-  <scene_path> \
-  <output_dir> \
-  <checkpoint_iter>
-```
-Example:
-```bash
-bash scripts/train/train_3dgs.sh \
-  /path/to/scene \
-  output/scene_name \
-  7000
-```
-
-### scripts/render
+### render
 Render train/test views from a trained 3DGS model:
 ```bash
 bash scripts/render/render_3dgs.sh \
@@ -27,10 +11,15 @@ bash scripts/render/render_3dgs.sh \
   <model_path> \
   <iteration(-1=latest)> <skip_train(0|1)> <skip_test(0|1)>
 ```
-Parameter meaning:
-- `-1` (`iteration`): use latest available iteration under model path; use values like `7000` to render a specific iteration.
-- `0` (`skip_train`): `0` means render train views, `1` means skip train views.
-- `0` (`skip_test`): `0` means render test views, `1` means skip test views.
+**Arguments**:
+
+| Argument | Description | Required |
+| --- | --- | --- |
+| `<scene_path>` | Path to the scene directory. | Yes |
+| `<model_path>` | Path to the trained 3DGS model directory. | Yes |
+| `<iteration(-1=latest)>` | Iteration to render. Use `-1` to select the latest available iteration. | Yes |
+| `<skip_train(0\|1)>` | Whether to skip rendering train views. `0`: render train views; `1`: skip. | Yes |
+| `<skip_test(0\|1)>` | Whether to skip rendering test views. `0`: render test views; `1`: skip. | Yes |
 
 Render edited 3DGS result to image folder:
 ```bash
@@ -40,8 +29,14 @@ bash scripts/render/render_edit_3dgs.sh \
   <save_dir> \
   <use_original_resolution(0|1)>
 ```
-Parameter meaning:
-- `1` (`use_original_resolution`): `1` means original resolution, `0` means fixed `512x512`.
+**Arguments**:
+
+| Argument | Description | Required |
+| --- | --- | --- |
+| `<edited_gs_source.ply>` | Path to the edited 3DGS PLY file. | Yes |
+| `<colmap_dir>` | Path to the COLMAP reconstruction directory. | Yes |
+| `<save_dir>` | Output directory for rendered images. | Yes |
+| `<use_original_resolution(0\|1)>` | Use original image resolution (`1`) or fixed `512x512` (`0`). | Yes |
 
 Render edited 3DGS result to video:
 ```bash
@@ -51,11 +46,17 @@ bash scripts/render/render_video.sh \
   <output_video.mp4> \
   <use_original_resolution(0|1)> <render_path_mode(0|1)>
 ```
-Parameter meaning:
-- `1` (`use_original_resolution`): `1` means original resolution, `0` means fixed `512x512`.
-- `0` (`render_path_mode`): `0` means spiral camera trajectory, `1` means path mode (`--render_path True`).
+**Arguments**:
 
-### scripts/eval
+| Argument | Description | Required |
+| --- | --- | --- |
+| `<edited_gs_source.ply>` | Path to the edited 3DGS PLY file. | Yes |
+| `<colmap_dir>` | Path to the COLMAP reconstruction directory. | Yes |
+| `<output_video.mp4>` | Output path for the rendered video. | Yes |
+| `<use_original_resolution(0\|1)>` | Use original image resolution (`1`) or fixed `512x512` (`0`). | Yes |
+| `<render_path_mode(0\|1)>` | Camera path mode. `0`: spiral trajectory; `1`: path mode (`--render_path True`). | Yes |
+
+### eval
 Evaluate edited image folder with CLIP:
 ```bash
 bash scripts/eval/eval_image.sh \
@@ -64,6 +65,14 @@ bash scripts/eval/eval_image.sh \
   "<origin_prompt>" \
   "<target_prompt>"
 ```
+**Arguments**:
+
+| Argument | Description | Required |
+| --- | --- | --- |
+| `<origin_image_dir>` | Path to the original image directory. | Yes |
+| `<edited_image_dir>` | Path to the edited image directory. | Yes |
+| `"<origin_prompt>"` | Text prompt describing the original content. | Yes |
+| `"<target_prompt>"` | Text prompt describing the target edited content. | Yes |
 
 Evaluate origin vs edited PLY with CLIP:
 ```bash
@@ -75,8 +84,16 @@ bash scripts/eval/eval_ply.sh \
   "<target_prompt>" \
   <use_original_resolution(0|1)>
 ```
-Parameter meaning:
-- `1` (`use_original_resolution`): `1` means original resolution, `0` means fixed `512x512`.
+**Arguments**:
+
+| Argument | Description | Required |
+| --- | --- | --- |
+| `<origin_gs_source.ply>` | Path to the original 3DGS PLY file. | Yes |
+| `<edited_gs_source.ply>` | Path to the edited 3DGS PLY file. | Yes |
+| `<colmap_dir>` | Path to the COLMAP reconstruction directory. | Yes |
+| `"<origin_prompt>"` | Text prompt describing the original content. | Yes |
+| `"<target_prompt>"` | Text prompt describing the target edited content. | Yes |
+| `<use_original_resolution(0\|1)>` | Use original image resolution (`1`) or fixed `512x512` (`0`). | Yes |
 
 Evaluate temporal consistency (MEt3R) on rendered frames:
 ```bash
@@ -85,6 +102,10 @@ bash scripts/eval/eval_met3r.sh \
   <distance(cosine|lpips|rmse|psnr|mse|ssim)> \
   <img_size(0=original)>
 ```
-Parameter meaning:
-- `cosine` (`distance`): metric type, e.g. `cosine`, `lpips`, `rmse`, `psnr`, `mse`, `ssim`.
-- `256` (`img_size`): resize images to `256x256`; use `0` to keep original resolution.
+**Arguments**:
+
+| Argument | Description | Required |
+| --- | --- | --- |
+| `<image_dir>` | Path to the rendered image directory. | Yes |
+| `<distance(cosine\|lpips\|rmse\|psnr\|mse\|ssim)>` | Distance metric used by MEt3R. | Yes |
+| `<img_size(0=original)>` | Resize images to a fixed size (e.g. `256`) or keep original size with `0`. | Yes |
