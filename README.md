@@ -28,6 +28,11 @@
 
 </div>
 
+<p align="center">
+  <img src="resources/assets/teaser(video).png" alt="100Editor teaser" width="95%" />
+</p>
+
+
 ## :loudspeaker:News
 
  **[2026-04]** :fire: We release the code of 100Editor and the 3D editing software of 100Editor！
