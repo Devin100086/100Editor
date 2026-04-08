@@ -36,14 +36,16 @@
  
 ## :wrench: Installation
 > Our environment has been tested on an NVIDIA RTX 4090 GPU with Ubuntu 22.04 and CUDA 12.4.
-1. Clone our repo and create environment
+1. Clone our repository
 ```
 git clone https://github.com/Devin100086/100Editor.git
-
+```
+2. create environment and install dependencies
+```
 # Create an environment
 conda create -n 100Editor python=3.11
 
-# CUDA version 12.4
+# Install dependencies
 pip install torch==2.4.1+cu124 torchvision==0.19.1+cu124 torchaudio==2.4.1+cu124 --index-url https://download.pytorch.org/whl/cu124
 pip install -r requirements.txt
 pip install -e third_party/BrushNet
@@ -54,16 +56,46 @@ pip install -e src/trainer/origin/submodules/diff-gaussian-rasterization
 pip install -e src/editor/gaussiansplatting/submodules/acc-diff-gaussian-rasterization-editor
 pip install -e third_party/gaussiansplatting/submodules/diff-gaussian-rasterization
 pip install -e third_party/dreamgaussian/add_diff-gaussian-rasterization
-
- 
 pip install -e src/trainer/origin/submodules/fused-ssim
 pip install -e src/trainer/origin/submodules/simple-knn
-
 ```
+3. 下载所需的模型权重
+```
+sh ./scripts/download.sh
+```
+## :fire:Train 3DGS
+### 脚本训练
+用户可以通过执行以下命令实现对目标3dgs场景的重建
+```bash
+bash scripts/train/train_3dgs.sh \
+  [--use-depth-loss] \
+  [--use-appearance-embedding] \
+  <scene_path> \
+  <output_dir> \
+  <checkpoint_iter>
+  
+Example (默认关闭外观嵌入和 depth loss):
+bash scripts/train/train_3dgs.sh \
+  /path/to/scene \
+  output/scene_name \
+  7000
+
+Example (开启外观嵌入 + depth loss，和 GUI 对齐):
+bash scripts/train/train_3dgs.sh \
+  --use-depth-loss \
+  --use-appearance-embedding \
+  /path/to/scene \
+  output/scene_name \
+  7000
+```
+### GUI中训练3DGS
+我们的软件同样可以去支持3dgs训练，并且其中可以支持gsplat库进行训练，并且提供多种训练策略选择，更多关于这部分的使用可以见这里。
+## :art: Editing
+[API Guide](https://help.aliyun.com/zh/model-studio/get-api-key),
+[API Platform](https://bailian.console.aliyun.com)
+## :pencil: Evaluation
 
 
-https://help.aliyun.com/zh/model-studio/get-api-key
-https://bailian.console.aliyun.com/cn-beijing?spm=a2c4g.11186623.0.0.60905ec6JuwGKr&tab=api#/api/?type=model&url=2976416
 
 ## :pray: Acknowledgments
 We sincerely appreciate these excellent open-source projects.
