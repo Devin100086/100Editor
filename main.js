@@ -572,10 +572,7 @@ function initHeroMedia() {
         heroVideo.addEventListener("error", () => heroSection.classList.add("is-fallback"), { once: true });
       }
     } else {
-<<<<<<< HEAD
-=======
       showVideoMedia();
->>>>>>> 282b066 (minor)
       const setVideoSource = (videoEl, source) => {
         if (videoEl.dataset.source === source) return;
         videoEl.dataset.source = source;
