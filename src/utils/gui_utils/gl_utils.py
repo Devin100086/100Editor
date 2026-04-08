@@ -322,18 +322,18 @@ def draw_click_ripples(max_w, max_h, ripples):
         if alpha <= 0.0:
             continue
 
-        # Outer soft halo.
+        # Outer soft halo (light blue).
         gl.glLineWidth(line_width * 1.8)
-        gl.glColor4f(1.0, 1.0, 1.0, alpha * 0.35)
+        gl.glColor4f(0.56, 0.78, 1.0, alpha * 0.35)
         gl.glBegin(gl.GL_LINE_LOOP)
         for i in range(segments):
             theta = 2.0 * np.pi * i / segments
             gl.glVertex2f(x + radius * np.cos(theta), y + radius * np.sin(theta))
         gl.glEnd()
 
-        # Main ring.
+        # Main ring (light blue).
         gl.glLineWidth(line_width)
-        gl.glColor4f(1.0, 1.0, 1.0, alpha)
+        gl.glColor4f(0.66, 0.84, 1.0, alpha)
         gl.glBegin(gl.GL_LINE_LOOP)
         for i in range(segments):
             theta = 2.0 * np.pi * i / segments

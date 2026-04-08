@@ -165,10 +165,13 @@ class EditcamWidget(cam_widget.CamWidget):
                     self.pose.pitch = np.clip(self.pose.pitch, -np.pi / 2, np.pi / 2)
             elif imgui.is_mouse_clicked(1):  # right mouse button
                 if self._is_mouse_in_region(x, y, width, height):
-                    mouse_pos = imgui.get_mouse_pos()
-                    self.viz.args.roate_point = (mouse_pos.x - self.viz.pane_w, mouse_pos.y)
-                    self._awaiting_pick_result = True
-                    self._add_click_ripple(mouse_pos.x, mouse_pos.y)
+                    pick = self._current_mouse_pick_in_render_image()
+                    if pick is not None:
+                        mouse_pos = imgui.get_mouse_pos()
+                        self.viz.args.roate_point = pick["pixel"]
+                        self.viz.args.roate_scene_index = pick["scene_index"]
+                        self._awaiting_pick_result = True
+                        self._add_click_ripple(mouse_pos.x, mouse_pos.y)
             elif imgui.is_mouse_dragging(2):  # right mouse button
                 new_delta = imgui.get_mouse_drag_delta(2)
                 if imgui_utils.did_drag_start_in_window(x, y, width, height, new_delta):

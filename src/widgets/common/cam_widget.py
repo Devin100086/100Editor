@@ -71,16 +71,7 @@ class CamWidget(Widget):
             self.handle_mouse_wheel()
         else:
             self.last_drag_delta = imgui.ImVec2(0, 0)
-        if "mean_xyz" in viz.result.keys():
-            target = viz.result.mean_xyz.cpu()
-            should_recenter = (not self.auto_center_initialized) or (
-                torch.linalg.norm(self.center - target) > self.auto_center_threshold
-            )
-            if should_recenter:
-                self._set_lookat_target(target, immediate=True)
-                self.center = target
-                self.auto_center_initialized = True
-        elif "center" in viz.result.keys():
+        if "center" in viz.result.keys():
             target = viz.result.center.cpu()
             center_changed = not torch.allclose(self.center_roate, target)
             if self._awaiting_pick_result or center_changed:
@@ -90,6 +81,16 @@ class CamWidget(Widget):
                     self._set_lookat_target(target, immediate=False)
                 self.center_roate = target
                 self._awaiting_pick_result = False
+
+        if "mean_xyz" in viz.result.keys():
+            target = viz.result.mean_xyz.cpu()
+            should_recenter = (not self.auto_center_initialized) or (
+                torch.linalg.norm(self.center - target) > self.auto_center_threshold
+            )
+            if should_recenter:
+                self._set_lookat_target(target, immediate=True)
+                self.center = target
+                self.auto_center_initialized = True
 
         self._animate_lookat(dt)
         self._animate_fps_turn(dt)
@@ -203,10 +204,13 @@ class CamWidget(Widget):
                 self.pose.pitch = np.clip(self.pose.pitch, -np.pi / 2, np.pi / 2)
         elif imgui.is_mouse_clicked(1):  # right mouse button
             if self._is_mouse_in_region(x, y, width, height):
-                mouse_pos = imgui.get_mouse_pos()
-                self.viz.args.roate_point = (mouse_pos.x - self.viz.pane_w, mouse_pos.y)
-                self._awaiting_pick_result = True
-                self._add_click_ripple(mouse_pos.x, mouse_pos.y)
+                pick = self._current_mouse_pick_in_render_image()
+                if pick is not None:
+                    mouse_pos = imgui.get_mouse_pos()
+                    self.viz.args.roate_point = pick["pixel"]
+                    self.viz.args.roate_scene_index = pick["scene_index"]
+                    self._awaiting_pick_result = True
+                    self._add_click_ripple(mouse_pos.x, mouse_pos.y)
         elif imgui.is_mouse_dragging(2):  # right mouse button
             new_delta = imgui.get_mouse_drag_delta(2)
             if imgui_utils.did_drag_start_in_window(x, y, width, height, new_delta):
@@ -386,6 +390,76 @@ class CamWidget(Widget):
     def _is_mouse_in_region(self, x, y, width, height):
         mouse_pos = imgui.get_mouse_pos()
         return x <= mouse_pos.x <= x + width and y <= mouse_pos.y <= y + height
+
+    def _get_render_image_rect(self):
+        pane_left = float(self.viz.pane_w)
+        viewport_w = float(max(1, self.viz.content_width - self.viz.pane_w))
+        viewport_h = float(max(1, self.viz.content_height))
+        x0 = pane_left
+        y0 = 0.0
+        x1 = pane_left + viewport_w
+        y1 = viewport_h
+
+        if "image" not in self.viz.result:
+            return x0, y0, x1, y1
+        image = self.viz.result.image
+        if image is None or not hasattr(image, "shape") or len(image.shape) < 2:
+            return x0, y0, x1, y1
+
+        img_h = float(max(1, int(image.shape[0])))
+        img_w = float(max(1, int(image.shape[1])))
+        zoom = min(viewport_w / img_w, viewport_h / img_h)
+        draw_w = img_w * zoom
+        draw_h = img_h * zoom
+        draw_x0 = pane_left + (viewport_w - draw_w) * 0.5
+        draw_y0 = (viewport_h - draw_h) * 0.5
+        return draw_x0, draw_y0, draw_x0 + draw_w, draw_y0 + draw_h
+
+    def _current_mouse_uv_in_render_image(self):
+        if bool(getattr(self.viz, "_suppress_viewport_mouse", False)):
+            return None
+        mouse = imgui.get_mouse_pos()
+        x0, y0, x1, y1 = self._get_render_image_rect()
+        if mouse.x < x0 or mouse.x > x1 or mouse.y < y0 or mouse.y > y1:
+            return None
+        w = max(1e-6, x1 - x0)
+        h = max(1e-6, y1 - y0)
+        u = float(np.clip((mouse.x - x0) / w, 0.0, 1.0))
+        v = float(np.clip((mouse.y - y0) / h, 0.0, 1.0))
+        return u, v
+
+    def _current_mouse_pick_in_render_image(self):
+        uv = self._current_mouse_uv_in_render_image()
+        if uv is None:
+            return None
+        u, v = uv
+
+        ply_paths = getattr(self.viz.args, "ply_file_paths", None)
+        num_scenes = len(ply_paths) if isinstance(ply_paths, list) and len(ply_paths) > 0 else 1
+        use_splitscreen = bool(getattr(self.viz.args, "use_splitscreen", False))
+
+        # Determine which scene is clicked in the composed output.
+        scene_index = min(num_scenes - 1, max(0, int(u * num_scenes)))
+        if use_splitscreen:
+            local_u = u
+        else:
+            local_u = u * num_scenes - scene_index
+        local_u = float(np.clip(local_u, 0.0, 1.0))
+        local_v = float(np.clip(v, 0.0, 1.0))
+
+        if "image" in self.viz.result and hasattr(self.viz.result.image, "shape") and len(self.viz.result.image.shape) >= 2:
+            comp_h = int(max(1, self.viz.result.image.shape[0]))
+            comp_w = int(max(1, self.viz.result.image.shape[1]))
+        else:
+            comp_h = int(max(1, self.viz.content_height))
+            comp_w = int(max(1, self.viz.content_width - self.viz.pane_w))
+
+        scene_h = comp_h
+        scene_w = comp_w if use_splitscreen else max(1, comp_w // num_scenes)
+
+        px = int(np.clip(round(local_u * (scene_w - 1)), 0, scene_w - 1))
+        py = int(np.clip(round(local_v * (scene_h - 1)), 0, scene_h - 1))
+        return {"scene_index": int(scene_index), "pixel": (px, py)}
 
     def _add_click_ripple(self, x, y):
         self.click_ripples.append(EasyDict(x=float(x), y=float(y), start=time.perf_counter()))

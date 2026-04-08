@@ -1,4 +1,5 @@
 import copy
+import gc
 import math
 import os
 import traceback
@@ -54,6 +55,29 @@ class GaussianRenderer(Renderer):
         self.positive_point3d = []
         self.negative_point3d = []
         self.center = torch.tensor((0.0, 0.0, 0.0))
+
+    def _release_scene_slot(self, scene_index: int) -> bool:
+        if scene_index < 0 or scene_index >= self.num_parallel_scenes:
+            return False
+        had_data = (
+            self.gaussian_models[scene_index] is not None
+            or self.concat_gaussian_models[scene_index] is not None
+            or self._current_ply_file_paths[scene_index] is not None
+        )
+        self.gaussian_models[scene_index] = None
+        self.concat_gaussian_models[scene_index] = None
+        self._current_ply_file_paths[scene_index] = None
+        return had_data
+
+    @staticmethod
+    def _flush_cuda_cache_if_needed(released: bool):
+        if not released:
+            return
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            if hasattr(torch.cuda, "ipc_collect"):
+                torch.cuda.ipc_collect()
 
     def _ensure_sam_predictor(self):
         if self.sam_predictor is not None:
@@ -251,6 +275,7 @@ class GaussianRenderer(Renderer):
         save_concat_ply_path=None,
         slider={},
         roate_point = None,
+        roate_scene_index = None,
         drag_point = None,
         showing_overlay = False,
         sam_positive_points = [],
@@ -271,19 +296,29 @@ class GaussianRenderer(Renderer):
         resolution_y = max(1, resolution_y)
         slider = EasyDict(slider)
         if len(ply_file_paths) == 0:
+            released = False
+            for i in range(self.num_parallel_scenes):
+                released = self._release_scene_slot(i) or released
+            self._last_num_scenes = 0
+            self._flush_cuda_cache_if_needed(released)
             res.error = "Select a .ply file"
             return
 
         # Remove old scenes
+        released = False
         if len(ply_file_paths) < self._last_num_scenes:
-            for i in range(ply_file_paths, self.num_parallel_scenes):
-                self.gaussian_models[i] = None
-            self._last_num_scenes = len(ply_file_paths)
+            for i in range(len(ply_file_paths), self.num_parallel_scenes):
+                released = self._release_scene_slot(i) or released
+        self._flush_cuda_cache_if_needed(released)
+        self._last_num_scenes = len(ply_file_paths)
 
         images = []
         for scene_index, ply_file_path in enumerate(ply_file_paths):
             # Load
             if ply_file_path != self._current_ply_file_paths[scene_index]:
+                # Path changed for this slot: drop previous refs first.
+                released_slot = self._release_scene_slot(scene_index)
+                self._flush_cuda_cache_if_needed(released_slot)
                 self.gaussian_models[scene_index] = self._load_model(ply_file_path)
                 self._current_ply_file_paths[scene_index] = ply_file_path
                 self.center = torch.tensor((0.0, 0.0, 0.0))
@@ -323,10 +358,21 @@ class GaussianRenderer(Renderer):
                 [ 0,  0,  1]
             ])
 
-            if roate_point is not None:
+            click_scene_index = None
+            if roate_scene_index is not None:
+                try:
+                    click_scene_index = int(roate_scene_index)
+                except Exception:
+                    click_scene_index = None
+
+            do_pick_center = roate_point is not None and (click_scene_index is None or scene_index == click_scene_index)
+            if do_pick_center:
                 render_cam = CustomCam(resolution_x, resolution_y, fovy=fov_rad, fovx=fovx_rad, extr=cam_params)
                 render = render_simple(viewpoint_camera=render_cam, pc=gs, bg_color=background_color.to("cuda"))
-                intersection_point = self.pixel_to_3d(roate_point, intrinsic, cam_params, render["depth"].cpu().numpy()[0][int(roate_point[1]),int(roate_point[0])])
+                px = int(np.clip(round(roate_point[0]), 0, resolution_x - 1))
+                py = int(np.clip(round(roate_point[1]), 0, resolution_y - 1))
+                depth_value = render["depth"].cpu().numpy()[0][py, px]
+                intersection_point = self.pixel_to_3d((px, py), intrinsic, cam_params, depth_value)
                 self.center = torch.tensor(intersection_point).to(torch.float32)
             if drag_point is not None:
                 render_cam = CustomCam(resolution_x, resolution_y, fovy=fov_rad, fovx=fovx_rad, extr=cam_params)
@@ -502,7 +548,6 @@ class GaussianRenderer(Renderer):
         object_mask = np.array(removed_bg)
         object_mask = object_mask[:, :, 3] > 0
         object_mask = torch.from_numpy(object_mask)
-        bbox = masks_to_boxes(object_mask[None])[0].to("cuda")
 
         depth_estimator = DPT(get_device(), mode="depth")
 
@@ -511,18 +556,40 @@ class GaussianRenderer(Renderer):
         ).squeeze()
         del depth_estimator
         # ui_utils.vis_depth(estimated_depth.cpu())
-        object_center = (bbox[:2] + bbox[2:]) / 2
 
+        with torch.no_grad():
+            render_pkg = render_simple(viewpoint_camera=cam, pc=gaussian, bg_color=background_color.to("cuda"))
+
+        # Dynamic renderer resolution can differ from cached inpaint/mask size.
+        # Align all tensors to rendered depth resolution before boolean indexing.
+        target_h = int(render_pkg["depth"].shape[-2])
+        target_w = int(render_pkg["depth"].shape[-1])
+        if object_mask.shape != (target_h, target_w):
+            object_mask = F.interpolate(
+                object_mask[None, None].float(),
+                size=(target_h, target_w),
+                mode="nearest",
+            )[0, 0] > 0.5
+        object_mask = object_mask.to(render_pkg["depth"].device)
+        if estimated_depth.shape != (target_h, target_w):
+            estimated_depth = F.interpolate(
+                estimated_depth[None, None],
+                size=(target_h, target_w),
+                mode="bilinear",
+                align_corners=False,
+            )[0, 0]
+
+        if not torch.any(object_mask):
+            raise RuntimeError("`removed_bg` mask is empty after resizing; cannot estimate concat depth.")
+        bbox = masks_to_boxes(object_mask[None])[0].to("cuda")
+        object_center = (bbox[:2] + bbox[2:]) / 2
         fx = fov2focal(cam.FoVx, cam.image_width)
         fy = fov2focal(cam.FoVy, cam.image_height)
-
         object_center = (
             object_center
             - torch.tensor([cam.image_width, cam.image_height]).to("cuda") / 2
         ) / torch.tensor([fx, fy]).to("cuda")
 
-        with torch.no_grad():
-            render_pkg = render_simple(viewpoint_camera=cam, pc=gaussian, bg_color=background_color.to("cuda"))
         rendered_depth = render_pkg["depth"][..., ~object_mask]
         inpainted_depth = estimated_depth[~object_mask]
         object_depth = estimated_depth[..., object_mask]
