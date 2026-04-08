@@ -49,11 +49,12 @@ threestudio/utils/wonder3D/instant-nsr-pl/exp/
 # -----------------------------
 /extern/
 /submodules/
-**/submodules/
-extern/LeftRefill/pretrained_models/
-EditorGS/dreamgaussian/
 threestudio/utils/wonder3D/instant-nsr-pl/datasets/
-third_party/dreamgaussian/add_diff-gaussian-rasterization
+src/editor/gaussiansplatting/submodules/diff-gaussian-rasterization-editor
+src/editor/gaussiansplatting/submodules/origin-diff-gaussian-rasterization
+src/editor/gaussiansplatting/submodules/simple-knn
+third_party/gaussiansplatting/submodules/simple-knn
+# third_party/dreamgaussian/add_diff-gaussian-rasterization
 
 # -----------------------------
 # Optional experiment folders
@@ -81,4 +82,4 @@ runtime/experiments/*
 runtime/eval/*
 
 configs/api.json
-
+others
