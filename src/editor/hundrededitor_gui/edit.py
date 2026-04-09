@@ -258,7 +258,8 @@ class EditTrainer(BaseTrainer):
             negative_sam_points = np.empty((0,2)) if self.negative_sam_points.shape[0] == 0 else self.negative_sam_points * np.array([self.cam.image_width, self.cam.image_height])
             self.masks, _ = self.update_sam2_mask_with_point_prompt(self.train_cameras, 
                                                                     positive_sam_points ,
-                                                                   negative_sam_points)
+                                                                   negative_sam_points,
+                                                                   prompt_camera=self.cam)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             self._clear_cuda_memory()

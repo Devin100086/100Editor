@@ -1,26 +1,39 @@
+import argparse
 from pathlib import Path
-import open3d as o3d
-
-import os, argparse,sys
-import numpy as np
-
-here_path = Path(__file__).resolve().parent
-import pycolmap
-# "CameraModel", ["model_id", "model_name", "num_params"])
-# "Camera", ["id", "model", "width", "height", "params"])
-# "Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"])
-# "Point3D", ["id", "xyz", "rgb", "error", "image_ids", "point2D_idxs"])
 
 import numpy as np
 import open3d as o3d
 import pycolmap
-import matplotlib.pyplot as plt
+
+
+def _load_reconstruction(data_path: Path):
+    """Load COLMAP sparse model with new/old pycolmap API compatibility."""
+    model_path = str(data_path)
+
+    # Newer API
+    reconstruction_cls = getattr(pycolmap, "Reconstruction", None)
+    if reconstruction_cls is not None:
+        try:
+            return reconstruction_cls(model_path), "reconstruction"
+        except Exception:
+            pass
+
+    # Older API
+    scene_manager_cls = getattr(pycolmap, "SceneManager", None)
+    if scene_manager_cls is not None:
+        manager = scene_manager_cls(model_path)
+        manager.load_cameras()
+        manager.load_images()
+        manager.load_points3D()
+        return manager, "scene_manager"
+
+    raise RuntimeError(
+        "Unsupported pycolmap API: neither `Reconstruction` nor `SceneManager` is available."
+    )
 
 def draw_colmap_geometries(data_path):
     print(data_path)
-    recon = pycolmap.Reconstruction(data_path)
-
-    cameras, images, points3D = recon.cameras, recon.images, recon.points3D
+    recon, backend = _load_reconstruction(Path(data_path))
 
     vis = o3d.visualization.Visualizer()
     vis.create_window(width=1280, height=720)
@@ -31,9 +44,26 @@ def draw_colmap_geometries(data_path):
     # add points
     pointxyz = []
     pointcolor = []
-    for id, point3D in points3D.items():
-        pointxyz.append([point3D.xyz[0], point3D.xyz[1], point3D.xyz[2]])
-        pointcolor.append(point3D.color/255)
+    if backend == "reconstruction":
+        for point3D in recon.points3D.values():
+            pointxyz.append([point3D.xyz[0], point3D.xyz[1], point3D.xyz[2]])
+            # Different versions may expose either `color` or `rgb`.
+            color = getattr(point3D, "color", getattr(point3D, "rgb", None))
+            if color is None:
+                pointcolor.append([1.0, 1.0, 1.0])
+            else:
+                pointcolor.append(np.asarray(color) / 255.0)
+    else:
+        # SceneManager stores points/colors as arrays.
+        if hasattr(recon, "points3D"):
+            pointxyz = np.asarray(recon.points3D).tolist()
+        if hasattr(recon, "point3D_colors"):
+            pointcolor = (np.asarray(recon.point3D_colors) / 255.0).tolist()
+        else:
+            pointcolor = [[1.0, 1.0, 1.0] for _ in range(len(pointxyz))]
+
+    if len(pointxyz) == 0:
+        raise ValueError(f"No 3D points found in sparse model: {data_path}")
 
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(pointxyz)

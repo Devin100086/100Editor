@@ -195,6 +195,15 @@ We sincerely appreciate these excellent open-source projects.
 11
 ``` 
 
+## :star: Star History
+<a href="https://www.star-history.com/?repos=Devin100086%2F100Editor&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Devin100086/100Editor&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Devin100086/100Editor&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Devin100086/100Editor&type=date&legend=top-left" />
+ </picture>
+</a>
+
 ---
 <div align="center">
 <img src="https://raw.githubusercontent.com/Tarikul-Islam-Anik/Animated-Fluent-Emojis/refs/heads/master/Emojis/Smilies/Beaming%20Face%20with%20Smiling%20Eyes.png" alt="Thanks" width="50" height="50" />
@@ -203,12 +212,3 @@ We sincerely appreciate these excellent open-source projects.
 
 **If you find this repository helpful, please give it a star ⭐**
 </div>
-
-
-<a href="https://www.star-history.com/?repos=Devin100086%2F100Editor&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Devin100086/100Editor&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Devin100086/100Editor&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Devin100086/100Editor&type=date&legend=top-left" />
- </picture>
-</a>

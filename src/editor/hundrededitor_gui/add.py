@@ -187,11 +187,14 @@ class TrainFineeAdd(BaseTrainer):
 
         points3d = np.load((self.cache_dir / "center_3D.npy").as_posix())
         points2d = project_3d_to_2d(points3d, self.cam) if len(points3d) > 0 else np.empty((0,2))
-        render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
-        init_render = render(self.cam, self.gaussian2, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
-        save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
         print(_ansi("[Fine Add] SAM2(video) mask preparation ...", "1;34"))
-        self.masks, _ = self.update_sam2_mask_with_point_prompt(self.colmap_cameras, points2d, np.empty((0,2)), type = "add")
+        self.masks, _ = self.update_sam2_mask_with_point_prompt(
+            self.colmap_cameras,
+            points2d,
+            np.empty((0,2)),
+            type="add",
+            prompt_camera=self.cam,
+        )
         print(_ansi("[Fine Add] SAM2(video) mask preparation done", "1;32"))
 
         self.guidance = AddGuidance(

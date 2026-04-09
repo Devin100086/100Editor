@@ -29,6 +29,9 @@ class DeleteTrainer(BaseTrainer):
         self.debug_render_dir = resolve_runtime_subdir(
             __file__, "renders", "delete", create=True
         )
+        self.debug_single_view_edit_dir = resolve_runtime_subdir(
+            __file__, "cache", "delete", "edited", create=True
+        )
         self.edit_cam_num = cfg.edit_cam_num
         self.lambda_l1 = cfg.lambda_l1
         self.lambda_p = cfg.lambda_p
@@ -46,6 +49,7 @@ class DeleteTrainer(BaseTrainer):
         self.sam_type = cfg.sam_type
         self.fix_holes = True
         self.output_dir = cfg.output_dir
+        self.save_single_view_steps = max(0, getattr(cfg, "save_single_view_steps", 10))
 
         self.cameara_update_step = 500
         self.t_max_step = [999, 300, 300, 21]
@@ -87,8 +91,20 @@ class DeleteTrainer(BaseTrainer):
         self._log_kv("Batch Mode", str(video))
         self._log_kv("SAM Mode", sam_map.get(self.sam_type, f"Unknown({self.sam_type})"))
         self._log_kv("Output Dir", self.output_dir)
+        self._log_kv("Save Edit Steps", str(self.save_single_view_steps))
         if self.verbose_log_path:
             self._log_kv("Verbose Log", self.verbose_log_path)
+
+    def _save_single_view_edit_preview(self, step: int, view_index: int) -> None:
+        if step >= self.save_single_view_steps:
+            return
+        if not hasattr(self, "guidance") or view_index not in self.guidance.edit_frames:
+            return
+        edited = self.guidance.edit_frames[view_index].detach().clamp(0.0, 1.0)
+        save_path = self.debug_single_view_edit_dir / (
+            f"step_{step:05d}_view_{view_index:04d}.png"
+        )
+        save_image(edited.permute(0, 3, 1, 2), save_path.as_posix())
 
     def _log_finish_banner(self, wall_time_s: float, result_ply_path: str) -> None:
         print(self._ansi("[Delete] Done", "1;32"))
@@ -255,11 +271,31 @@ class DeleteTrainer(BaseTrainer):
             )
 
         elif self.sam_type == 2:
-            self.positive_sam_points = np.empty((0,2)) if self.positive_sam_points.shape[0] == 0 else self.positive_sam_points * np.array([self.cam.image_width, self.cam.image_height])
-            self.negative_sam_points = np.empty((0,2)) if self.negative_sam_points.shape[0] == 0 else self.negative_sam_points * np.array([self.cam.image_width, self.cam.image_height])
-            render_folder = os.path.join(os.path.dirname(self.save_mask_tmp), "render")
-            init_render = render(self.cam, self.gaussian, self.pipe ,self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
-            save_image(init_render[None], f"{render_folder}/{0:05d}" + ".jpg")
+            point_scale = np.array([self.cam.image_width, self.cam.image_height], dtype=np.float32)
+            if self.positive_sam_points.shape[0] == 0:
+                self.positive_sam_points = np.empty((0, 2), dtype=np.float32)
+            else:
+                self.positive_sam_points = np.asarray(
+                    self.positive_sam_points, dtype=np.float32
+                ) * point_scale
+                self.positive_sam_points[:, 0] = np.clip(
+                    self.positive_sam_points[:, 0], 0, self.cam.image_width - 1
+                )
+                self.positive_sam_points[:, 1] = np.clip(
+                    self.positive_sam_points[:, 1], 0, self.cam.image_height - 1
+                )
+            if self.negative_sam_points.shape[0] == 0:
+                self.negative_sam_points = np.empty((0, 2), dtype=np.float32)
+            else:
+                self.negative_sam_points = np.asarray(
+                    self.negative_sam_points, dtype=np.float32
+                ) * point_scale
+                self.negative_sam_points[:, 0] = np.clip(
+                    self.negative_sam_points[:, 0], 0, self.cam.image_width - 1
+                )
+                self.negative_sam_points[:, 1] = np.clip(
+                    self.negative_sam_points[:, 1], 0, self.cam.image_height - 1
+                )
             self._run_noisy_stage(
                 "Run SAM2(video) mask propagation",
                 self.update_sam2_mask_with_point_prompt,
@@ -267,6 +303,7 @@ class DeleteTrainer(BaseTrainer):
                 self.positive_sam_points,
                 self.negative_sam_points,
                 quiet=False,
+                prompt_camera=self.cam,
             )
 
         # origin_frames = self.render_cameras_list(self.colmap_cameras)
@@ -351,6 +388,7 @@ class DeleteTrainer(BaseTrainer):
                     view_index,
                     step,
                 )
+            self._save_single_view_edit_preview(step, view_index)
             loss.backward()
 
             self.densify_and_prune(step)
@@ -476,6 +514,12 @@ if __name__ == "__main__":
     parser.add_argument("--use_original_resolution", type=str, default="False", help="use original resolution.")
     parser.add_argument("--output_dir", type=str, default="save/", help="output dir.")
     parser.add_argument("--mask_thres", type=float, default=0.5, help="mask threshold.")
+    parser.add_argument(
+        "--save_single_view_steps",
+        type=int,
+        default=10,
+        help="Save single-view edited results for the first N training steps.",
+    )
 
     args = parser.parse_args()
     if args.gs_source.endswith(".ply"):

@@ -400,7 +400,12 @@ class BaseTrainer:
         return masks, selected_mask
     
     def update_sam2_mask_with_point_prompt(
-        self, edit_cameras, positive_sam_points=None, negative_sam_points=None, type = "default"
+        self,
+        edit_cameras,
+        positive_sam_points=None,
+        negative_sam_points=None,
+        type="default",
+        prompt_camera=None,
     ):
         os.makedirs(self.save_mask_tmp, exist_ok=True)
         os.system(f"rm -rf {self.save_mask_tmp}/*")
@@ -414,7 +419,29 @@ class BaseTrainer:
                 os.remove(file_path)
             else:
                 shutil.rmtree(file_path)
+        frame_offset = 0
         with torch.inference_mode():
+            if prompt_camera is not None:
+                if type == "default":
+                    prompt_img = render(
+                        prompt_camera,
+                        self.gaussian,
+                        self.pipe,
+                        self.background_tensor,
+                        separate_sh=self.use_sparse_adam,
+                    )["render"]
+                else:
+                    prompt_img = render(
+                        prompt_camera,
+                        self.gaussian2,
+                        self.pipe,
+                        self.background_tensor,
+                        separate_sh=self.use_sparse_adam,
+                    )["render"]
+                save_image(prompt_img[None], f"{render_folder}/{0:05d}.jpg")
+                frame_offset = 1
+                del prompt_img
+
             for i, cam in enumerate(
                 tqdm(
                     edit_cameras,
@@ -427,7 +454,7 @@ class BaseTrainer:
                     img = render(cur_cam, self.gaussian, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
                 else:
                     img = render(cur_cam, self.gaussian2, self.pipe, self.background_tensor, separate_sh=self.use_sparse_adam)["render"]
-                save_image(img[None], f"{render_folder}/{i+1:05d}" + ".jpg")
+                save_image(img[None], f"{render_folder}/{i + frame_offset:05d}.jpg")
                 del img
 
         state = sam2_predictor.init_state(video_path=render_folder)
@@ -436,13 +463,39 @@ class BaseTrainer:
         ann_frame_idx = 0  
         ann_obj_id = 1  
 
-        positive_points2ds = np.empty((0,2)) if positive_sam_points.shape[0] == 0 else positive_sam_points
-        negative_points2ds = np.empty((0,2)) if negative_sam_points.shape[0] == 0 else negative_sam_points
-        positive_label = np.empty((0), dtype=np.int64) if positive_sam_points.shape[0] == 0 else np.array([1] * positive_sam_points.shape[0], dtype=np.int64) 
-        negative_label = np.empty((0), dtype=np.int64) if negative_sam_points.shape[0] == 0 else np.array([0] * negative_sam_points.shape[0], dtype=np.int64)
+        if positive_sam_points is None:
+            positive_sam_points = np.empty((0, 2), dtype=np.float32)
+        if negative_sam_points is None:
+            negative_sam_points = np.empty((0, 2), dtype=np.float32)
+
+        positive_sam_points = np.asarray(positive_sam_points, dtype=np.float32)
+        negative_sam_points = np.asarray(negative_sam_points, dtype=np.float32)
+
+        positive_points2ds = (
+            np.empty((0, 2), dtype=np.float32)
+            if positive_sam_points.shape[0] == 0
+            else positive_sam_points
+        )
+        negative_points2ds = (
+            np.empty((0, 2), dtype=np.float32)
+            if negative_sam_points.shape[0] == 0
+            else negative_sam_points
+        )
+        positive_label = (
+            np.empty((0,), dtype=np.int64)
+            if positive_sam_points.shape[0] == 0
+            else np.array([1] * positive_sam_points.shape[0], dtype=np.int64)
+        )
+        negative_label = (
+            np.empty((0,), dtype=np.int64)
+            if negative_sam_points.shape[0] == 0
+            else np.array([0] * negative_sam_points.shape[0], dtype=np.int64)
+        )
         
         point_coords = np.concatenate((positive_points2ds, negative_points2ds), axis=0)
         point_labels = np.concatenate((positive_label, negative_label), axis=0) 
+        if point_coords.shape[0] == 0:
+            raise ValueError("SAM2(video) requires at least one point prompt.")
 
         sam2_predictor.add_new_points(
             inference_state=state,
@@ -463,11 +516,12 @@ class BaseTrainer:
                 dynamic_ncols=True,
             ) as propagation_bar:
                 for out_frame_idx, _, out_mask_logits in sam2_predictor.propagate_in_video(state):
-                    if out_frame_idx == 0:
+                    cam_idx = out_frame_idx - 1 if prompt_camera is not None else out_frame_idx
+                    if cam_idx < 0 or cam_idx >= len(edit_cameras):
                         continue
                     mask = out_mask_logits[0] > 0.0
                     mask_float = mask.to(torch.float32)
-                    cur_cam = edit_cameras[out_frame_idx - 1]
+                    cur_cam = edit_cameras[cam_idx]
                     save_image(mask_float.unsqueeze(0).to(torch.float16), f"{self.save_mask_tmp}/mask_{cur_cam.image_name}" + ".png")
                     self.gaussian.apply_weights(
                         cur_cam, weights, weights_cnt, mask_float
