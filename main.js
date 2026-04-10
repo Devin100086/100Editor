@@ -232,8 +232,7 @@ const CONTENT = {
     arxiv: "https://arxiv.org/abs/0000.00000",
     code: "https://github.com/Devin100086/100Editor",
     bilibili: "https://www.bilibili.com",
-    software: "https://github.com/Devin100086/100Editor",
-    viewer: "https://github.com/Devin100086/Nebula",
+    software: "https://devin100086.github.io/100Editor-Document",
   },
 };
 
