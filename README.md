@@ -40,7 +40,7 @@
  **[2026-02]** :tada: 100Editor has been accepted to CVPR 2026(Findings)!
 
 ## :bookmark_tabs:TODOs
-- [ ] Further clean up and refactor the codebase to make it easier for users to use, understand, and modify. 
+- [ ] Perform a deeper cleanup and refactoring of the codebase, along with thorough testing, so that **100Editor becomes easier to use, maintain, and customize for everyone**:grinning:. 
 - [ ] Provide more complete installation and configuration instructions.
  
 ## :wrench: Installation
