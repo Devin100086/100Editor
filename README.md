@@ -37,7 +37,11 @@
 
  **[2026-04]** :fire: We release the code of 100Editor and the 3D editing software of 100Editor！
  
- **[2026-02]** :tada: 100Editor has been accepted to CVPR 2026(Findings)! Code coming soon!
+ **[2026-02]** :tada: 100Editor has been accepted to CVPR 2026(Findings)!
+
+## :bookmark_tabs:TODOs
+- [ ] Further clean up and refactor the codebase to make it easier for users to use, understand, and modify. 
+- [ ] Provide more complete installation and configuration instructions.
  
 ## :wrench: Installation
 > Our environment has been tested on an NVIDIA RTX 4090 GPU with Ubuntu 22.04 and CUDA 12.4.
