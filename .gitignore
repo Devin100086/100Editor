@@ -54,6 +54,7 @@ src/editor/gaussiansplatting/submodules/diff-gaussian-rasterization-editor
 src/editor/gaussiansplatting/submodules/origin-diff-gaussian-rasterization
 src/editor/gaussiansplatting/submodules/simple-knn
 third_party/gaussiansplatting/submodules/simple-knn
+third_party/colmap_4_0_3
 # third_party/dreamgaussian/add_diff-gaussian-rasterization
 
 # -----------------------------
@@ -78,6 +79,7 @@ runtime/renders/*
 runtime/videos/*
 runtime/tmp/*
 runtime/cache/*
+runtime/colmap/*
 runtime/experiments/*
 runtime/eval/*
 
