@@ -42,7 +42,7 @@ const CONTENT = {
       contribution: "† Corresponding author.",
       affiliations: [
         "1 Nanjing University of Aeronautics and Astronautics",
-        "2 Huawei Inc.",
+        "2 Huawei Technologies Ltd.",
       ],
     },
   },
@@ -76,7 +76,7 @@ const CONTENT = {
   methodViews: [
     {
       key: "pipeline",
-      image: "assets/overall.png",
+      image: "assets/overall.webp",
       alt: "100Editor Pipeline",
       captionLead: "Overview of 100Editor.",
       captionBody:
@@ -84,7 +84,7 @@ const CONTENT = {
     },
     {
       key: "parallel",
-      image: "assets/Parallel.png",
+      image: "assets/Parallel.webp",
       alt: "Encoder-Cached Parallel Decoding",
       captionLead: "Encoder-Cached Parallel Decoding.",
       captionBody: "We enable parallel decoding for multiple non-key steps to accelerate diffusion inference.",
@@ -1534,6 +1534,44 @@ function configurePerformanceMode() {
   }
 }
 
+function bindNavScrollSpy() {
+  const nav = byId("primary-nav");
+  const topNav = document.querySelector(".top-nav");
+  if (!nav || !topNav) return;
+
+  const navLinks = Array.from(nav.querySelectorAll("a[href^='#']"));
+  const sectionIds = navLinks.map((a) => a.getAttribute("href").slice(1));
+
+  const onScroll = () => {
+    topNav.classList.toggle("is-scrolled", window.scrollY > 20);
+  };
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+
+  const visibleSections = new Set();
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          visibleSections.add(entry.target.id);
+        } else {
+          visibleSections.delete(entry.target.id);
+        }
+      });
+      const active = sectionIds.find((id) => visibleSections.has(id));
+      navLinks.forEach((a) => {
+        a.classList.toggle("is-active", a.getAttribute("href") === `#${active}`);
+      });
+    },
+    { rootMargin: "-20% 0px -60% 0px", threshold: 0 }
+  );
+
+  sectionIds.forEach((id) => {
+    const el = byId(id);
+    if (el) observer.observe(el);
+  });
+}
+
 function initEvents() {
   byId("copy-bibtex").addEventListener("click", copyBibtex);
 }
@@ -1553,6 +1591,7 @@ function bootstrap() {
   renderQuantitativeTable();
   renderLinkButtons();
   bindScrollAnimations();
+  bindNavScrollSpy();
   initParticleField();
   initEvents();
 }

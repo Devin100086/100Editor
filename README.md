@@ -10,7 +10,7 @@
     <br>
     <sup>1</sup>Nanjing University of Aeronautics and Astronautics,
     <br>
-    <sup>2</sup>Huawei Inc.
+    <sup>2</sup>Huawei Technologies Ltd.
     <br>
 </p>
 
