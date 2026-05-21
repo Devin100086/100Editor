@@ -1262,12 +1262,17 @@ html[data-theme="light"] .feature-slogan-text::after {
 }
 
 #results-panel[data-mode="nonrigid"] .result-card {
-  width: min(100%, 980px);
+  width: min(100%, 760px);
   margin-inline: auto;
 }
 
 #results-panel[data-mode="nonrigid"] .result-video-pair {
   align-items: start;
+  justify-items: center;
+}
+
+#results-panel[data-mode="nonrigid"] .result-video-block {
+  width: min(100%, 260px);
 }
 
 #results-panel[data-mode="nonrigid"] .result-video-block video {
