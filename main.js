@@ -984,26 +984,26 @@ function renderResultsMode(modeId) {
         <div class="result-video-pair">
           <div class="result-video-block">
             <video
-              src="${card.sourceVideo || ""}"
+              data-src="${card.sourceVideo || ""}"
               autoplay
               muted
               loop
               playsinline
               controls
-              preload="metadata"
+              preload="none"
               aria-label="${mode.title} card ${start + index + 1} original video"
             ></video>
           </div>
           <div class="result-video-divider" aria-hidden="true"></div>
           <div class="result-video-block">
             <video
-              src="${card.editedVideo || ""}"
+              data-src="${card.editedVideo || ""}"
               autoplay
               muted
               loop
               playsinline
               controls
-              preload="metadata"
+              preload="none"
               aria-label="${mode.title} card ${start + index + 1} edited video"
             ></video>
           </div>
@@ -1029,6 +1029,8 @@ function renderResultsMode(modeId) {
 
     panel.dataset.page = String(currentPage);
     panel.innerHTML = `<div class="results-page-grid">${cardsHtml}</div>${paginationHtml}`;
+
+    bindResultVideoLazyLoad(panel);
 
     if (totalPages > 1) {
       panel.querySelectorAll(".results-page-btn").forEach((button) => {
@@ -1382,6 +1384,29 @@ function runMetricCounter() {
     const suffix = el.dataset.suffix || "";
     animateMetricNumber(el, target, suffix);
   });
+}
+
+function bindResultVideoLazyLoad(container) {
+  const videos = container.querySelectorAll("video[data-src]");
+  if (!videos.length) return;
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const video = entry.target;
+        const src = video.dataset.src;
+        if (!src) return;
+        video.src = src;
+        video.load();
+        video.play().catch(() => {});
+        observer.unobserve(video);
+      });
+    },
+    { rootMargin: "200px 0px" }
+  );
+
+  videos.forEach((v) => observer.observe(v));
 }
 
 function bindScrollAnimations() {
