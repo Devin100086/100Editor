@@ -1597,6 +1597,53 @@ function bindNavScrollSpy() {
   });
 }
 
+function initPosterLightbox() {
+  const posterFrame = document.querySelector(".poster-frame");
+  const posterImage = posterFrame?.querySelector(".poster-img");
+  const lightbox = byId("poster-lightbox");
+  if (!posterFrame || !posterImage || !lightbox) return;
+
+  const closeBtn = lightbox.querySelector(".poster-lightbox-close");
+  const lightboxImage = lightbox.querySelector(".poster-lightbox-img");
+  let returnFocusTarget = null;
+
+  if (lightboxImage instanceof HTMLImageElement) {
+    lightboxImage.src = posterImage.currentSrc || posterImage.src;
+    lightboxImage.alt = posterImage.alt;
+  }
+
+  const open = () => {
+    if (lightbox.classList.contains("is-open")) return;
+    returnFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : posterFrame;
+    posterFrame.setAttribute("aria-expanded", "true");
+    lightbox.setAttribute("aria-hidden", "false");
+    lightbox.classList.add("is-open");
+    document.body.classList.add("poster-lightbox-open");
+    closeBtn?.focus();
+  };
+
+  const close = () => {
+    if (!lightbox.classList.contains("is-open")) return;
+    posterFrame.setAttribute("aria-expanded", "false");
+    lightbox.setAttribute("aria-hidden", "true");
+    lightbox.classList.remove("is-open");
+    document.body.classList.remove("poster-lightbox-open");
+    if (returnFocusTarget instanceof HTMLElement) {
+      returnFocusTarget.focus();
+    }
+  };
+
+  posterFrame.addEventListener("click", open);
+  posterFrame.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    open();
+  });
+  closeBtn?.addEventListener("click", (e) => { e.stopPropagation(); close(); });
+  lightbox.addEventListener("click", (e) => { if (e.target === lightbox) close(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+}
+
 function initEvents() {
   byId("copy-bibtex").addEventListener("click", copyBibtex);
 }
@@ -1618,6 +1665,7 @@ function bootstrap() {
   bindScrollAnimations();
   bindNavScrollSpy();
   initParticleField();
+  initPosterLightbox();
   initEvents();
 }
 

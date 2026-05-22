@@ -45,6 +45,7 @@
           <span class="nav-toggle-bar" aria-hidden="true"></span>
         </button>
         <nav id="primary-nav" class="primary-nav" aria-label="Main navigation">
+          <a href="#poster">Poster</a>
           <a href="#impact">Abstract</a>
           <a href="#method">Method</a>
           <a href="#software">Software</a>
@@ -107,6 +108,24 @@
           </div>
         </div>
         <a href="#impact" class="scroll-hint" aria-label="Scroll to impact">Scroll</a>
+      </section>
+
+      <section id="poster" class="poster reveal">
+        <h2 class="section-title">Poster</h2>
+        <div class="poster-stage">
+          <div class="poster-glow-ring" aria-hidden="true"></div>
+          <figure
+            class="poster-frame"
+            role="button"
+            tabindex="0"
+            aria-label="Open poster in enlarged view"
+            aria-haspopup="dialog"
+            aria-controls="poster-lightbox"
+            aria-expanded="false"
+          >
+            <img src="assets/poster.jpg" alt="100Editor CVPR 2026 Conference Poster" loading="lazy" decoding="async" class="poster-img" />
+          </figure>
+        </div>
       </section>
 
       <section id="impact" class="impact reveal">
@@ -304,6 +323,21 @@
     </footer>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <div
+      id="poster-lightbox"
+      class="poster-lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+      aria-label="Poster fullscreen view"
+    >
+      <div class="poster-lightbox-panel" role="document">
+        <button class="poster-lightbox-close" type="button" aria-label="Close fullscreen poster">✕</button>
+        <img class="poster-lightbox-img" src="assets/poster.jpg" alt="100Editor CVPR 2026 Conference Poster" />
+      </div>
+    </div>
+
     <script src="./main.js" defer></script>
   </body>
 </html>
