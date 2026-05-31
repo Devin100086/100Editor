@@ -62,7 +62,7 @@ class ControlNetGuidance(BaseObject):
         canny_lower_bound: int = 50
         canny_upper_bound: int = 100
 
-        # vidtome
+        # mvtm
         chunk_size: int = 2
         chunk_ord: str = "mix-4"
         merge_global: bool = True
@@ -194,9 +194,9 @@ class ControlNetGuidance(BaseObject):
         threestudio.info(f"Loaded ControlNet!")
 
         if self.cfg.video:
-            self.activate_vidtome()
+            self.activate_mvtm()
     
-    def activate_vidtome(self):
+    def activate_mvtm(self):
         mvtm.apply_patch(self.pipe, self.cfg.local_merge_ratio, self.cfg.merge_global, self.cfg.global_merge_ratio, 
             seed = self.cfg.seed, batch_size = self.cfg.batch_size, align_batch = self.cfg.align_batch, global_rand = self.cfg.global_rand) 
 
@@ -437,7 +437,7 @@ class ControlNetGuidance(BaseObject):
                     noise_preds[chunk] = noise_pred
                 # get previous sample, continue loop
                 latents = self.scheduler.step(noise_preds, t, latents).prev_sample
-                # vidtome.update_patch(self.pipe, global_tokens = None)
+                # mvtm.update_patch(self.pipe, global_tokens = None)
         print("Editing finished.")
         return latents
 

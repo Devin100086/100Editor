@@ -16,6 +16,8 @@ import shutil
 import shlex
 import subprocess
 from pathlib import Path
+import cv2
+import numpy as np
 
 # This Python script is based on the shell converter script provided in the MipNerF 360 repository.
 parser = ArgumentParser("Colmap converter")
@@ -101,6 +103,91 @@ def _append_colmap_log_options(command_name, cmd):
         cmd.extend(["--log_path", str(runtime_colmap_log_dir)])
 
 
+def _list_image_files(image_dir):
+    image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+    if not os.path.isdir(image_dir):
+        return []
+    paths = []
+    for name in sorted(os.listdir(image_dir)):
+        path = os.path.join(image_dir, name)
+        if not os.path.isfile(path):
+            continue
+        if Path(name).suffix.lower() in image_exts:
+            paths.append(path)
+    return paths
+
+
+def _build_fisheye_camera_mask(image_dir, mask_path):
+    image_files = _list_image_files(image_dir)
+    if not image_files:
+        logging.warning("No images found in `%s`, skip fisheye camera mask.", image_dir)
+        return None
+
+    sample_path = image_files[0]
+    sample = cv2.imread(sample_path, cv2.IMREAD_GRAYSCALE)
+    if sample is None:
+        logging.warning("Failed to read `%s`, skip fisheye camera mask.", sample_path)
+        return None
+
+    # Fisheye captures with circular FoV usually have black pixels outside the valid lens area.
+    # Build a conservative mask from non-black pixels to ignore invalid regions in SIFT extraction.
+    mask = (sample > 8).astype(np.uint8) * 255
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if num_labels > 1:
+        largest_component = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
+        mask = np.where(labels == largest_component, 255, 0).astype(np.uint8)
+
+    # Slightly shrink the boundary to avoid unstable edge features.
+    shrink_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask = cv2.erode(mask, shrink_kernel, iterations=1)
+
+    coverage = float(np.count_nonzero(mask)) / float(mask.size)
+    if coverage < 0.05:
+        logging.warning(
+            "Auto-generated fisheye mask coverage is too small (%.2f%%), skip camera mask.",
+            coverage * 100.0,
+        )
+        return None
+
+    os.makedirs(os.path.dirname(mask_path), exist_ok=True)
+    if not cv2.imwrite(mask_path, mask):
+        logging.warning("Failed to save fisheye camera mask to `%s`.", mask_path)
+        return None
+
+    logging.info(
+        "Using auto-generated fisheye camera mask: `%s` (valid coverage: %.2f%%).",
+        mask_path,
+        coverage * 100.0,
+    )
+    return mask_path
+
+
+def _append_fisheye_camera_mask_option(command_name, cmd, camera_model, image_dir, mask_root_dir):
+    if "FISHEYE" not in camera_model.upper():
+        return
+
+    help_text = _get_command_help(command_name)
+    camera_mask_flag = "--ImageReader.camera_mask_path"
+    if camera_mask_flag not in help_text:
+        logging.info(
+            "COLMAP `%s` does not expose `%s`; skip automatic fisheye mask.",
+            command_name,
+            camera_mask_flag,
+        )
+        return
+
+    camera_mask_path = os.path.join(mask_root_dir, "camera_mask.png")
+    camera_mask_path = _build_fisheye_camera_mask(image_dir, camera_mask_path)
+    if camera_mask_path is None:
+        return
+
+    cmd.extend([camera_mask_flag, camera_mask_path])
+
+
 def _resolve_gpu_option(command_name, legacy_opt, modern_opt):
     help_text = _get_command_help(command_name)
     legacy_flag = f"--{legacy_opt}"
@@ -140,6 +227,13 @@ if not args.skip_matching:
         "--ImageReader.camera_model",
         args.camera,
     ]
+    _append_fisheye_camera_mask_option(
+        "feature_extractor",
+        feat_extracton_cmd,
+        args.camera,
+        input_dir,
+        distorted_dir,
+    )
     if feature_gpu_option is not None:
         feat_extracton_cmd.extend([feature_gpu_option, str(use_gpu)])
     _append_colmap_log_options("feature_extractor", feat_extracton_cmd)

@@ -47,7 +47,7 @@ class inpaintingGuidance(BaseObject):
 
         video: bool = False
 
-        # vidtome
+        # mvtm
         chunk_size: int = 2
         chunk_ord: str = "mix-4"
         merge_global: bool = True
@@ -133,9 +133,9 @@ class inpaintingGuidance(BaseObject):
         threestudio.info(f"Loaded Inpainting!")
 
         if self.cfg.video:
-            self.activate_vidtome()
+            self.activate_mvtm()
 
-    def activate_vidtome(self):
+    def activate_mvtm(self):
         mvtm.apply_patch(self.pipe, self.cfg.local_merge_ratio, self.cfg.merge_global, self.cfg.global_merge_ratio, 
             seed = self.cfg.seed, batch_size = self.cfg.batch_size, align_batch = self.cfg.align_batch, global_rand = self.cfg.global_rand) 
         

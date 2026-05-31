@@ -48,7 +48,7 @@ class InstructPix2PixGuidance(BaseObject):
 
         video: bool = False
 
-        # vidtome
+        # mvtm
         chunk_size: int = 3
         chunk_ord: str = "mix-4"
         merge_global: bool = True
@@ -131,9 +131,9 @@ class InstructPix2PixGuidance(BaseObject):
         register_faster_forward(self.unet)
 
         if self.cfg.video:
-            self.activate_vidtome()
+            self.activate_mvtm()
 
-    def activate_vidtome(self):
+    def activate_mvtm(self):
         mvtm.apply_patch(self.pipe, self.cfg.local_merge_ratio, self.cfg.merge_global, self.cfg.global_merge_ratio, 
             seed = self.cfg.seed, batch_size = self.cfg.batch_size, align_batch = self.cfg.align_batch, global_rand = self.cfg.global_rand) 
         
@@ -468,7 +468,7 @@ class InstructPix2PixGuidance(BaseObject):
                 for i, timestep in enumerate(time_ls):
                     latents = self.scheduler.step(noise_preds[:latents.shape[0],:,:,:], timestep, latents).prev_sample
                     # latents = self.scheduler.step(noise_preds, t, latents).prev_sample
-                # vidtome.update_patch(self.pipe, global_tokens = None)
+                # mvtm.update_patch(self.pipe, global_tokens = None)
             threestudio.debug("Editing finished.")
         return latents
 

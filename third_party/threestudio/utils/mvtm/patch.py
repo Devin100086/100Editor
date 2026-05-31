@@ -94,7 +94,7 @@ def compute_merge(module: torch.nn.Module, x: torch.Tensor, tome_info: Dict[str,
 def make_tome_block(block_class: Type[torch.nn.Module]) -> Type[torch.nn.Module]:
     """
     Make a patched class on the fly so we don't have to import any specific modules.
-    This patch applies ToMe to the forward function of the block.
+    This patch applies MVTM to the forward function of the block.
     """
 
     class ToMeBlock(block_class):
@@ -119,7 +119,7 @@ def make_tome_block(block_class: Type[torch.nn.Module]) -> Type[torch.nn.Module]
 def make_diffusers_tome_block(block_class: Type[torch.nn.Module]) -> Type[torch.nn.Module]:
     """
     Make a patched class for a diffusers model.
-    This patch applies ToMe to the forward function of the block.
+    This patch applies MVTM to the forward function of the block.
     """
     class ToMeBlock(block_class):
         # Save for unpatching later
@@ -214,7 +214,7 @@ def hook_tome_model(model: torch.nn.Module):
 
 def hook_tome_module(module: torch.nn.Module):
     """ Adds a forward pre hook to initialize random number generator.
-        All modules share the same generator state to keep their randomness in VidToMe consistent in one pass.
+        All modules share the same generator state to keep their randomness in MVTM consistent in one pass.
         This hook can be removed with remove_patch. """
     def hook(module, args):
         if not hasattr(module, "generator"):
@@ -244,7 +244,7 @@ def apply_patch(
         target_stride: int = 4,
         global_rand=0.5):
     """
-    Patches a stable diffusion model with VidToMe.
+    Patches a stable diffusion model with MVTM.
     Apply this to the highest level stable diffusion object (i.e., it should have a .model.diffusion_model).
 
     Important Args:
@@ -258,7 +258,7 @@ def apply_patch(
                            When find significant degradation in video quality. Try to lower the value.
 
     Args to tinker with if you want:
-     - max_downsample [1, 2, 4, or 8]: Apply VidToMe to layers with at most this amount of downsampling.
+     - max_downsample [1, 2, 4, or 8]: Apply MVTM to layers with at most this amount of downsampling.
                                        E.g., 1 only applies to layers with no downsampling (4/15) while
                                        8 applies to all layers (15/15). I recommend a value of 1 or 2.
      - seed: Manual random seed. 
@@ -337,7 +337,7 @@ def apply_patch(
 
 
 def remove_patch(model: torch.nn.Module):
-    """ Removes a patch from a ToMe Diffusion module if it was already patched. """
+    """ Removes an MVTM patch from a diffusion module if it was already patched. """
     # For diffusers
 
     model = model.unet if hasattr(model, "unet") else model

@@ -29,7 +29,7 @@ def bipartite_soft_matching_randframe(metric: torch.Tensor,
         - metric [B, N, C]: metric to use for similarity.
         - F: frame number.
         - ratio: ratio of src tokens to be removed (by merging).
-        - unm_pre: number of src tokens not merged at previous ToMe. Pre-sequence: [unm_pre|F_0|F_1|...]
+        - unm_pre: number of src tokens not merged at the previous MVTM stage. Pre-sequence: [unm_pre|F_0|F_1|...]
         - generator: random number generator
         - target_stride: stride of target frame.
         - align_batch: whether to align similarity matching maps of samples in the batch. True when using PnP.
@@ -351,7 +351,7 @@ def bipartite_soft_matching_2s( metric: torch.Tensor,
         - metric [B, N, C]: metric to use for similarity.
         - src_len: src token length. [ src | dst ]: [ src_len | N - src_len ]
         - ratio: ratio of src tokens to be removed (by merging).
-        - unm_pre: number of src tokens not merged at previous ToMe. Pre-sequence: [unm_pre|F_0|F_1|...]
+        - unm_pre: number of src tokens not merged at the previous MVTM stage. Pre-sequence: [unm_pre|F_0|F_1|...]
         - align_batch: whether to align similarity matching maps of samples in the batch. True when using PnP.
         - merge_mode: how to merge tokens. "mean": tokens -> Mean(src_token, dst_token); "replace": tokens -> dst_token.
         - unmerge_chunk: return which partition in unmerge. 0 for src and 1 for dst.
@@ -463,7 +463,7 @@ def bipartite_soft_matching_2s( metric: torch.Tensor,
     return merge, unmerge, ret_dict
 
 
-# Original ToMe
+# Reference 2D token-merging baseline
 def bipartite_soft_matching_random2d(metric: torch.Tensor,
                                      w: int, h: int, sx: int, sy: int, r: int,
                                      no_rand: bool = False,

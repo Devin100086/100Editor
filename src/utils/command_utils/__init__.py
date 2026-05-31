@@ -176,13 +176,14 @@ def showing_colmap_command(data_path):
     )
     return process
 
-def sfm_reconstruction(source_path, colmap_executable, use_gpu):
+def sfm_reconstruction(source_path, colmap_executable, use_gpu, camera_model="OPENCV"):
     gpu = 1 if use_gpu == True else 0
     process = _run_python(
         _script_path("src", "editor", "gaussiansplatting", "convert.py"),
         "-s",str(source_path),
         "--colmap_executable",str(colmap_executable),
-        "--gpu", str(gpu)
+        "--gpu", str(gpu),
+        "--camera", str(camera_model),
     )
     return process
 

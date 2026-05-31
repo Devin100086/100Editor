@@ -44,6 +44,8 @@ class ConverWidget(Widget):
         self.colmap_rec = None
         self.colmap = True
         self.selected_colmap = 0  # 0 for SfM, 1 for vggt
+        self.camera_models = ["OPENCV", "OPENCV_FISHEYE"]
+        self.camera_model_index = 0
     
     def close(self):
         self.gpu_monitor.stop()
@@ -83,6 +85,13 @@ class ConverWidget(Widget):
                 imgui.set_next_item_width(viz.button_w)
 
                 changed, self.use_gpu = imgui.checkbox("Use GPU", self.use_gpu)
+                camera_model_width = max(viz.button_w * 1.8, 140)
+                imgui.set_next_item_width(camera_model_width)
+                _, self.camera_model_index = imgui.combo(
+                    "camera model",
+                    self.camera_model_index,
+                    self.camera_models
+                )
 
             if imgui_utils.button("colmap", width=viz.button_w):
                 self.colmap = False
@@ -123,10 +132,11 @@ class ConverWidget(Widget):
         return sorted(self.items)
     
     def sfm_process(self):
+        camera_model = self.camera_models[self.camera_model_index]
         if self.colmap_executable == "Default":
-            return sfm_reconstruction(self.source_path, "", self.use_gpu)
+            return sfm_reconstruction(self.source_path, "", self.use_gpu, camera_model)
         else:
-            return sfm_reconstruction(self.source_path, self.colmap_executable, self.use_gpu)
+            return sfm_reconstruction(self.source_path, self.colmap_executable, self.use_gpu, camera_model)
     
     def vggt_process(self):
         return vggt_reconstruction(self.source_path)
