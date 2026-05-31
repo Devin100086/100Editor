@@ -39,6 +39,37 @@
  
  **[2026-02]** :tada: 100Editor has been accepted to CVPR 2026(Findings)!
 
+## :computer: Software
+
+100Editor comes with an interactive desktop application that wraps the full pipeline — reconstruction, segmentation, and every editing mode — into a single GUI. Below are four editing modes in action.
+
+<table align="center">
+  <tr>
+    <td align="center" width="50%">
+      <video src="https://github.com/Devin100086/100Editor/raw/main/assets/software/semantic_editing.mp4" controls muted width="100%"></video>
+      <br><b>Semantic Editing</b>
+    </td>
+    <td align="center" width="50%">
+      <video src="https://github.com/Devin100086/100Editor/raw/main/assets/software/additive_editing.mp4" controls muted width="100%"></video>
+      <br><b>Additive Editing</b>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <video src="https://github.com/Devin100086/100Editor/raw/main/assets/software/substractive_editing.mp4" controls muted width="100%"></video>
+      <br><b>Subtractive Editing</b>
+    </td>
+    <td align="center" width="50%">
+      <video src="https://github.com/Devin100086/100Editor/raw/main/assets/software/drag_editing.mp4" controls muted width="100%"></video>
+      <br><b>Non-rigid (Drag) Editing</b>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  📖 More detailed operation walkthroughs and additional features are covered in the <a href="https://devin100086.github.io/100Editor-Document"><b>Documentation</b></a>.
+</p>
+
 ## :bookmark_tabs:TODOs
 - [ ] Perform a deeper cleanup and refactoring of the codebase, along with thorough testing, so that **100Editor becomes easier to use, maintain, and customize for everyone**:grinning:. 
 - [ ] Provide more complete installation and configuration instructions.
