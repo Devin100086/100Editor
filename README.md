@@ -46,21 +46,21 @@
 <table align="center">
   <tr>
     <td align="center" width="50%">
-      <video src="https://github.com/Devin100086/100Editor/blob/main/assets/software/additive_editing.mp4" controls muted width="100%"></video>
+      <img src="resources/assets/software/semantic_editing.gif" width="100%" />
       <br><b>Semantic Editing</b>
     </td>
     <td align="center" width="50%">
-      <video src="https://github.com/Devin100086/100Editor/blob/main/assets/software/additive_editing.mp4" controls muted width="100%"></video>
+      <img src="resources/assets/software/additive_editing.gif" width="100%" />
       <br><b>Additive Editing</b>
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
-      <video src="https://github.com/Devin100086/100Editor/blob/main/assets/software/substractive_editing.mp4" controls muted width="100%"></video>
+      <img src="resources/assets/software/substractive_editing.gif" width="100%" />
       <br><b>Subtractive Editing</b>
     </td>
     <td align="center" width="50%">
-      <video src="https://github.com/Devin100086/100Editor/blob/main/assets/software/drag_editing.mp4" controls muted width="100%"></video>
+      <img src="resources/assets/software/drag_editing.gif" width="100%" />
       <br><b>Non-rigid (Drag) Editing</b>
     </td>
   </tr>
