@@ -29,7 +29,7 @@
 </div>
 
 <p align="center">
-  <img src="resources/assets/teaser(video).png" alt="100Editor teaser" width="95%" />
+  <img src="resources/assets/teaser.jpg" alt="100Editor teaser" width="95%" />
 </p>
 
 

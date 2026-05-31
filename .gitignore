@@ -69,7 +69,7 @@ third_party/colmap
 # Generated media (not source assets)
 # -----------------------------
 *.mp4
-!assets/software/*.mp4
+!resources/assets/software/*.mp4
 load/lego_bulldozer.jpg
 
 # -----------------------------
