@@ -21,7 +21,7 @@
 
 <div align="center">
 
- <a href='https://arxiv.org/abs/2311.14521'><img src='https://img.shields.io/badge/arXiv-2311.14521-b31b1b.svg?style=for-the-badge'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+ <a href='https://openaccess.thecvf.com/content/CVPR2026F/papers/Wu_100Editor_100_Views_per_Batch_and_Minute-Scale_View-Consistent_3D_Editing_CVPRF_2026_paper.pdf'><img src='https://img.shields.io/badge/CVPR%202026-Paper-4b44ce.svg?style=for-the-badge&logo=openaccess&logoColor=white'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
  <a href='https://devin100086.github.io/100Editor/'><img src='https://img.shields.io/badge/Project-Page-Green?style=for-the-badge'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
  <a href='https://www.youtube.com/watch?v=TdZIICSFqsU&ab_channel=YiwenChen'><img src='https://img.shields.io/badge/Bilibili-00A1D6?logo=bilibili&logoColor=white&style=for-the-badge'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
  <a href='https://devin100086.github.io/100Editor-Document'><img src='https://img.shields.io/badge/Software-Document-8A2BE2.svg?style=for-the-badge'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
@@ -41,7 +41,7 @@
 
 ## :computer: Software
 
-100Editor comes with an interactive desktop application that wraps the full pipeline — reconstruction, segmentation, and every editing mode — into a single GUI. Below are four editing modes in action.
+100Editor comes with an interactive desktop software that wraps the full pipeline — reconstruction, segmentation, and every editing mode — into a single GUI. Below are four editing modes in action.
 
 <table align="center">
   <tr>
@@ -75,7 +75,7 @@
 - [ ] Provide more complete installation and configuration instructions.
  
 ## :wrench: Installation
-> Our environment has been tested on an NVIDIA RTX 4090 GPU with Ubuntu 22.04 and CUDA 12.4.
+Our environment has been tested on an NVIDIA RTX 4090 GPU with Ubuntu 22.04 and CUDA 12.4.
 1. Clone our repository
 ```
 git clone https://github.com/Devin100086/100Editor.git --recursive
@@ -221,6 +221,10 @@ We sincerely appreciate these excellent open-source projects.
   <tr>
     <td>dreamgaussian</td>
     <td><a href="https://github.com/dreamgaussian/dreamgaussian">dreamgaussian/dreamgaussian</a></td>
+  </tr>
+  <tr>
+    <td>VidToMe</td>
+    <td><a href="https://github.com/lixirui142/VidToMe">lixirui142/VidToMe</a></td>
   </tr>
 </table>
 </center>
