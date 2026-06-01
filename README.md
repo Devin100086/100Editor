@@ -231,7 +231,14 @@ We sincerely appreciate these excellent open-source projects.
 
 ## :pushpin: Citation
 ```bibtex
-11
+@InProceedings{Wu_2026_CVPR,
+    author    = {Wu, Cunqi and Zhou, Peng and Qin, Jie and Tian, Qi},
+    title     = {100Editor: 100+ Views per Batch and Minute-Scale View-Consistent 3D Editing},
+    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) Findings},
+    month     = {June},
+    year      = {2026},
+    pages     = {8449-8460}
+}
 ``` 
 
 ## :star: Star History
