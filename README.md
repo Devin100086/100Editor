@@ -235,6 +235,7 @@ We sincerely appreciate these excellent open-source projects.
 ``` 
 
 ## :star: Star History
+
 <a href="https://www.star-history.com/?repos=Devin100086%2F100Editor&type=date&legend=top-left">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Devin100086/100Editor&type=date&theme=dark&legend=top-left" />
