@@ -677,12 +677,12 @@ html[data-theme="light"] .feature-slogan-text::after {
 }
 
 #hero-paper-link   { --btn-glow: rgba(255, 107, 74, 0.45); --btn-grad: linear-gradient(130deg, rgba(255,107,74,0.22), rgba(255,60,40,0.14)); }
-#hero-arxiv-link   { --btn-glow: rgba(180, 80, 60, 0.45);  --btn-grad: linear-gradient(130deg, rgba(180,80,60,0.2), rgba(140,40,30,0.12)); }
+#hero-supp-link    { --btn-glow: rgba(180, 80, 60, 0.45); --btn-grad: linear-gradient(130deg, rgba(180,80,60,0.2), rgba(140,40,30,0.12)); }
 #hero-code-link    { --btn-glow: rgba(108, 255, 184, 0.4); --btn-grad: linear-gradient(130deg, rgba(108,255,184,0.18), rgba(0,229,255,0.12)); }
 #hero-bilibili-link { --btn-glow: rgba(0, 185, 255, 0.42); --btn-grad: linear-gradient(130deg, rgba(0,185,255,0.2), rgba(80,140,255,0.12)); }
 #hero-software-link { --btn-glow: rgba(255, 200, 60, 0.4); --btn-grad: linear-gradient(130deg, rgba(255,200,60,0.2), rgba(255,150,40,0.12)); }
 
-#hero-paper-link, #hero-arxiv-link, #hero-code-link,
+#hero-paper-link, #hero-supp-link, #hero-code-link,
 #hero-bilibili-link, #hero-software-link {
   background: var(--btn-grad), rgba(30, 34, 42, 0.75);
   border-color: rgba(255, 255, 255, 0.16);

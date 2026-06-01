@@ -228,19 +228,21 @@ const CONTENT = {
     ],
   },
   links: {
-    paper: "https://arxiv.org/abs/0000.00000",
-    arxiv: "https://arxiv.org/abs/0000.00000",
+    paper: "https://openaccess.thecvf.com/content/CVPR2026F/papers/Wu_100Editor_100_Views_per_Batch_and_Minute-Scale_View-Consistent_3D_Editing_CVPRF_2026_paper.pdf",
+    supp: "https://openaccess.thecvf.com/content/CVPR2026F/supplemental/Wu_100Editor_100_Views_CVPRF_2026_supplemental.zip",
     code: "https://github.com/Devin100086/100Editor",
-    bilibili: "https://www.bilibili.com",
+    bilibili: "https://www.bilibili.com/video/BV1voVZ64EkK/?spm_id_from=333.1387.homepage.video_card.click&vd_source=fc2bdbc255213b692a4bd0f5f695200f",
     software: "https://devin100086.github.io/100Editor-Document",
   },
 };
 
-const BIBTEX = `@inproceedings{photonweaver2026,
-  title={PhotonWeaver: Seeing Through Extreme Conditions},
-  author={Doe, Jane and Zhang, Alex and Team, Visionary Intelligence},
-  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
-  year={2026}
+const BIBTEX = `@InProceedings{Wu_2026_CVPR,
+    author    = {Wu, Cunqi and Zhou, Peng and Qin, Jie and Tian, Qi},
+    title     = {100Editor: 100+ Views per Batch and Minute-Scale View-Consistent 3D Editing},
+    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) Findings},
+    month     = {June},
+    year      = {2026},
+    pages     = {8449-8460}
 }`;
 
 let activeCaseId = "";
@@ -670,7 +672,7 @@ function initHeroMedia() {
   };
 
   bindHeroLink("hero-paper-link", links.paper);
-  bindHeroLink("hero-arxiv-link", links.arxiv);
+  bindHeroLink("hero-supp-link", links.supp);
   bindHeroLink("hero-code-link", links.code);
   bindHeroLink("hero-bilibili-link", links.bilibili);
   bindHeroLink("hero-software-link", links.software);
