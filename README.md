@@ -23,7 +23,7 @@
 
  <a href='https://openaccess.thecvf.com/content/CVPR2026F/papers/Wu_100Editor_100_Views_per_Batch_and_Minute-Scale_View-Consistent_3D_Editing_CVPRF_2026_paper.pdf'><img src='https://img.shields.io/badge/CVPR%202026-Paper-4b44ce.svg?style=for-the-badge&logo=openaccess&logoColor=white'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
  <a href='https://devin100086.github.io/100Editor/'><img src='https://img.shields.io/badge/Project-Page-Green?style=for-the-badge'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
- <a href='https://www.youtube.com/watch?v=TdZIICSFqsU&ab_channel=YiwenChen'><img src='https://img.shields.io/badge/Bilibili-00A1D6?logo=bilibili&logoColor=white&style=for-the-badge'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+ <a href='https://www.bilibili.com/video/BV1voVZ64EkK/?spm_id_from=333.1387.homepage.video_card.click&vd_source=fc2bdbc255213b692a4bd0f5f695200f'><img src='https://img.shields.io/badge/Bilibili-00A1D6?logo=bilibili&logoColor=white&style=for-the-badge'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
  <a href='https://devin100086.github.io/100Editor-Document'><img src='https://img.shields.io/badge/Software-Document-8A2BE2.svg?style=for-the-badge'></a> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 
 </div>
