@@ -226,6 +226,10 @@ We sincerely appreciate these excellent open-source projects.
     <td>VidToMe</td>
     <td><a href="https://github.com/lixirui142/VidToMe">lixirui142/VidToMe</a></td>
   </tr>
+  <tr>
+    <td>splatviz</td>
+    <td><a href="https://github.com/Florian-Barthel/splatviz">Florian-Barthel/splatviz</a></td>
+  </tr>
 </table>
 </center>
 
